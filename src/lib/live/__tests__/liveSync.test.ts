@@ -35,7 +35,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
       title: 'Sunday Morning Worship',
       leaderName: 'Pastor Daniel',
       instrument: 'guitar',
-      initialSongId: 'demo-song-01',
+      initialSongId: 'song-01',
       initialSemitones: 0,
     });
 
@@ -76,7 +76,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     const created = createLiveSession({
       title: 'Evening Revival',
       leaderName: 'Elena',
-      initialSongId: 'demo-song-01',
+      initialSongId: 'song-01',
       initialSemitones: 0,
     });
 
@@ -85,7 +85,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
       created.session.sessionId,
       created.participantToken,
       {
-        songId: 'demo-song-02',
+        songId: 'song-02',
         officialSemitones: 2,
         enharmonicPreference: 'sharp',
       }
@@ -109,12 +109,12 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     });
 
     assert.equal(lateMember.session.revision, 3);
-    assert.equal(lateMember.session.sharedState.songId, 'demo-song-02');
+    assert.equal(lateMember.session.sharedState.songId, 'song-02');
     assert.equal(lateMember.session.sharedState.officialSemitones, 2);
     assert.equal(lateMember.session.sharedState.activeSectionId, 'sec-3');
     assert.equal(
       lateMember.session.sharedState.activeSectionLabel,
-      'Koro (Chorus)'
+      'Chorus'
     );
   });
 
@@ -122,7 +122,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     const created = createLiveSession({
       title: 'Band Rehearsal',
       leaderName: 'Leader Sam',
-      initialSongId: 'demo-song-01',
+      initialSongId: 'song-01',
     });
 
     const follower = joinLiveSession({
@@ -172,9 +172,9 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
   });
 
   it('4. preserves original song chords & lyrics non-destructively across transposed states and calculates instrument-specific guidance', () => {
-    const song = getSongById('demo-song-01');
+    const song = getSongById('song-01');
     if (!song) {
-      throw new Error('Expected demo-song-01 to exist');
+      throw new Error('Expected song-01 to exist');
     }
     const originalSnapshot = JSON.stringify(song);
 
@@ -230,7 +230,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     const created = createLiveSession({
       title: 'Protected Session',
       leaderName: 'Leader Grace',
-      initialSongId: 'demo-song-01',
+      initialSongId: 'song-01',
     });
 
     const follower = joinLiveSession({
@@ -292,7 +292,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     const created = createLiveSession({
       title: 'Invite Validation Test',
       leaderName: 'Leader Mark',
-      initialSongId: 'demo-song-01',
+      initialSongId: 'song-01',
       ttlMs: -5000, // already expired TTL for testing invitation expiration
     });
 
@@ -349,7 +349,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     const created = createLiveSession({
       title: 'Concurrency Check',
       leaderName: 'Leader Joy',
-      initialSongId: 'demo-song-01',
+      initialSongId: 'song-01',
     });
 
     // Revision 1 -> 2
@@ -396,7 +396,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     const created = createLiveSession({
       title: 'Leadership & Reconnect Test',
       leaderName: 'Leader Paul',
-      initialSongId: 'demo-song-01',
+      initialSongId: 'song-01',
     });
 
     const member = joinLiveSession({

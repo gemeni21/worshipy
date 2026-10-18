@@ -60,7 +60,7 @@ export default function HomePage() {
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)]">
             <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
             <span>
-              Demo Catalog MVP · 10 Original English & Filipino Songs
+              Worship Song Catalog · 20 Famous English & Filipino Songs
               {customSongs.length > 0
                 ? ` + ${customSongs.length} Personal ${
                     customSongs.length === 1 ? 'Song' : 'Songs'
@@ -277,7 +277,7 @@ export default function HomePage() {
           <h2 className="text-base font-bold">Welcome to Your Local Library</h2>
           <p className="text-xs sm:text-sm text-[var(--text-secondary)] mx-auto max-w-lg">
             You haven&apos;t opened or favorited any songs on this device yet.
-            Select any demo song below to explore chord transposition,
+            Select any song below to explore chord transposition,
             Performance Mode, and offline saving.
           </p>
         </section>
@@ -343,7 +343,7 @@ export default function HomePage() {
               className="w-4 h-4 text-[var(--brand-accent)]"
               aria-hidden="true"
             />
-            <span>Starter Demo Catalog</span>
+            <span>Worship Song Catalog</span>
           </h2>
           <Link
             href="/songs"

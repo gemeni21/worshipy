@@ -316,16 +316,16 @@ describe('Demo Song Catalog & Search/Filter Validation', () => {
       category: 'contemporary-worship',
       originalKey: 'G',
     });
-    assert.equal(gContemporary.length, 1);
-    assert.equal(gContemporary[0].slug, 'morning-of-grace');
+    assert.ok(gContemporary.length >= 1);
+    assert.equal(gContemporary[0].slug, 'goodness-of-god');
 
     // Search by title substring + filter
     const searchRes = searchAndFilterSongs(allSongs, {
-      query: 'liwanag',
+      query: 'dakila',
       language: 'fil',
     });
     assert.equal(searchRes.length, 1);
-    assert.equal(searchRes[0].slug, 'liwanag-ng-pag-asa');
+    assert.equal(searchRes[0].slug, 'dakilang-katapatan');
 
     // Empty search match
     const noMatch = searchAndFilterSongs(allSongs, {
@@ -335,12 +335,12 @@ describe('Demo Song Catalog & Search/Filter Validation', () => {
 
     // Safe resolution of song IDs including deleted/unavailable IDs
     const resolved = resolveSongsByIds([
-      'demo-song-01',
+      'song-01',
       'deleted-song-id-999',
-      'demo-song-02',
+      'song-02',
     ]);
     assert.equal(resolved.length, 2);
-    assert.equal(resolved[0].id, 'demo-song-01');
-    assert.equal(resolved[1].id, 'demo-song-02');
+    assert.equal(resolved[0].id, 'song-01');
+    assert.equal(resolved[1].id, 'song-02');
   });
 });

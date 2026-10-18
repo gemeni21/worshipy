@@ -880,7 +880,7 @@ export default function MySongsPage() {
             </h2>
             <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
               Add original church songs, hymns, or arrangements that aren&apos;t
-              in the built-in demo catalog. Every song you create supports instant
+              in the built-in catalog. Every song you create supports instant
               key transposition, Performance Mode, personal setlists, and
               offline saving.
             </p>

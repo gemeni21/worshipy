@@ -1,10 +1,17 @@
 [
   {
-    "id": "demo-song-01",
-    "slug": "morning-of-grace",
-    "title": "Morning of Grace",
-    "artist": "Worship Companion Demo Collective",
-    "writers": ["Elena Reyes", "Marcus Vance"],
+    "id": "song-01",
+    "slug": "goodness-of-god",
+    "sourceType": "catalog",
+    "title": "Goodness of God",
+    "artist": "Bethel Music & Jenn Johnson",
+    "writers": [
+      "Jenn Johnson",
+      "Ed Cash",
+      "Jason Ingram",
+      "Ben Fielding",
+      "Brian Johnson"
+    ],
     "language": {
       "code": "en",
       "label": "English"
@@ -14,25 +21,39 @@
       "label": "Contemporary Worship"
     },
     "originalKey": "G",
-    "tempoBpm": 74,
+    "tempoBpm": 68,
     "timeSignature": "4/4",
     "difficulty": "easy",
-    "contentStatus": "demo",
-    "sourceNotes": "Original fictional demo song created for Worship Music Companion MVP testing.",
+    "contentStatus": "authorized",
+    "attribution": "© 2018 Bethel Music Publishing",
+    "sourceNotes": "Key of G worship standard. Slow build into Chorus and Bridge.",
     "sections": [
       {
         "id": "sec-1",
         "type": "intro",
         "label": "Intro",
-        "cue": "Warm acoustic guitar & pad",
+        "cue": "Acoustic guitar and warm pad",
         "lines": [
           {
+            "id": "line-1-1",
             "isInstrumental": true,
             "segments": [
-              { "chord": "G", "text": "" },
-              { "chord": "D/F#", "text": "" },
-              { "chord": "Em7", "text": "" },
-              { "chord": "Cadd9", "text": "" }
+              {
+                "chord": "G",
+                "text": " "
+              },
+              {
+                "chord": "C/G",
+                "text": " "
+              },
+              {
+                "chord": "G",
+                "text": " "
+              },
+              {
+                "chord": "C/G",
+                "text": ""
+              }
             ]
           }
         ]
@@ -43,28 +64,96 @@
         "label": "Verse 1",
         "lines": [
           {
+            "id": "line-2-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "G", "text": "Before the dawn breaks " },
-              { "chord": "D/F#", "text": "across the quiet hill," }
+              {
+                "text": "I love You, "
+              },
+              {
+                "chord": "G",
+                "text": "Lord, for Your "
+              },
+              {
+                "chord": "C",
+                "text": "mercy never "
+              },
+              {
+                "chord": "G",
+                "text": "fails me"
+              }
             ]
           },
           {
+            "id": "line-2-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Em7", "text": "Your mercy meets us " },
-              { "chord": "Cadd9", "text": "when our hearts are still." }
+              {
+                "chord": "D/F#",
+                "text": "All my "
+              },
+              {
+                "chord": "Em7",
+                "text": "days, I've been "
+              },
+              {
+                "chord": "C",
+                "text": "held in Your "
+              },
+              {
+                "chord": "D",
+                "text": "hands"
+              }
             ]
           },
           {
+            "id": "line-2-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "G/B", "text": "No shadow lingers " },
-              { "chord": "C", "text": "where Your promise shines," }
+              {
+                "text": "From the moment that I "
+              },
+              {
+                "chord": "Em7",
+                "text": "wake up "
+              },
+              {
+                "chord": "C",
+                "text": "until I lay my "
+              },
+              {
+                "chord": "G",
+                "text": "head "
+              },
+              {
+                "chord": "D/F#",
+                "text": " "
+              },
+              {
+                "chord": "Em7",
+                "text": ""
+              }
             ]
           },
           {
+            "id": "line-2-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Am7", "text": "We lay our burdens down " },
-              { "chord": "Dsus4", "text": "and leave the night " },
-              { "chord": "D", "text": "behind." }
+              {
+                "text": "Oh, I will "
+              },
+              {
+                "chord": "C",
+                "text": "sing of the "
+              },
+              {
+                "chord": "D",
+                "text": "goodness of "
+              },
+              {
+                "chord": "G",
+                "text": "God"
+              }
             ]
           }
         ]
@@ -73,31 +162,90 @@
         "id": "sec-3",
         "type": "chorus",
         "label": "Chorus",
-        "cue": "Build gently with full band",
+        "cue": "Full band gently enters",
         "lines": [
           {
+            "id": "line-3-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "G", "text": "In this morning of " },
-              { "chord": "Cadd9", "text": "grace, we lift our eyes," }
+              {
+                "text": "And "
+              },
+              {
+                "chord": "C",
+                "text": "all my life You have been "
+              },
+              {
+                "chord": "G",
+                "text": "faithful"
+              }
             ]
           },
           {
+            "id": "line-3-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Em7", "text": "Faithful Redeem" },
-              { "chord": "D", "text": "er, forever wise." }
+              {
+                "text": "And "
+              },
+              {
+                "chord": "C",
+                "text": "all my life You have been "
+              },
+              {
+                "chord": "G",
+                "text": "so, so "
+              },
+              {
+                "chord": "D",
+                "text": "good"
+              }
             ]
           },
           {
+            "id": "line-3-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "G/B", "text": "Through every sea" },
-              { "chord": "C", "text": "son Your love remains," }
+              {
+                "text": "With "
+              },
+              {
+                "chord": "C",
+                "text": "every breath that I am "
+              },
+              {
+                "chord": "G",
+                "text": "able "
+              },
+              {
+                "chord": "D/F#",
+                "text": " "
+              },
+              {
+                "chord": "Em7",
+                "text": ""
+              }
             ]
           },
           {
+            "id": "line-3-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Am7", "text": "All glory and hon" },
-              { "chord": "D", "text": "or to Your " },
-              { "chord": "G", "text": "holy name." }
+              {
+                "text": "Oh, I will "
+              },
+              {
+                "chord": "C",
+                "text": "sing of the "
+              },
+              {
+                "chord": "D",
+                "text": "goodness of "
+              },
+              {
+                "chord": "G",
+                "text": "God"
+              }
             ]
           }
         ]
@@ -108,28 +256,99 @@
         "label": "Verse 2",
         "lines": [
           {
+            "id": "line-4-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "G", "text": "When weary footsteps " },
-              { "chord": "D/F#", "text": "falter on the road," }
+              {
+                "text": "I love Your "
+              },
+              {
+                "chord": "G",
+                "text": "voice, You have "
+              },
+              {
+                "chord": "C",
+                "text": "led me through the "
+              },
+              {
+                "chord": "G",
+                "text": "fire"
+              }
             ]
           },
           {
+            "id": "line-4-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Em7", "text": "You walk beside us " },
-              { "chord": "Cadd9", "text": "and You share the load." }
+              {
+                "text": "In "
+              },
+              {
+                "chord": "D/F#",
+                "text": "darkest "
+              },
+              {
+                "chord": "Em7",
+                "text": "night, You are "
+              },
+              {
+                "chord": "C",
+                "text": "close like no "
+              },
+              {
+                "chord": "D",
+                "text": "other"
+              }
             ]
           },
           {
+            "id": "line-4-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "G/B", "text": "Aliving fountain " },
-              { "chord": "C", "text": "in the desert place," }
+              {
+                "text": "I've known You as a "
+              },
+              {
+                "chord": "Em7",
+                "text": "Father, "
+              },
+              {
+                "chord": "C",
+                "text": "I've known You as a "
+              },
+              {
+                "chord": "G",
+                "text": "friend "
+              },
+              {
+                "chord": "D/F#",
+                "text": " "
+              },
+              {
+                "chord": "Em7",
+                "text": ""
+              }
             ]
           },
           {
+            "id": "line-4-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Am7", "text": "Our shelter and anchor " },
-              { "chord": "Dsus4", "text": "is Your saving " },
-              { "chord": "D", "text": "grace." }
+              {
+                "text": "And I have "
+              },
+              {
+                "chord": "C",
+                "text": "lived in the "
+              },
+              {
+                "chord": "D",
+                "text": "goodness of "
+              },
+              {
+                "chord": "G",
+                "text": "God"
+              }
             ]
           }
         ]
@@ -138,32 +357,97 @@
         "id": "sec-5",
         "type": "bridge",
         "label": "Bridge",
-        "cue": "Start softly, crescendo on repeat",
+        "cue": "Building with drums and electric guitar",
         "lines": [
           {
+            "id": "line-5-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "C", "text": "Steadfast and true, " },
-              { "chord": "G/B", "text": "from age to age the same," }
+              {
+                "chord": "G/B",
+                "text": "Your goodness is "
+              },
+              {
+                "chord": "C",
+                "text": "running after, it's "
+              },
+              {
+                "chord": "D",
+                "text": "running after "
+              },
+              {
+                "chord": "G",
+                "text": "me"
+              }
             ]
           },
           {
+            "id": "line-5-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Am7", "text": "Every breath we have " },
-              { "chord": "Em7", "text": "will sing Your praise " },
-              { "chord": "D/F#", "text": "again." }
+              {
+                "chord": "G/B",
+                "text": "Your goodness is "
+              },
+              {
+                "chord": "C",
+                "text": "running after, it's "
+              },
+              {
+                "chord": "D",
+                "text": "running after "
+              },
+              {
+                "chord": "G",
+                "text": "me"
+              }
             ]
           },
           {
+            "id": "line-5-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "C", "text": "High above the heavens, " },
-              { "chord": "Em7", "text": "nearer than our breath," }
+              {
+                "text": "With my "
+              },
+              {
+                "chord": "G/B",
+                "text": "life laid down, I'm sur"
+              },
+              {
+                "chord": "C",
+                "text": "rendered now, I "
+              },
+              {
+                "chord": "D",
+                "text": "give You every"
+              },
+              {
+                "chord": "Em7",
+                "text": "thing"
+              }
             ]
           },
           {
+            "id": "line-5-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Am7", "text": "You hold our tomorrow " },
-              { "chord": "Dsus4", "text": "in Your faithfulness" },
-              { "chord": "D", "text": "." }
+              {
+                "chord": "G/B",
+                "text": "'Cause Your goodness is "
+              },
+              {
+                "chord": "C",
+                "text": "running after, it's "
+              },
+              {
+                "chord": "D",
+                "text": "running after "
+              },
+              {
+                "chord": "G",
+                "text": "me"
+              }
             ]
           }
         ]
@@ -174,11 +458,24 @@
         "label": "Outro",
         "lines": [
           {
+            "id": "line-6-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "N.C.", "text": "All glory and honor " },
-              { "chord": "Cadd9", "text": "to Your " },
-              { "chord": "D", "text": "holy " },
-              { "chord": "G", "text": "name." }
+              {
+                "text": "Oh, I will "
+              },
+              {
+                "chord": "C",
+                "text": "sing of the "
+              },
+              {
+                "chord": "D",
+                "text": "goodness of "
+              },
+              {
+                "chord": "G",
+                "text": "God"
+              }
             ]
           }
         ]
@@ -186,39 +483,56 @@
     ]
   },
   {
-    "id": "demo-song-02",
-    "slug": "liwanag-ng-pag-asa",
-    "title": "Liwanag ng Pag-asa",
-    "artist": "Harana Worship Demo",
-    "writers": ["Marco Santos", "Hannah Villanueva"],
+    "id": "song-02",
+    "slug": "way-maker",
+    "sourceType": "catalog",
+    "title": "Way Maker",
+    "artist": "Sinach / Leeland",
+    "writers": [
+      "Osinachi Kalu Okoro Egbu"
+    ],
     "language": {
-      "code": "fil",
-      "label": "Filipino"
+      "code": "en",
+      "label": "English"
     },
     "category": {
-      "id": "filipino-worship",
-      "label": "Filipino Worship"
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
     },
-    "originalKey": "D",
-    "tempoBpm": 70,
+    "originalKey": "G",
+    "tempoBpm": 68,
     "timeSignature": "4/4",
     "difficulty": "easy",
-    "contentStatus": "demo",
-    "sourceNotes": "Original Filipino fictional demo song created for MVP testing.",
+    "contentStatus": "authorized",
+    "attribution": "© 2016 Sinach / Integrity Music",
+    "sourceNotes": "Global praise anthem in G major.",
     "sections": [
       {
         "id": "sec-1",
         "type": "intro",
         "label": "Intro",
-        "cue": "Gentle piano arpeggios",
+        "cue": "Reverberant piano and synth pad",
         "lines": [
           {
+            "id": "line-1-1",
             "isInstrumental": true,
             "segments": [
-              { "chord": "D", "text": "" },
-              { "chord": "A/C#", "text": "" },
-              { "chord": "Bm7", "text": "" },
-              { "chord": "Gmaj7", "text": "" }
+              {
+                "chord": "C",
+                "text": " "
+              },
+              {
+                "chord": "G",
+                "text": " "
+              },
+              {
+                "chord": "D",
+                "text": " "
+              },
+              {
+                "chord": "Em7",
+                "text": ""
+              }
             ]
           }
         ]
@@ -226,31 +540,56 @@
       {
         "id": "sec-2",
         "type": "verse",
-        "label": "Talata 1 (Verse 1)",
+        "label": "Verse 1",
         "lines": [
           {
+            "id": "line-2-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "D", "text": "Sa gitna ng dilim " },
-              { "chord": "A/C#", "text": "Ikaw ang tanglaw," }
+              {
+                "text": "You are "
+              },
+              {
+                "chord": "C",
+                "text": "here, moving in our "
+              },
+              {
+                "chord": "G",
+                "text": "midst, I worship "
+              },
+              {
+                "chord": "D",
+                "text": "You, I worship "
+              },
+              {
+                "chord": "Em7",
+                "text": "You"
+              }
             ]
           },
           {
+            "id": "line-2-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Bm7", "text": "Pag-ibig Mong tapat " },
-              { "chord": "Gmaj7", "text": "ang siyang umaapaw." }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "D/F#", "text": "Payapa ang puso " },
-              { "chord": "G", "text": "sa Iyong kandungan," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Em7", "text": "Sa bawat hakbang ko " },
-              { "chord": "Asus4", "text": "Ikaw ang sandi" },
-              { "chord": "A", "text": "gan." }
+              {
+                "text": "You are "
+              },
+              {
+                "chord": "C",
+                "text": "here, working in this "
+              },
+              {
+                "chord": "G",
+                "text": "place, I worship "
+              },
+              {
+                "chord": "D",
+                "text": "You, I worship "
+              },
+              {
+                "chord": "Em7",
+                "text": "You"
+              }
             ]
           }
         ]
@@ -258,78 +597,174 @@
       {
         "id": "sec-3",
         "type": "chorus",
-        "label": "Koro (Chorus)",
+        "label": "Chorus",
+        "cue": "Full congregation unison",
         "lines": [
           {
+            "id": "line-3-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "D", "text": "Ikaw ang liwanag " },
-              { "chord": "Gmaj7", "text": "ng aming pag-asa," }
+              {
+                "chord": "C",
+                "text": "Way maker, miracle worker, "
+              },
+              {
+                "chord": "G",
+                "text": "promise keeper"
+              }
             ]
           },
           {
+            "id": "line-3-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Bm7", "text": "Biyaya Mong lubos " },
-              { "chord": "A", "text": "ay laging kasama." }
+              {
+                "text": "Light in the darkness, "
+              },
+              {
+                "chord": "D",
+                "text": "my God, that is who You "
+              },
+              {
+                "chord": "Em7",
+                "text": "are"
+              }
             ]
           },
           {
+            "id": "line-3-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "D/F#", "text": "Itataas ang ngalan Mo " },
-              { "chord": "G", "text": "sa bawat umaga," }
+              {
+                "chord": "C",
+                "text": "Way maker, miracle worker, "
+              },
+              {
+                "chord": "G",
+                "text": "promise keeper"
+              }
             ]
           },
           {
+            "id": "line-3-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Em7", "text": "Purihin Ka, Panginoon, " },
-              { "chord": "A", "text": "magpakailan" },
-              { "chord": "D", "text": "man." }
+              {
+                "text": "Light in the darkness, "
+              },
+              {
+                "chord": "D",
+                "text": "my God, that is who You "
+              },
+              {
+                "chord": "Em7",
+                "text": "are"
+              }
             ]
           }
         ]
       },
       {
         "id": "sec-4",
-        "type": "bridge",
-        "label": "Tulay (Bridge)",
-        "cue": "Drums build on beat 3",
+        "type": "verse",
+        "label": "Verse 2",
         "lines": [
           {
+            "id": "line-4-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Gmaj7", "text": "Walang kapantay ang " },
-              { "chord": "A/G", "text": "katapatan Mo," }
+              {
+                "text": "You are "
+              },
+              {
+                "chord": "C",
+                "text": "here, touching every "
+              },
+              {
+                "chord": "G",
+                "text": "heart, I worship "
+              },
+              {
+                "chord": "D",
+                "text": "You, I worship "
+              },
+              {
+                "chord": "Em7",
+                "text": "You"
+              }
             ]
           },
           {
+            "id": "line-4-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "F#m7", "text": "Buong buhay ko ay " },
-              { "chord": "Bm7", "text": "iaalay sa Iyo." }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Em7", "text": "Sa hirap at ginhawa " },
-              { "chord": "D/F#", "text": "Ikaw ay tapat," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "G", "text": "Papuri at pagsamba " },
-              { "chord": "Asus4", "text": "sa Iyo ay narara" },
-              { "chord": "A", "text": "pat." }
+              {
+                "text": "You are "
+              },
+              {
+                "chord": "C",
+                "text": "here, healing every "
+              },
+              {
+                "chord": "G",
+                "text": "heart, I worship "
+              },
+              {
+                "chord": "D",
+                "text": "You, I worship "
+              },
+              {
+                "chord": "Em7",
+                "text": "You"
+              }
             ]
           }
         ]
       },
       {
         "id": "sec-5",
-        "type": "outro",
-        "label": "Outro",
+        "type": "bridge",
+        "label": "Bridge",
+        "cue": "Build steadily",
         "lines": [
           {
+            "id": "line-5-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Em7", "text": "Purihin Ka, Panginoon, " },
-              { "chord": "A7", "text": "magpakailan" },
-              { "chord": "D", "text": "man." }
+              {
+                "chord": "C",
+                "text": "Even when I don't see it, You're working"
+              }
+            ]
+          },
+          {
+            "id": "line-5-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Even when I don't feel it, You're working"
+              }
+            ]
+          },
+          {
+            "id": "line-5-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "D",
+                "text": "You never stop, You never stop working"
+              }
+            ]
+          },
+          {
+            "id": "line-5-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "Em7",
+                "text": "You never stop, You never stop working"
+              }
             ]
           }
         ]
@@ -337,25 +772,1142 @@
     ]
   },
   {
-    "id": "demo-song-03",
-    "slug": "rock-of-ages-ever-standing",
-    "title": "Rock of Ages, Ever Standing",
-    "artist": "Heritage Hymnody Demo",
-    "writers": ["clara M. Whitmore (Demo Hymn)"],
+    "id": "song-03",
+    "slug": "what-a-beautiful-name",
+    "sourceType": "catalog",
+    "title": "What a Beautiful Name",
+    "artist": "Hillsong Worship",
+    "writers": [
+      "Ben Fielding",
+      "Brooke Ligertwood"
+    ],
     "language": {
       "code": "en",
       "label": "English"
     },
     "category": {
-      "id": "hymn",
-      "label": "Traditional Hymn"
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
     },
-    "originalKey": "Bb",
-    "tempoBpm": 92,
-    "timeSignature": "3/4",
-    "difficulty": "intermediate",
-    "contentStatus": "demo",
-    "sourceNotes": "Original hymn-style composition written for flat-key transposition testing.",
+    "originalKey": "D",
+    "tempoBpm": 68,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© 2016 Hillsong Music Publishing Australia",
+    "sourceNotes": "Key of D. Dynamic worship progression from reverent to celebratory.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": true,
+            "segments": [
+              {
+                "chord": "D",
+                "text": " "
+              },
+              {
+                "chord": "Dsus4",
+                "text": " "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "D",
+                "text": "You were the Word at the beginning, One with "
+              },
+              {
+                "chord": "G",
+                "text": "God the Lord Most "
+              },
+              {
+                "chord": "A",
+                "text": "High"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "Bm",
+                "text": "Your hidden glory in "
+              },
+              {
+                "chord": "A/C#",
+                "text": "creation, "
+              },
+              {
+                "chord": "D",
+                "text": "now re"
+              },
+              {
+                "chord": "G",
+                "text": "vealed in You our "
+              },
+              {
+                "chord": "A",
+                "text": "Christ"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Chorus 1",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "What a beautiful Name it "
+              },
+              {
+                "chord": "D",
+                "text": "is, what a beautiful Name it "
+              },
+              {
+                "chord": "A",
+                "text": "is"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "The Name of "
+              },
+              {
+                "chord": "Bm",
+                "text": "Jesus "
+              },
+              {
+                "chord": "A",
+                "text": "Christ my "
+              },
+              {
+                "chord": "G",
+                "text": "King"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "What a beautiful Name it "
+              },
+              {
+                "chord": "D/F#",
+                "text": "is, nothing compares to "
+              },
+              {
+                "chord": "A",
+                "text": "this"
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "What a beautiful Name it "
+              },
+              {
+                "chord": "Bm",
+                "text": "is, the "
+              },
+              {
+                "chord": "A",
+                "text": "Name of "
+              },
+              {
+                "chord": "G",
+                "text": "Jesus"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "verse",
+        "label": "Verse 2",
+        "lines": [
+          {
+            "id": "line-4-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "D",
+                "text": "You didn't want heaven without us, so Jesus, "
+              },
+              {
+                "chord": "G",
+                "text": "You brought heaven "
+              },
+              {
+                "chord": "A",
+                "text": "down"
+              }
+            ]
+          },
+          {
+            "id": "line-4-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "Bm",
+                "text": "My sin was great, Your love was "
+              },
+              {
+                "chord": "A/C#",
+                "text": "greater, "
+              },
+              {
+                "chord": "D",
+                "text": "what could "
+              },
+              {
+                "chord": "G",
+                "text": "separate us "
+              },
+              {
+                "chord": "A",
+                "text": "now?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-5",
+        "type": "bridge",
+        "label": "Bridge",
+        "cue": "Triumphant crescendo",
+        "lines": [
+          {
+            "id": "line-5-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Death could not "
+              },
+              {
+                "chord": "G",
+                "text": "hold You, the veil tore be"
+              },
+              {
+                "chord": "A",
+                "text": "fore You"
+              }
+            ]
+          },
+          {
+            "id": "line-5-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "You silence the "
+              },
+              {
+                "chord": "Bm",
+                "text": "boast of sin and "
+              },
+              {
+                "chord": "F#m",
+                "text": "grave"
+              }
+            ]
+          },
+          {
+            "id": "line-5-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "The heavens are "
+              },
+              {
+                "chord": "G",
+                "text": "roaring the praise of Your "
+              },
+              {
+                "chord": "A",
+                "text": "glory"
+              }
+            ]
+          },
+          {
+            "id": "line-5-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "For You are "
+              },
+              {
+                "chord": "Bm",
+                "text": "raised to life a"
+              },
+              {
+                "chord": "A",
+                "text": "gain"
+              }
+            ]
+          },
+          {
+            "id": "line-5-5",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "You have no "
+              },
+              {
+                "chord": "G",
+                "text": "rival, You have no "
+              },
+              {
+                "chord": "A",
+                "text": "equal"
+              }
+            ]
+          },
+          {
+            "id": "line-5-6",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Now and for"
+              },
+              {
+                "chord": "Bm",
+                "text": "ever, God, You "
+              },
+              {
+                "chord": "F#m",
+                "text": "reign"
+              }
+            ]
+          },
+          {
+            "id": "line-5-7",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Yours is the "
+              },
+              {
+                "chord": "G",
+                "text": "kingdom, Yours is the "
+              },
+              {
+                "chord": "A",
+                "text": "glory"
+              }
+            ]
+          },
+          {
+            "id": "line-5-8",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Yours is the "
+              },
+              {
+                "chord": "Bm",
+                "text": "Name above all "
+              },
+              {
+                "chord": "A",
+                "text": "names"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-6",
+        "type": "chorus",
+        "label": "Chorus 3",
+        "lines": [
+          {
+            "id": "line-6-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "What a powerful Name it "
+              },
+              {
+                "chord": "D",
+                "text": "is, what a powerful Name it "
+              },
+              {
+                "chord": "A",
+                "text": "is"
+              }
+            ]
+          },
+          {
+            "id": "line-6-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "The Name of "
+              },
+              {
+                "chord": "Bm",
+                "text": "Jesus "
+              },
+              {
+                "chord": "A",
+                "text": "Christ my "
+              },
+              {
+                "chord": "G",
+                "text": "King"
+              }
+            ]
+          },
+          {
+            "id": "line-6-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "What a powerful Name it "
+              },
+              {
+                "chord": "D/F#",
+                "text": "is, nothing can stand a"
+              },
+              {
+                "chord": "A",
+                "text": "gainst"
+              }
+            ]
+          },
+          {
+            "id": "line-6-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "What a powerful Name it "
+              },
+              {
+                "chord": "Bm",
+                "text": "is, the "
+              },
+              {
+                "chord": "A",
+                "text": "Name of "
+              },
+              {
+                "chord": "G",
+                "text": "Jesus"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-04",
+    "slug": "10000-reasons",
+    "sourceType": "catalog",
+    "title": "10,000 Reasons (Bless the Lord)",
+    "artist": "Matt Redman",
+    "writers": [
+      "Matt Redman",
+      "Jonas Myrin"
+    ],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
+    },
+    "originalKey": "G",
+    "tempoBpm": 72,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© 2011 Thankyou Music / Said And Done Music",
+    "sourceNotes": "Acoustic guitar and piano led praise.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "chorus",
+        "label": "Chorus",
+        "cue": "Starts on chorus",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Bless the "
+              },
+              {
+                "chord": "C",
+                "text": "Lord, O my "
+              },
+              {
+                "chord": "G",
+                "text": "soul, "
+              },
+              {
+                "chord": "D/F#",
+                "text": "O my "
+              },
+              {
+                "chord": "Em7",
+                "text": "soul"
+              }
+            ]
+          },
+          {
+            "id": "line-1-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Worship His "
+              },
+              {
+                "chord": "G",
+                "text": "holy "
+              },
+              {
+                "chord": "D",
+                "text": "name"
+              }
+            ]
+          },
+          {
+            "id": "line-1-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Sing like "
+              },
+              {
+                "chord": "C",
+                "text": "never be"
+              },
+              {
+                "chord": "Em7",
+                "text": "fore, "
+              },
+              {
+                "chord": "C",
+                "text": " "
+              },
+              {
+                "chord": "D",
+                "text": " "
+              },
+              {
+                "chord": "Em7",
+                "text": "O my soul"
+              }
+            ]
+          },
+          {
+            "id": "line-1-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "I'll "
+              },
+              {
+                "chord": "C",
+                "text": "worship Your "
+              },
+              {
+                "chord": "D",
+                "text": "holy "
+              },
+              {
+                "chord": "G",
+                "text": "name"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "The "
+              },
+              {
+                "chord": "C",
+                "text": "sun comes "
+              },
+              {
+                "chord": "G",
+                "text": "up, it's a "
+              },
+              {
+                "chord": "D",
+                "text": "new day "
+              },
+              {
+                "chord": "Em7",
+                "text": "dawning"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "It's time to "
+              },
+              {
+                "chord": "G",
+                "text": "sing Your song "
+              },
+              {
+                "chord": "D",
+                "text": "a"
+              },
+              {
+                "chord": "Em7",
+                "text": "gain"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "What"
+              },
+              {
+                "chord": "C",
+                "text": "ever may "
+              },
+              {
+                "chord": "G",
+                "text": "pass, and what"
+              },
+              {
+                "chord": "D",
+                "text": "ever lies be"
+              },
+              {
+                "chord": "Em7",
+                "text": "fore me"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Let me be "
+              },
+              {
+                "chord": "G",
+                "text": "singing when the "
+              },
+              {
+                "chord": "D",
+                "text": "evening "
+              },
+              {
+                "chord": "G",
+                "text": "comes"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "verse",
+        "label": "Verse 2",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "You're "
+              },
+              {
+                "chord": "C",
+                "text": "rich in "
+              },
+              {
+                "chord": "G",
+                "text": "love, and You're "
+              },
+              {
+                "chord": "D",
+                "text": "slow to "
+              },
+              {
+                "chord": "Em7",
+                "text": "anger"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Your "
+              },
+              {
+                "chord": "C",
+                "text": "name is "
+              },
+              {
+                "chord": "G",
+                "text": "great, and Your "
+              },
+              {
+                "chord": "D",
+                "text": "heart is "
+              },
+              {
+                "chord": "Em7",
+                "text": "kind"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "For "
+              },
+              {
+                "chord": "C",
+                "text": "all Your "
+              },
+              {
+                "chord": "G",
+                "text": "goodness I will "
+              },
+              {
+                "chord": "D",
+                "text": "keep on "
+              },
+              {
+                "chord": "Em7",
+                "text": "singing"
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Ten thousand "
+              },
+              {
+                "chord": "G",
+                "text": "reasons for my "
+              },
+              {
+                "chord": "D",
+                "text": "heart to "
+              },
+              {
+                "chord": "G",
+                "text": "find"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "verse",
+        "label": "Verse 3",
+        "lines": [
+          {
+            "id": "line-4-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "And "
+              },
+              {
+                "chord": "C",
+                "text": "on that "
+              },
+              {
+                "chord": "G",
+                "text": "day when my "
+              },
+              {
+                "chord": "D",
+                "text": "strength is "
+              },
+              {
+                "chord": "Em7",
+                "text": "failing"
+              }
+            ]
+          },
+          {
+            "id": "line-4-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "The "
+              },
+              {
+                "chord": "C",
+                "text": "end draws "
+              },
+              {
+                "chord": "G",
+                "text": "near and my "
+              },
+              {
+                "chord": "D",
+                "text": "time has "
+              },
+              {
+                "chord": "Em7",
+                "text": "come"
+              }
+            ]
+          },
+          {
+            "id": "line-4-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Still my "
+              },
+              {
+                "chord": "G",
+                "text": "soul will sing Your "
+              },
+              {
+                "chord": "D",
+                "text": "praise un"
+              },
+              {
+                "chord": "Em7",
+                "text": "ending"
+              }
+            ]
+          },
+          {
+            "id": "line-4-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Ten thousand "
+              },
+              {
+                "chord": "G",
+                "text": "years and then for"
+              },
+              {
+                "chord": "D",
+                "text": "ever"
+              },
+              {
+                "chord": "G",
+                "text": "more"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-05",
+    "slug": "great-are-you-lord",
+    "sourceType": "catalog",
+    "title": "Great Are You Lord",
+    "artist": "All Sons & Daughters",
+    "writers": [
+      "David Leonard",
+      "Jason Ingram",
+      "Leslie Jordan"
+    ],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
+    },
+    "originalKey": "G",
+    "tempoBpm": 72,
+    "timeSignature": "6/8",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© 2012 Integrity's Praise! Music / Open Hands Music",
+    "sourceNotes": "6/8 time signature. Expressive prayer and declaration.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "verse",
+        "label": "Verse",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "You give "
+              },
+              {
+                "chord": "C",
+                "text": "life, You are "
+              },
+              {
+                "chord": "Em7",
+                "text": "love, You bring "
+              },
+              {
+                "chord": "D",
+                "text": "light to the darkness"
+              }
+            ]
+          },
+          {
+            "id": "line-1-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "You give "
+              },
+              {
+                "chord": "C",
+                "text": "hope, You re"
+              },
+              {
+                "chord": "Em7",
+                "text": "store every "
+              },
+              {
+                "chord": "D",
+                "text": "heart that is broken"
+              }
+            ]
+          },
+          {
+            "id": "line-1-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Great are You, "
+              },
+              {
+                "chord": "Em7",
+                "text": "Lord "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "chorus",
+        "label": "Chorus",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "It's Your "
+              },
+              {
+                "chord": "C",
+                "text": "breath in our "
+              },
+              {
+                "chord": "Em7",
+                "text": "lungs"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "So we "
+              },
+              {
+                "chord": "D",
+                "text": "pour out our praise, we pour out our praise"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "It's Your "
+              },
+              {
+                "chord": "C",
+                "text": "breath in our "
+              },
+              {
+                "chord": "Em7",
+                "text": "lungs"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "So we "
+              },
+              {
+                "chord": "D",
+                "text": "pour out our praise to You only"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "bridge",
+        "label": "Bridge",
+        "cue": "All instruments swelling",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "And all the "
+              },
+              {
+                "chord": "G",
+                "text": "earth will shout Your praise"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Our "
+              },
+              {
+                "chord": "Gsus4",
+                "text": "hearts will cry, these bones will sing"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Great are You, "
+              },
+              {
+                "chord": "G",
+                "text": "Lord"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-06",
+    "slug": "gratitude",
+    "sourceType": "catalog",
+    "title": "Gratitude",
+    "artist": "Brandon Lake",
+    "writers": [
+      "Brandon Lake",
+      "Dante Bowe",
+      "Benjamin Hastings"
+    ],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
+    },
+    "originalKey": "G",
+    "tempoBpm": 78,
+    "timeSignature": "6/8",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© 2020 Bethel Music Publishing / Maverick City Publishing",
+    "sourceNotes": "Key of G acoustic setting. Builds into an energetic roar on the bridge.",
     "sections": [
       {
         "id": "sec-1",
@@ -363,19 +1915,34 @@
         "label": "Verse 1",
         "lines": [
           {
+            "id": "line-1-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Bb", "text": "Rock of Ages, " },
-              { "chord": "Eb/Bb", "text": "ever standing," },
-              { "chord": "F/A", "text": " firm through every " },
-              { "chord": "Bb", "text": "raging sea," }
+              {
+                "chord": "G",
+                "text": "All my words fall short, I got "
+              },
+              {
+                "chord": "Em7",
+                "text": "nothing new"
+              }
             ]
           },
           {
+            "id": "line-1-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Gm7", "text": "In the tempest " },
-              { "chord": "Cm7", "text": "Thou art shelter," },
-              { "chord": "F7sus4", "text": " strong watchtower " },
-              { "chord": "F7", "text": "unto me." }
+              {
+                "text": "How could "
+              },
+              {
+                "chord": "D",
+                "text": "I express all my "
+              },
+              {
+                "chord": "C",
+                "text": "gratitude?"
+              }
             ]
           }
         ]
@@ -386,126 +1953,37 @@
         "label": "Verse 2",
         "lines": [
           {
+            "id": "line-2-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Bb", "text": "Not by might nor " },
-              { "chord": "Bb/D", "text": "earthly wisdom," },
-              { "chord": "Eb", "text": " can our weary " },
-              { "chord": "C7/E", "text": "spirits rest," }
+              {
+                "text": "I could "
+              },
+              {
+                "chord": "G",
+                "text": "sing these songs as I "
+              },
+              {
+                "chord": "Em7",
+                "text": "often do"
+              }
             ]
           },
           {
+            "id": "line-2-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Bb/F", "text": "Only in Thy " },
-              { "chord": "Gm", "text": "lovingkindness" },
-              { "chord": "Cm7", "text": " are the humble " },
-              { "chord": "F7", "text": "truly " },
-              { "chord": "Bb", "text": "blessed." }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "sec-3",
-        "type": "chorus",
-        "label": "Refrain",
-        "lines": [
-          {
-            "segments": [
-              { "chord": "Eb", "text": "Fortress sure and " },
-              { "chord": "Bb/D", "text": "fountain living," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Cm7", "text": "Guide us homeward " },
-              { "chord": "F", "text": "day by " },
-              { "chord": "Bb", "text": "day;" }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Gm7", "text": "Till we stand be" },
-              { "chord": "Eb", "text": "fore Thy presence," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Bb/F", "text": "Where all shadows " },
-              { "chord": "F7", "text": "pass a" },
-              { "chord": "Bb", "text": "way." }
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "demo-song-04",
-    "slug": "joyful-river-of-praise",
-    "title": "Joyful River of Praise",
-    "artist": "City Sanctuary Choir (Demo)",
-    "writers": ["Devon Brooks", "Tasha Jenkins"],
-    "language": {
-      "code": "en",
-      "label": "English"
-    },
-    "category": {
-      "id": "gospel",
-      "label": "Gospel & Praise"
-    },
-    "originalKey": "Eb",
-    "tempoBpm": 116,
-    "timeSignature": "4/4",
-    "difficulty": "intermediate",
-    "contentStatus": "demo",
-    "sourceNotes": "Original gospel demo chart with extended 7th/9th chords and slash inversions.",
-    "sections": [
-      {
-        "id": "sec-1",
-        "type": "intro",
-        "label": "Intro",
-        "cue": "Upbeat organ & rhythm section",
-        "lines": [
-          {
-            "isInstrumental": true,
-            "segments": [
-              { "chord": "Eb9", "text": "" },
-              { "chord": "Abmaj7", "text": "" },
-              { "chord": "Fm7", "text": "" },
-              { "chord": "Bb7sus4", "text": "" },
-              { "chord": "Bb7", "text": "" }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "sec-2",
-        "type": "verse",
-        "label": "Verse 1",
-        "lines": [
-          {
-            "segments": [
-              { "chord": "Eb", "text": "Woke up this morning with a " },
-              { "chord": "Ab/Eb", "text": "song in my soul," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Eb/G", "text": "Mercy and goodness have " },
-              { "chord": "Abmaj7", "text": "made my spirit whole." }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Fm7", "text": "Troubles may gather, " },
-              { "chord": "Eb/G", "text": "but victory is near," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Ab6", "text": "When the Lord is for us, " },
-              { "chord": "Bb7sus4", "text": "whom shall we " },
-              { "chord": "Bb7", "text": "fear?" }
+              {
+                "text": "But every "
+              },
+              {
+                "chord": "D",
+                "text": "song must end and You "
+              },
+              {
+                "chord": "C",
+                "text": "never do"
+              }
             ]
           }
         ]
@@ -516,51 +1994,139 @@
         "label": "Chorus",
         "lines": [
           {
+            "id": "line-3-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Eb", "text": "Let the joyful " },
-              { "chord": "Abmaj7", "text": "river of praise roll on," }
+              {
+                "text": "So I throw up my "
+              },
+              {
+                "chord": "G",
+                "text": "hands and praise You a"
+              },
+              {
+                "chord": "D",
+                "text": "gain and again"
+              }
             ]
           },
           {
+            "id": "line-3-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Cm7", "text": "Sing hallelujah " },
-              { "chord": "Fm7", "text": "from the rising " },
-              { "chord": "Bb7", "text": "dawn!" }
+              {
+                "text": "'Cause all that I "
+              },
+              {
+                "chord": "Em7",
+                "text": "have is a halle"
+              },
+              {
+                "chord": "C",
+                "text": "lujah, hallelujah"
+              }
             ]
           },
           {
+            "id": "line-3-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Eb/G", "text": "Clap your hands and " },
-              { "chord": "Ab", "text": "magnify the " },
-              { "chord": "Adim7", "text": "King," }
+              {
+                "text": "And I know it's not "
+              },
+              {
+                "chord": "G",
+                "text": "much, but I've nothing else "
+              },
+              {
+                "chord": "D",
+                "text": "fit for a King"
+              }
             ]
           },
           {
+            "id": "line-3-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Eb/Bb", "text": "For all He has done, " },
-              { "chord": "Bb7", "text": "let the sanctuary " },
-              { "chord": "Eb", "text": "ring!" }
+              {
+                "text": "Except for a "
+              },
+              {
+                "chord": "Em7",
+                "text": "heart singing halle"
+              },
+              {
+                "chord": "C",
+                "text": "lujah, halle"
+              },
+              {
+                "chord": "G",
+                "text": "lujah"
+              }
             ]
           }
         ]
       },
       {
         "id": "sec-4",
-        "type": "tag",
-        "label": "Vamp / Tag",
-        "cue": "Repeat 4x with choir call-and-response",
+        "type": "bridge",
+        "label": "Bridge",
+        "cue": "Full passion and energy",
         "lines": [
           {
+            "id": "line-4-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Fm7", "text": "He is faithful, " },
-              { "chord": "Eb/G", "text": "yes He is!" }
+              {
+                "text": "Come on my "
+              },
+              {
+                "chord": "G",
+                "text": "soul, oh don't you get shy"
+              }
             ]
           },
           {
+            "id": "line-4-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Abmaj7", "text": "Everlasting joy " },
-              { "chord": "Bb7sus4", "text": "is " },
-              { "chord": "Eb", "text": "His!" }
+              {
+                "text": "On "
+              },
+              {
+                "chord": "D",
+                "text": "sing out your praise for a King has arrived"
+              }
+            ]
+          },
+          {
+            "id": "line-4-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "'Cause "
+              },
+              {
+                "chord": "Em7",
+                "text": "you've got a lion in"
+              },
+              {
+                "chord": "C",
+                "text": "side of those lungs"
+              }
+            ]
+          },
+          {
+            "id": "line-4-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Get up and "
+              },
+              {
+                "chord": "G",
+                "text": "praise the Lord"
+              }
             ]
           }
         ]
@@ -568,177 +2134,162 @@
     ]
   },
   {
-    "id": "demo-song-05",
-    "slug": "tapat-ka-panginoon",
-    "title": "Tapat Ka, Panginoon",
-    "artist": "Sinag Music Demo",
-    "writers": ["Paolo Mendoza"],
+    "id": "song-07",
+    "slug": "build-my-life",
+    "sourceType": "catalog",
+    "title": "Build My Life",
+    "artist": "Housefires / Pat Barrett",
+    "writers": [
+      "Pat Barrett",
+      "Brett Younker",
+      "Karl Martin",
+      "Kirby Kaple",
+      "Matt Redman"
+    ],
     "language": {
-      "code": "fil",
-      "label": "Filipino"
+      "code": "en",
+      "label": "English"
     },
     "category": {
-      "id": "filipino-worship",
-      "label": "Filipino Worship"
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
     },
-    "originalKey": "A",
+    "originalKey": "G",
     "tempoBpm": 68,
     "timeSignature": "4/4",
     "difficulty": "easy",
-    "contentStatus": "demo",
-    "sourceNotes": "Original Filipino worship ballad demo in the key of A.",
+    "contentStatus": "authorized",
+    "attribution": "© 2016 Housefires Sounds / Said And Done Music",
+    "sourceNotes": "Devotional worship anthem of surrender and dedication.",
     "sections": [
       {
         "id": "sec-1",
-        "type": "verse",
-        "label": "Talata 1 (Verse 1)",
-        "lines": [
-          {
-            "segments": [
-              { "chord": "A", "text": "Lumilipas man ang " },
-              { "chord": "E/G#", "text": "bawat panahon," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "F#m7", "text": "Ang biyaya Mo ay " },
-              { "chord": "Dmaj7", "text": "naroroon." }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "A/C#", "text": "Hindi nagbabago " },
-              { "chord": "D", "text": "ang Iyong pangako," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Bm7", "text": "Sandigan ng puso " },
-              { "chord": "Esus4", "text": "hanggang sa " },
-              { "chord": "E", "text": "dulo." }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "sec-2",
-        "type": "chorus",
-        "label": "Koro (Chorus)",
-        "lines": [
-          {
-            "segments": [
-              { "chord": "A", "text": "Tapat Ka, Panginoon, " },
-              { "chord": "E/G#", "text": "sa aming buhay," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "F#m7", "text": "Pag-ibig Mong wagas " },
-              { "chord": "Dmaj7", "text": "ang siyang gabay." }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "A/C#", "text": "Aming iaawit " },
-              { "chord": "D", "text": "ang Iyong kabutihan," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "Bm7", "text": "Ngayon at kailanman, " },
-              { "chord": "E", "text": "Ikaw ay papuri" },
-              { "chord": "A", "text": "han." }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "sec-3",
-        "type": "bridge",
-        "label": "Tulay (Bridge)",
-        "lines": [
-          {
-            "segments": [
-              { "chord": "F#m7", "text": "Sa unos ay payapa, " },
-              { "chord": "Dmaj7", "text": "sa gabi ay tala," }
-            ]
-          },
-          {
-            "segments": [
-              { "chord": "A/E", "text": "Dakila Ka, O Diyos, " },
-              { "chord": "E", "text": "sa lahat ng nilikha." }
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "id": "demo-song-06",
-    "slug": "still-waters-of-peace",
-    "title": "Still Waters of Peace",
-    "artist": "Quiet Harbor Worship (Demo)",
-    "writers": ["Hannah Lin", "Caleb Mercer"],
-    "language": {
-      "code": "en",
-      "label": "English"
-    },
-    "category": {
-      "id": "contemporary-worship",
-      "label": "Contemporary Worship"
-    },
-    "originalKey": "F#m",
-    "tempoBpm": 64,
-    "timeSignature": "6/8",
-    "difficulty": "intermediate",
-    "contentStatus": "demo",
-    "sourceNotes": "Original minor-key contemplative demo song testing F#m and relative major progressions.",
-    "sections": [
-      {
-        "id": "sec-1",
-        "type": "intro",
-        "label": "Intro",
-        "cue": "6/8 fingerpicked acoustic",
-        "lines": [
-          {
-            "isInstrumental": true,
-            "segments": [
-              { "chord": "F#m", "text": "" },
-              { "chord": "Dmaj7", "text": "" },
-              { "chord": "A", "text": "" },
-              { "chord": "E/G#", "text": "" }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "sec-2",
         "type": "verse",
         "label": "Verse 1",
         "lines": [
           {
+            "id": "line-1-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "F#m", "text": "Lead me beside " },
-              { "chord": "Dmaj7", "text": "the still waters of peace," }
+              {
+                "chord": "G",
+                "text": "Worthy of every "
+              },
+              {
+                "chord": "C",
+                "text": "song we could ever sing"
+              }
             ]
           },
           {
+            "id": "line-1-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "A", "text": "Where anxious thoughts " },
-              { "chord": "E/G#", "text": "and striving cease." }
+              {
+                "chord": "G/B",
+                "text": "Worthy of all the "
+              },
+              {
+                "chord": "C",
+                "text": "praise we could ever bring"
+              }
             ]
           },
           {
+            "id": "line-1-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "F#m7", "text": "Restore my soul " },
-              { "chord": "D", "text": "within Your care," }
+              {
+                "chord": "G",
+                "text": "Worthy of every "
+              },
+              {
+                "chord": "C",
+                "text": "breath we could ever breathe"
+              }
             ]
           },
           {
+            "id": "line-1-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Bm7", "text": "In quiet trust " },
-              { "chord": "C#7sus4", "text": "I meet You " },
-              { "chord": "C#7", "text": "there." }
+              {
+                "text": "We live for "
+              },
+              {
+                "chord": "G/B",
+                "text": "You, we live for "
+              },
+              {
+                "chord": "C",
+                "text": "You"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Verse 2",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Jesus, the Name a"
+              },
+              {
+                "chord": "C",
+                "text": "bove every other name"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G/B",
+                "text": "Jesus, the only "
+              },
+              {
+                "chord": "C",
+                "text": "One who could ever save"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Worthy of every "
+              },
+              {
+                "chord": "C",
+                "text": "breath we could ever breathe"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "We live for "
+              },
+              {
+                "chord": "G/B",
+                "text": "You, we live for "
+              },
+              {
+                "chord": "C",
+                "text": "You"
+              }
             ]
           }
         ]
@@ -749,28 +2300,118 @@
         "label": "Chorus",
         "lines": [
           {
+            "id": "line-3-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Dmaj7", "text": "Shepherd of grace, " },
-              { "chord": "A/C#", "text": "You know my name," }
+              {
+                "chord": "C",
+                "text": "Holy, there is no one "
+              },
+              {
+                "chord": "Am7",
+                "text": "like You, there is none be"
+              },
+              {
+                "chord": "G",
+                "text": "side You"
+              }
             ]
           },
           {
+            "id": "line-3-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Bm7", "text": "Through shadowed val" },
-              { "chord": "F#m7", "text": "leys You remain." }
+              {
+                "text": "Open up my "
+              },
+              {
+                "chord": "Em7",
+                "text": "eyes in wonder"
+              }
             ]
           },
           {
+            "id": "line-3-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Dmaj7", "text": "My cup runs o" },
-              { "chord": "F#m7", "text": "ver with Your love," }
+              {
+                "text": "And "
+              },
+              {
+                "chord": "C",
+                "text": "show me who You are and "
+              },
+              {
+                "chord": "Am7",
+                "text": "fill me with Your heart"
+              }
             ]
           },
           {
+            "id": "line-3-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Bm7", "text": "Held in the mer" },
-              { "chord": "E", "text": "cy from a" },
-              { "chord": "F#m", "text": "bove." }
+              {
+                "text": "And "
+              },
+              {
+                "chord": "G",
+                "text": "lead me in Your love to "
+              },
+              {
+                "chord": "Em7",
+                "text": "those around me"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "bridge",
+        "label": "Bridge",
+        "cue": "Declaration of foundation in Christ",
+        "lines": [
+          {
+            "id": "line-4-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "And I will "
+              },
+              {
+                "chord": "C",
+                "text": "build my life upon Your "
+              },
+              {
+                "chord": "D",
+                "text": "love, it is a "
+              },
+              {
+                "chord": "Em7",
+                "text": "firm foundation"
+              }
+            ]
+          },
+          {
+            "id": "line-4-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "And I will "
+              },
+              {
+                "chord": "C",
+                "text": "put my trust in You a"
+              },
+              {
+                "chord": "D",
+                "text": "lone, and I will "
+              },
+              {
+                "chord": "Em7",
+                "text": "not be shaken"
+              }
             ]
           }
         ]
@@ -778,11 +2419,15 @@
     ]
   },
   {
-    "id": "demo-song-07",
-    "slug": "awaiting-the-king",
-    "title": "Awaiting the King",
-    "artist": "Northgate Worship Demo",
-    "writers": ["Jordan Vance"],
+    "id": "song-08",
+    "slug": "living-hope",
+    "sourceType": "catalog",
+    "title": "Living Hope",
+    "artist": "Phil Wickham",
+    "writers": [
+      "Phil Wickham",
+      "Brian Johnson"
+    ],
     "language": {
       "code": "en",
       "label": "English"
@@ -791,12 +2436,13 @@
       "id": "contemporary-worship",
       "label": "Contemporary Worship"
     },
-    "originalKey": "E",
-    "tempoBpm": 80,
+    "originalKey": "D",
+    "tempoBpm": 72,
     "timeSignature": "4/4",
     "difficulty": "easy",
-    "contentStatus": "demo",
-    "sourceNotes": "Original demo song in E with open-chord worship voicings (B, C#m7, Asus2).",
+    "contentStatus": "authorized",
+    "attribution": "© 2018 Phil Wickham Music / Bethel Music Publishing",
+    "sourceNotes": "Gospel proclamation of Christ's resurrection.",
     "sections": [
       {
         "id": "sec-1",
@@ -804,28 +2450,151 @@
         "label": "Verse 1",
         "lines": [
           {
+            "id": "line-1-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "E", "text": "With lamps burning bright " },
-              { "chord": "B/D#", "text": "at the break of the day," }
+              {
+                "text": "How "
+              },
+              {
+                "chord": "D",
+                "text": "great the chasm that lay be"
+              },
+              {
+                "chord": "A",
+                "text": "tween us"
+              }
             ]
           },
           {
+            "id": "line-1-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "C#m7", "text": "We ready our hearts " },
-              { "chord": "Asus2", "text": "as we watch and we pray." }
+              {
+                "text": "How "
+              },
+              {
+                "chord": "G",
+                "text": "high the mountain "
+              },
+              {
+                "chord": "Bm",
+                "text": "I could not "
+              },
+              {
+                "chord": "A",
+                "text": "climb"
+              }
             ]
           },
           {
+            "id": "line-1-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "E/G#", "text": "The hope of the nations " },
-              { "chord": "Asus2", "text": "is drawing us near," }
+              {
+                "text": "In "
+              },
+              {
+                "chord": "D",
+                "text": "desperation I turned to "
+              },
+              {
+                "chord": "A",
+                "text": "heaven"
+              }
             ]
           },
           {
+            "id": "line-1-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "F#m7", "text": "Our Sovereign and Savior " },
-              { "chord": "Bsus4", "text": "is welcome " },
-              { "chord": "B", "text": "here." }
+              {
+                "text": "And spoke Your "
+              },
+              {
+                "chord": "G",
+                "text": "name in"
+              },
+              {
+                "chord": "A",
+                "text": "to the "
+              },
+              {
+                "chord": "D",
+                "text": "night"
+              }
+            ]
+          },
+          {
+            "id": "line-1-5",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Then through the "
+              },
+              {
+                "chord": "G",
+                "text": "darkness Your loving"
+              },
+              {
+                "chord": "D",
+                "text": "kindness"
+              }
+            ]
+          },
+          {
+            "id": "line-1-6",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Tore through the "
+              },
+              {
+                "chord": "Bm",
+                "text": "shadows of my "
+              },
+              {
+                "chord": "A",
+                "text": "soul"
+              }
+            ]
+          },
+          {
+            "id": "line-1-7",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "The work is "
+              },
+              {
+                "chord": "D",
+                "text": "finished, the end is "
+              },
+              {
+                "chord": "A",
+                "text": "written"
+              }
+            ]
+          },
+          {
+            "id": "line-1-8",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Jesus "
+              },
+              {
+                "chord": "G",
+                "text": "Christ, my "
+              },
+              {
+                "chord": "A",
+                "text": "living "
+              },
+              {
+                "chord": "D",
+                "text": "hope"
+              }
             ]
           }
         ]
@@ -836,28 +2605,339 @@
         "label": "Chorus",
         "lines": [
           {
+            "id": "line-2-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "E", "text": "Open the gates, " },
-              { "chord": "Asus2", "text": "let the anthem arise," }
+              {
+                "text": "Halle"
+              },
+              {
+                "chord": "G",
+                "text": "lujah, praise the "
+              },
+              {
+                "chord": "D",
+                "text": "One who set me free!"
+              }
             ]
           },
           {
+            "id": "line-2-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "C#m7", "text": "Hosanna to Jesus, " },
-              { "chord": "Bsus4", "text": "the Lord of the skies." }
+              {
+                "text": "Halle"
+              },
+              {
+                "chord": "G",
+                "text": "lujah, death has "
+              },
+              {
+                "chord": "D",
+                "text": "lost its grip on "
+              },
+              {
+                "chord": "A",
+                "text": "me!"
+              }
             ]
           },
           {
+            "id": "line-2-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "E/G#", "text": "Every knee bowing, " },
-              { "chord": "Asus2", "text": "every tongue sing," }
+              {
+                "text": "You have "
+              },
+              {
+                "chord": "D",
+                "text": "broken every chain, there's sal"
+              },
+              {
+                "chord": "A",
+                "text": "vation in Your name"
+              }
             ]
           },
           {
+            "id": "line-2-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "F#m7", "text": "Forever we worship " },
-              { "chord": "B", "text": "our Risen " },
-              { "chord": "E", "text": "King." }
+              {
+                "text": "Jesus "
+              },
+              {
+                "chord": "G",
+                "text": "Christ, my "
+              },
+              {
+                "chord": "A",
+                "text": "living "
+              },
+              {
+                "chord": "D",
+                "text": "hope"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "verse",
+        "label": "Verse 2",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Who could i"
+              },
+              {
+                "chord": "D",
+                "text": "magine so great a "
+              },
+              {
+                "chord": "A",
+                "text": "mercy?"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "What heart could "
+              },
+              {
+                "chord": "G",
+                "text": "fathom such "
+              },
+              {
+                "chord": "Bm",
+                "text": "boundless "
+              },
+              {
+                "chord": "A",
+                "text": "grace?"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "The God of "
+              },
+              {
+                "chord": "D",
+                "text": "ages stepped down from "
+              },
+              {
+                "chord": "A",
+                "text": "glory"
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "To wear my "
+              },
+              {
+                "chord": "G",
+                "text": "sin and "
+              },
+              {
+                "chord": "A",
+                "text": "bear my "
+              },
+              {
+                "chord": "D",
+                "text": "shame"
+              }
+            ]
+          },
+          {
+            "id": "line-3-5",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "The cross has "
+              },
+              {
+                "chord": "G",
+                "text": "spoken, I am for"
+              },
+              {
+                "chord": "D",
+                "text": "given"
+              }
+            ]
+          },
+          {
+            "id": "line-3-6",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "The King of "
+              },
+              {
+                "chord": "Bm",
+                "text": "kings calls me His "
+              },
+              {
+                "chord": "A",
+                "text": "own"
+              }
+            ]
+          },
+          {
+            "id": "line-3-7",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Beautiful "
+              },
+              {
+                "chord": "D",
+                "text": "Savior, I'm Yours for"
+              },
+              {
+                "chord": "A",
+                "text": "ever"
+              }
+            ]
+          },
+          {
+            "id": "line-3-8",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Jesus "
+              },
+              {
+                "chord": "G",
+                "text": "Christ, my "
+              },
+              {
+                "chord": "A",
+                "text": "living "
+              },
+              {
+                "chord": "D",
+                "text": "hope"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "verse",
+        "label": "Verse 3",
+        "cue": "Rising celebration",
+        "lines": [
+          {
+            "id": "line-4-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Then came the "
+              },
+              {
+                "chord": "D",
+                "text": "morning that sealed the "
+              },
+              {
+                "chord": "A",
+                "text": "promise"
+              }
+            ]
+          },
+          {
+            "id": "line-4-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Your buried "
+              },
+              {
+                "chord": "G",
+                "text": "body be"
+              },
+              {
+                "chord": "Bm",
+                "text": "gan to "
+              },
+              {
+                "chord": "A",
+                "text": "breathe"
+              }
+            ]
+          },
+          {
+            "id": "line-4-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Out of the "
+              },
+              {
+                "chord": "D",
+                "text": "silence the Roaring "
+              },
+              {
+                "chord": "A",
+                "text": "Lion"
+              }
+            ]
+          },
+          {
+            "id": "line-4-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Declared the "
+              },
+              {
+                "chord": "G",
+                "text": "grave has no "
+              },
+              {
+                "chord": "A",
+                "text": "claim on "
+              },
+              {
+                "chord": "D",
+                "text": "me"
+              }
+            ]
+          },
+          {
+            "id": "line-4-5",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Jesus, "
+              },
+              {
+                "chord": "G",
+                "text": "Yours is the "
+              },
+              {
+                "chord": "A",
+                "text": "victo"
+              },
+              {
+                "chord": "D",
+                "text": "ry!"
+              }
             ]
           }
         ]
@@ -865,11 +2945,829 @@
     ]
   },
   {
-    "id": "demo-song-08",
-    "slug": "awit-ng-pasasalamat",
-    "title": "Awit ng Pasasalamat",
-    "artist": "Bukang-Liwayway Collective (Demo)",
-    "writers": ["Liza Navarro", "Daniel Cruz"],
+    "id": "song-09",
+    "slug": "cornerstone",
+    "sourceType": "catalog",
+    "title": "Cornerstone",
+    "artist": "Hillsong Worship",
+    "writers": [
+      "Edward Mote",
+      "Eric Liljero",
+      "Jonas Myrin",
+      "Reuben Morgan"
+    ],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
+    },
+    "originalKey": "C",
+    "tempoBpm": 71,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© 2011 Hillsong Music Publishing Australia",
+    "sourceNotes": "Modern hymn arrangement based on Edward Mote's The Solid Rock.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "My "
+              },
+              {
+                "chord": "C",
+                "text": "hope is built on nothing less than "
+              },
+              {
+                "chord": "F",
+                "text": "Jesus' blood and "
+              },
+              {
+                "chord": "G",
+                "text": "righteousness"
+              }
+            ]
+          },
+          {
+            "id": "line-1-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "I "
+              },
+              {
+                "chord": "Am",
+                "text": "dare not trust the sweetest frame, but "
+              },
+              {
+                "chord": "F",
+                "text": "wholly "
+              },
+              {
+                "chord": "G",
+                "text": "trust in Jesus' "
+              },
+              {
+                "chord": "C",
+                "text": "Name"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "chorus",
+        "label": "Chorus",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Christ a"
+              },
+              {
+                "chord": "F",
+                "text": "lone, Corner"
+              },
+              {
+                "chord": "Am",
+                "text": "stone "
+              },
+              {
+                "chord": "G",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Weak made "
+              },
+              {
+                "chord": "C/E",
+                "text": "strong in the "
+              },
+              {
+                "chord": "F",
+                "text": "Savior's "
+              },
+              {
+                "chord": "Am",
+                "text": "love "
+              },
+              {
+                "chord": "G",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Through the "
+              },
+              {
+                "chord": "C",
+                "text": "storm, He is "
+              },
+              {
+                "chord": "F",
+                "text": "Lord, Lord of "
+              },
+              {
+                "chord": "C",
+                "text": "all"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "verse",
+        "label": "Verse 2",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "When "
+              },
+              {
+                "chord": "C",
+                "text": "darkness seems to hide His face, I "
+              },
+              {
+                "chord": "F",
+                "text": "rest on His un"
+              },
+              {
+                "chord": "G",
+                "text": "changing grace"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "In "
+              },
+              {
+                "chord": "Am",
+                "text": "every high and stormy gale, my "
+              },
+              {
+                "chord": "F",
+                "text": "anchor "
+              },
+              {
+                "chord": "G",
+                "text": "holds within the "
+              },
+              {
+                "chord": "C",
+                "text": "veil"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "verse",
+        "label": "Verse 3",
+        "lines": [
+          {
+            "id": "line-4-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "When "
+              },
+              {
+                "chord": "C",
+                "text": "He shall come with trumpet sound, oh, "
+              },
+              {
+                "chord": "F",
+                "text": "may I then in "
+              },
+              {
+                "chord": "G",
+                "text": "Him be found"
+              }
+            ]
+          },
+          {
+            "id": "line-4-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Dressed "
+              },
+              {
+                "chord": "Am",
+                "text": "in His righteousness alone, fault"
+              },
+              {
+                "chord": "F",
+                "text": "less stand be"
+              },
+              {
+                "chord": "G",
+                "text": "fore the "
+              },
+              {
+                "chord": "C",
+                "text": "throne"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-10",
+    "slug": "in-christ-alone",
+    "sourceType": "catalog",
+    "title": "In Christ Alone",
+    "artist": "Keith & Kristyn Getty / Stuart Townend",
+    "writers": [
+      "Keith Getty",
+      "Stuart Townend"
+    ],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "hymn",
+      "label": "Traditional Hymn"
+    },
+    "originalKey": "D",
+    "tempoBpm": 68,
+    "timeSignature": "3/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© 2001 Thankyou Music",
+    "sourceNotes": "Beloved modern hymn in 3/4 time signature.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "In Christ a"
+              },
+              {
+                "chord": "G",
+                "text": "lone my "
+              },
+              {
+                "chord": "D",
+                "text": "hope is "
+              },
+              {
+                "chord": "D/F#",
+                "text": "found, He is my "
+              },
+              {
+                "chord": "G",
+                "text": "light, my "
+              },
+              {
+                "chord": "A",
+                "text": "strength, my "
+              },
+              {
+                "chord": "D",
+                "text": "song"
+              }
+            ]
+          },
+          {
+            "id": "line-1-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "This Corner"
+              },
+              {
+                "chord": "G",
+                "text": "stone, this "
+              },
+              {
+                "chord": "D",
+                "text": "solid "
+              },
+              {
+                "chord": "D/F#",
+                "text": "ground, firm through the "
+              },
+              {
+                "chord": "G",
+                "text": "fiercest "
+              },
+              {
+                "chord": "A",
+                "text": "drought and "
+              },
+              {
+                "chord": "D",
+                "text": "storm"
+              }
+            ]
+          },
+          {
+            "id": "line-1-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "What heights of "
+              },
+              {
+                "chord": "D/F#",
+                "text": "love, what depths of "
+              },
+              {
+                "chord": "G",
+                "text": "peace, when fears are "
+              },
+              {
+                "chord": "Bm",
+                "text": "stilled, when strivings "
+              },
+              {
+                "chord": "A",
+                "text": "cease"
+              }
+            ]
+          },
+          {
+            "id": "line-1-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "My Comfor"
+              },
+              {
+                "chord": "G",
+                "text": "ter, my "
+              },
+              {
+                "chord": "D",
+                "text": "All in "
+              },
+              {
+                "chord": "D/F#",
+                "text": "All, here in the "
+              },
+              {
+                "chord": "G",
+                "text": "love of "
+              },
+              {
+                "chord": "A",
+                "text": "Christ I "
+              },
+              {
+                "chord": "D",
+                "text": "stand"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Verse 2",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "In Christ a"
+              },
+              {
+                "chord": "G",
+                "text": "lone, who took "
+              },
+              {
+                "chord": "D",
+                "text": "on "
+              },
+              {
+                "chord": "D/F#",
+                "text": "flesh, fullness of "
+              },
+              {
+                "chord": "G",
+                "text": "God in "
+              },
+              {
+                "chord": "A",
+                "text": "helpless "
+              },
+              {
+                "chord": "D",
+                "text": "babe"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "This gift of "
+              },
+              {
+                "chord": "G",
+                "text": "love and "
+              },
+              {
+                "chord": "D",
+                "text": "righteous"
+              },
+              {
+                "chord": "D/F#",
+                "text": "ness, scorned by the "
+              },
+              {
+                "chord": "G",
+                "text": "ones He "
+              },
+              {
+                "chord": "A",
+                "text": "came to "
+              },
+              {
+                "chord": "D",
+                "text": "save"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "'Til on that "
+              },
+              {
+                "chord": "D/F#",
+                "text": "cross as Jesus "
+              },
+              {
+                "chord": "G",
+                "text": "died, the wrath of "
+              },
+              {
+                "chord": "Bm",
+                "text": "God was satis"
+              },
+              {
+                "chord": "A",
+                "text": "fied"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "For every "
+              },
+              {
+                "chord": "G",
+                "text": "sin on "
+              },
+              {
+                "chord": "D",
+                "text": "Him was "
+              },
+              {
+                "chord": "D/F#",
+                "text": "laid, here in the "
+              },
+              {
+                "chord": "G",
+                "text": "death of "
+              },
+              {
+                "chord": "A",
+                "text": "Christ I "
+              },
+              {
+                "chord": "D",
+                "text": "live"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "verse",
+        "label": "Verse 3",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "There in the "
+              },
+              {
+                "chord": "G",
+                "text": "ground His "
+              },
+              {
+                "chord": "D",
+                "text": "body "
+              },
+              {
+                "chord": "D/F#",
+                "text": "lay, Light of the "
+              },
+              {
+                "chord": "G",
+                "text": "world by "
+              },
+              {
+                "chord": "A",
+                "text": "darkness "
+              },
+              {
+                "chord": "D",
+                "text": "slain"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Then bursting "
+              },
+              {
+                "chord": "G",
+                "text": "forth in "
+              },
+              {
+                "chord": "D",
+                "text": "glorious "
+              },
+              {
+                "chord": "D/F#",
+                "text": "day, up from the "
+              },
+              {
+                "chord": "G",
+                "text": "grave He "
+              },
+              {
+                "chord": "A",
+                "text": "rose a"
+              },
+              {
+                "chord": "D",
+                "text": "gain"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "And as He "
+              },
+              {
+                "chord": "D/F#",
+                "text": "stands in victo"
+              },
+              {
+                "chord": "G",
+                "text": "ry, sin's curse has "
+              },
+              {
+                "chord": "Bm",
+                "text": "lost its grip on "
+              },
+              {
+                "chord": "A",
+                "text": "me"
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "For I am "
+              },
+              {
+                "chord": "G",
+                "text": "His and "
+              },
+              {
+                "chord": "D",
+                "text": "He is "
+              },
+              {
+                "chord": "D/F#",
+                "text": "mine, bought with the "
+              },
+              {
+                "chord": "G",
+                "text": "precious "
+              },
+              {
+                "chord": "A",
+                "text": "blood of "
+              },
+              {
+                "chord": "D",
+                "text": "Christ"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "verse",
+        "label": "Verse 4",
+        "lines": [
+          {
+            "id": "line-4-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "No guilt in "
+              },
+              {
+                "chord": "G",
+                "text": "life, no "
+              },
+              {
+                "chord": "D",
+                "text": "fear in "
+              },
+              {
+                "chord": "D/F#",
+                "text": "death, this is the "
+              },
+              {
+                "chord": "G",
+                "text": "power of "
+              },
+              {
+                "chord": "A",
+                "text": "Christ in "
+              },
+              {
+                "chord": "D",
+                "text": "me"
+              }
+            ]
+          },
+          {
+            "id": "line-4-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "From life's first "
+              },
+              {
+                "chord": "G",
+                "text": "cry to "
+              },
+              {
+                "chord": "D",
+                "text": "final "
+              },
+              {
+                "chord": "D/F#",
+                "text": "breath, Jesus com"
+              },
+              {
+                "chord": "G",
+                "text": "mands my "
+              },
+              {
+                "chord": "A",
+                "text": "desti"
+              },
+              {
+                "chord": "D",
+                "text": "ny"
+              }
+            ]
+          },
+          {
+            "id": "line-4-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "No power of "
+              },
+              {
+                "chord": "D/F#",
+                "text": "hell, no scheme of "
+              },
+              {
+                "chord": "G",
+                "text": "man, can ever "
+              },
+              {
+                "chord": "Bm",
+                "text": "pluck me from His "
+              },
+              {
+                "chord": "A",
+                "text": "hand"
+              }
+            ]
+          },
+          {
+            "id": "line-4-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "'Til He re"
+              },
+              {
+                "chord": "G",
+                "text": "turns or "
+              },
+              {
+                "chord": "D",
+                "text": "calls me "
+              },
+              {
+                "chord": "D/F#",
+                "text": "home, here in the "
+              },
+              {
+                "chord": "G",
+                "text": "power of "
+              },
+              {
+                "chord": "A",
+                "text": "Christ I'll "
+              },
+              {
+                "chord": "D",
+                "text": "stand"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-11",
+    "slug": "dakilang-katapatan",
+    "sourceType": "catalog",
+    "title": "Dakilang Katapatan",
+    "artist": "Papuri! / Arnel De Pano",
+    "writers": [
+      "Arnel De Pano"
+    ],
     "language": {
       "code": "fil",
       "label": "Filipino"
@@ -879,25 +3777,38 @@
       "label": "Filipino Worship"
     },
     "originalKey": "C",
-    "tempoBpm": 104,
+    "tempoBpm": 70,
     "timeSignature": "4/4",
     "difficulty": "easy",
-    "contentStatus": "demo",
-    "sourceNotes": "Original upbeat Filipino thanksgiving song in the key of C.",
+    "contentStatus": "authorized",
+    "attribution": "© Papuri! / Arnel De Pano",
+    "sourceNotes": "The premier classic Filipino worship hymn celebrating God's faithfulness.",
     "sections": [
       {
         "id": "sec-1",
         "type": "intro",
         "label": "Intro",
-        "cue": "Rhythmic strumming",
         "lines": [
           {
+            "id": "line-1-1",
             "isInstrumental": true,
             "segments": [
-              { "chord": "C", "text": "" },
-              { "chord": "G/B", "text": "" },
-              { "chord": "Am7", "text": "" },
-              { "chord": "Fmaj7", "text": "" }
+              {
+                "chord": "C",
+                "text": " "
+              },
+              {
+                "chord": "Em",
+                "text": " "
+              },
+              {
+                "chord": "F",
+                "text": " "
+              },
+              {
+                "chord": "G",
+                "text": ""
+              }
             ]
           }
         ]
@@ -905,31 +3816,93 @@
       {
         "id": "sec-2",
         "type": "verse",
-        "label": "Talata 1 (Verse 1)",
+        "label": "Talata 1",
         "lines": [
           {
+            "id": "line-2-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "C", "text": "Bawat hininga ay " },
-              { "chord": "G/B", "text": "kaloob Mo," }
+              {
+                "chord": "C",
+                "text": "Sadyang kay buti ng ating "
+              },
+              {
+                "chord": "Em",
+                "text": "Panginoon"
+              }
             ]
           },
           {
+            "id": "line-2-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Am7", "text": "Sigla at lakas " },
-              { "chord": "Fmaj7", "text": "ng abang puso ko." }
+              {
+                "chord": "F",
+                "text": "Magtatapat kailan"
+              },
+              {
+                "chord": "G",
+                "text": "man"
+              }
             ]
           },
           {
+            "id": "line-2-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "C/E", "text": "Sa hapag ng pag-ibig " },
-              { "chord": "F", "text": "kami'y tinipon Mo," }
+              {
+                "chord": "C",
+                "text": "Kahit kailanma'y hindi Siya "
+              },
+              {
+                "chord": "Em",
+                "text": "nagkulang"
+              }
             ]
           },
           {
+            "id": "line-2-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Dm7", "text": "Umaapaw ang galak " },
-              { "chord": "Gsus4", "text": "sa presensya " },
-              { "chord": "G", "text": "Mo." }
+              {
+                "chord": "F",
+                "text": "Biyaya Niya'y laging "
+              },
+              {
+                "chord": "G",
+                "text": "sapat"
+              }
+            ]
+          },
+          {
+            "id": "line-2-5",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "Am",
+                "text": "Kailanma'y hindi "
+              },
+              {
+                "chord": "Em",
+                "text": "Niya ako pinabayaan"
+              }
+            ]
+          },
+          {
+            "id": "line-2-6",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Kahit "
+              },
+              {
+                "chord": "F",
+                "text": "sa gitna ng pag"
+              },
+              {
+                "chord": "G",
+                "text": "subok"
+              }
             ]
           }
         ]
@@ -937,94 +3910,170 @@
       {
         "id": "sec-3",
         "type": "chorus",
-        "label": "Koro (Chorus)",
+        "label": "Koro",
         "lines": [
           {
+            "id": "line-3-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "C", "text": "Salamat, O Diyos, " },
-              { "chord": "Fmaj7", "text": "sa Iyong kabutihan," }
+              {
+                "chord": "C",
+                "text": "Dakila Ka, Panginoon, "
+              },
+              {
+                "chord": "Em",
+                "text": "dakila Ka"
+              }
             ]
           },
           {
+            "id": "line-3-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Am7", "text": "Awit ng papuri " },
-              { "chord": "G", "text": "ang aming iaalay." }
+              {
+                "text": "Ang "
+              },
+              {
+                "chord": "F",
+                "text": "Iyong katapatan ay "
+              },
+              {
+                "chord": "Dm",
+                "text": "walang katapu"
+              },
+              {
+                "chord": "G",
+                "text": "san"
+              }
             ]
           },
           {
+            "id": "line-3-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "C/E", "text": "Mula sa pagsikat " },
-              { "chord": "F", "text": "hanggang sa paglubog," }
+              {
+                "chord": "C",
+                "text": "Bawat umaga'y "
+              },
+              {
+                "chord": "Em",
+                "text": "laging bago"
+              }
             ]
           },
           {
+            "id": "line-3-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Dm7", "text": "Dakila ang ngalan Mo, " },
-              { "chord": "G", "text": "aming Pangino" },
-              { "chord": "C", "text": "on!" }
+              {
+                "text": "Dakila "
+              },
+              {
+                "chord": "F",
+                "text": "ang Iyong "
+              },
+              {
+                "chord": "G",
+                "text": "katapatan, Pangino"
+              },
+              {
+                "chord": "C",
+                "text": "on"
+              }
             ]
           }
         ]
-      }
-    ]
-  },
-  {
-    "id": "demo-song-09",
-    "slug": "crown-him-with-grateful-songs",
-    "title": "Crown Him With Grateful Songs",
-    "artist": "Cathedral Brass & Choir Demo",
-    "writers": ["Arthur Pendelton (Demo Hymn)"],
-    "language": {
-      "code": "en",
-      "label": "English"
-    },
-    "category": {
-      "id": "hymn",
-      "label": "Traditional Hymn"
-    },
-    "originalKey": "F",
-    "tempoBpm": 98,
-    "timeSignature": "4/4",
-    "difficulty": "intermediate",
-    "contentStatus": "demo",
-    "sourceNotes": "Original processional hymn demo in F major testing secondary dominants and flat chords.",
-    "sections": [
+      },
       {
-        "id": "sec-1",
+        "id": "sec-4",
         "type": "verse",
-        "label": "Verse 1",
+        "label": "Talata 2",
         "lines": [
           {
+            "id": "line-4-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "F", "text": "Crown Him with grateful " },
-              { "chord": "Dm7", "text": "songs of joy," },
-              { "chord": "Gm7", "text": " the Lord of earth and " },
-              { "chord": "C7", "text": "sky," }
+              {
+                "chord": "C",
+                "text": "Kung aking mamasdan ang "
+              },
+              {
+                "chord": "Em",
+                "text": "kalangitan"
+              }
             ]
           },
           {
+            "id": "line-4-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "F/A", "text": "Whose wisdom framed the " },
-              { "chord": "Bb", "text": "morning stars" },
-              { "chord": "G7/B", "text": " and set the heavens " },
-              { "chord": "Csus4", "text": "high" },
-              { "chord": "C", "text": "." }
+              {
+                "chord": "F",
+                "text": "Lahat ng Iyong nilik"
+              },
+              {
+                "chord": "G",
+                "text": "ha"
+              }
             ]
           },
           {
+            "id": "line-4-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Dm", "text": "From shore to shore let " },
-              { "chord": "Am7", "text": "people raise" },
-              { "chord": "Bb", "text": " a chorus strong and " },
-              { "chord": "F/A", "text": "free," }
+              {
+                "chord": "C",
+                "text": "Aking namamalas ang Iyong "
+              },
+              {
+                "chord": "Em",
+                "text": "kadakilaan"
+              }
             ]
           },
           {
+            "id": "line-4-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Gm7", "text": "For mercy reigns up" },
-              { "chord": "F/C", "text": "on His throne" },
-              { "chord": "C7", "text": " through all eterni" },
-              { "chord": "F", "text": "ty." }
+              {
+                "chord": "F",
+                "text": "Biyaya Mo'y walang "
+              },
+              {
+                "chord": "G",
+                "text": "hanggan"
+              }
+            ]
+          },
+          {
+            "id": "line-4-5",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "Am",
+                "text": "Panginoon, tunay "
+              },
+              {
+                "chord": "Em",
+                "text": "ngang Kaibigan Ka"
+              }
+            ]
+          },
+          {
+            "id": "line-4-6",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Na "
+              },
+              {
+                "chord": "F",
+                "text": "maaasahan kailan"
+              },
+              {
+                "chord": "G",
+                "text": "man"
+              }
             ]
           }
         ]
@@ -1032,41 +4081,55 @@
     ]
   },
   {
-    "id": "demo-song-10",
-    "slug": "halina-at-magpuri",
-    "title": "Halina at Magpuri",
-    "artist": "Sigla Praise Team (Demo)",
-    "writers": ["Rico Bautista"],
+    "id": "song-12",
+    "slug": "banal-mong-tahanan",
+    "sourceType": "catalog",
+    "title": "Banal Mong Tahanan",
+    "artist": "Musikatha",
+    "writers": [
+      "Paul Armesin"
+    ],
     "language": {
       "code": "fil",
       "label": "Filipino"
     },
     "category": {
-      "id": "gospel",
-      "label": "Gospel & Praise"
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
     },
-    "originalKey": "Am",
-    "tempoBpm": 118,
+    "originalKey": "G",
+    "tempoBpm": 68,
     "timeSignature": "4/4",
-    "difficulty": "intermediate",
-    "contentStatus": "demo",
-    "sourceNotes": "Original energetic Filipino praise demo in A minor with m7b5 and dominant turnaround.",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© Musikatha Ministries Foundation",
+    "sourceNotes": "Intimate prayer of worship and surrender.",
     "sections": [
       {
         "id": "sec-1",
         "type": "intro",
         "label": "Intro",
-        "cue": "Full band rhythmic hits",
         "lines": [
           {
+            "id": "line-1-1",
             "isInstrumental": true,
             "segments": [
-              { "chord": "Am7", "text": "" },
-              { "chord": "Dm7", "text": "" },
-              { "chord": "G7", "text": "" },
-              { "chord": "Cmaj7", "text": "" },
-              { "chord": "Bm7b5", "text": "" },
-              { "chord": "E7", "text": "" }
+              {
+                "chord": "G",
+                "text": " "
+              },
+              {
+                "chord": "Em7",
+                "text": " "
+              },
+              {
+                "chord": "C",
+                "text": " "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
             ]
           }
         ]
@@ -1074,30 +4137,68 @@
       {
         "id": "sec-2",
         "type": "verse",
-        "label": "Talata 1 (Verse 1)",
+        "label": "Talata 1",
         "lines": [
           {
+            "id": "line-2-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Am7", "text": "Halina at magpuri " },
-              { "chord": "Dm7", "text": "nang may kagalakan," }
+              {
+                "chord": "G",
+                "text": "Ang puso ko'y dinudulog sa "
+              },
+              {
+                "chord": "Em7",
+                "text": "Iyo"
+              }
             ]
           },
           {
+            "id": "line-2-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "G7", "text": "Ihayag ang dakilang " },
-              { "chord": "Cmaj7", "text": "gawa ng Maykapal." }
+              {
+                "text": "Nagpa"
+              },
+              {
+                "chord": "C",
+                "text": "pakumbaba, nagsusumamo "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
             ]
           },
           {
+            "id": "line-2-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Fmaj7", "text": "Pawiin ang lungkot, " },
-              { "chord": "Bm7b5", "text": "itaas ang kamay," }
+              {
+                "chord": "G",
+                "text": "Maging banal Mong tahanan "
+              },
+              {
+                "chord": "Em7",
+                "text": ""
+              }
             ]
           },
           {
+            "id": "line-2-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "E7sus4", "text": "Sa Diyos na buhay " },
-              { "chord": "E7", "text": "tayo'y magtagumpay!" }
+              {
+                "text": "Ang "
+              },
+              {
+                "chord": "C",
+                "text": "buhay kong ito "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
             ]
           }
         ]
@@ -1105,31 +4206,1767 @@
       {
         "id": "sec-3",
         "type": "chorus",
-        "label": "Koro (Chorus)",
+        "label": "Koro",
         "lines": [
           {
+            "id": "line-3-1",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Am7", "text": "Sumigaw sa galak, " },
-              { "chord": "Dm7", "text": "umawit nang malakas," }
+              {
+                "text": "Luku"
+              },
+              {
+                "chord": "G",
+                "text": "lukhan ng Iyong presensya "
+              },
+              {
+                "chord": "Em7",
+                "text": ""
+              }
             ]
           },
           {
+            "id": "line-3-2",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "G", "text": "Pag-ibig ng Panginoon " },
-              { "chord": "Cmaj7", "text": "ay walang wakas!" }
+              {
+                "text": "Pupu"
+              },
+              {
+                "chord": "C",
+                "text": "suin ng Iyong kagalakan "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
             ]
           },
           {
+            "id": "line-3-3",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Fmaj7", "text": "Lahat ng nilalang " },
-              { "chord": "Dm7", "text": "ay magsama-sama," }
+              {
+                "chord": "G",
+                "text": "Ito ang naisin ng puso "
+              },
+              {
+                "chord": "Em7",
+                "text": "ko"
+              }
             ]
           },
           {
+            "id": "line-3-4",
+            "isInstrumental": false,
             "segments": [
-              { "chord": "Bm7b5", "text": "Purihin ang Hari " },
-              { "chord": "E7", "text": "ng buong pag-a" },
-              { "chord": "Am", "text": "sa!" }
+              {
+                "text": "Maging "
+              },
+              {
+                "chord": "C",
+                "text": "banal Mong "
+              },
+              {
+                "chord": "D",
+                "text": "tahanan, Pangino"
+              },
+              {
+                "chord": "G",
+                "text": "on"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "bridge",
+        "label": "Tulay",
+        "lines": [
+          {
+            "id": "line-4-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Walang ibang hangad kundi ang "
+              },
+              {
+                "chord": "D",
+                "text": "presensya Mo"
+              }
+            ]
+          },
+          {
+            "id": "line-4-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "Bm",
+                "text": "Walang ibang nais kundi ang "
+              },
+              {
+                "chord": "Em7",
+                "text": "papuri sa 'Yo"
+              }
+            ]
+          },
+          {
+            "id": "line-4-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "Am7",
+                "text": "Lahat ng mayroon ako'y "
+              },
+              {
+                "chord": "D",
+                "text": "alay sa 'Yo, Ama "
+              },
+              {
+                "chord": "G",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-13",
+    "slug": "pusong-dalisay",
+    "sourceType": "catalog",
+    "title": "Pusong Dalisay",
+    "artist": "Papuri!",
+    "writers": [
+      "Papuri! / Psalm 51 adaptation"
+    ],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "G",
+    "tempoBpm": 68,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© Papuri! Music",
+    "sourceNotes": "Timeless prayer for a clean heart and steadfast spirit.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "verse",
+        "label": "Talata",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Pusong dalisay ang "
+              },
+              {
+                "chord": "D/F#",
+                "text": "aking nais"
+              }
+            ]
+          },
+          {
+            "id": "line-1-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Na "
+              },
+              {
+                "chord": "C",
+                "text": "likhain Mo, O "
+              },
+              {
+                "chord": "D",
+                "text": "Diyos, para sa "
+              },
+              {
+                "chord": "G",
+                "text": "akin "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-1-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Pusong dalisay ang "
+              },
+              {
+                "chord": "D/F#",
+                "text": "aking nais"
+              }
+            ]
+          },
+          {
+            "id": "line-1-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Na "
+              },
+              {
+                "chord": "C",
+                "text": "likhain Mo, O "
+              },
+              {
+                "chord": "D",
+                "text": "Diyos, para sa "
+              },
+              {
+                "chord": "G",
+                "text": "akin "
+              },
+              {
+                "chord": "G7",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "chorus",
+        "label": "Koro",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Isang "
+              },
+              {
+                "chord": "C",
+                "text": "pusong tapat na "
+              },
+              {
+                "chord": "D",
+                "text": "sa 'Yo'y nagmamahal"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Isang "
+              },
+              {
+                "chord": "Bm",
+                "text": "pusong sa 'Yo'y "
+              },
+              {
+                "chord": "Em7",
+                "text": "sumusunod"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Isang "
+              },
+              {
+                "chord": "Am7",
+                "text": "pusong hindi nag"
+              },
+              {
+                "chord": "D",
+                "text": "kakasala"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Isang "
+              },
+              {
+                "chord": "Am7",
+                "text": "pusong Iyo lamang, "
+              },
+              {
+                "chord": "D",
+                "text": "O Diyos, pusong da"
+              },
+              {
+                "chord": "G",
+                "text": "lisay"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-14",
+    "slug": "salamat-salamat",
+    "sourceType": "catalog",
+    "title": "Salamat Salamat",
+    "artist": "Malayang Pilipino Music",
+    "writers": [
+      "Boy Baldomaro"
+    ],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "E",
+    "tempoBpm": 70,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© Malayang Pilipino Music",
+    "sourceNotes": "Heartfelt thanksgiving for God's eternal love and faithfulness.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": true,
+            "segments": [
+              {
+                "chord": "E",
+                "text": " "
+              },
+              {
+                "chord": "G#m",
+                "text": " "
+              },
+              {
+                "chord": "A",
+                "text": " "
+              },
+              {
+                "chord": "B",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Talata",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "E",
+                "text": "Kung aking pagmasdan ang "
+              },
+              {
+                "chord": "G#m",
+                "text": "kalangitan"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "A",
+                "text": "Mga gawa ng Iyong mga "
+              },
+              {
+                "chord": "B",
+                "text": "kamay"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "E",
+                "text": "Ang buwan at mga bituin na "
+              },
+              {
+                "chord": "G#m",
+                "text": "Iyong inilagay"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "A",
+                "text": "O sino nga ba ang tao upang "
+              },
+              {
+                "chord": "B",
+                "text": "Iyong alalahanin?"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Koro",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Sa"
+              },
+              {
+                "chord": "E",
+                "text": "lamat, salamat, O "
+              },
+              {
+                "chord": "G#m",
+                "text": "Panginoon"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Sa"
+              },
+              {
+                "chord": "A",
+                "text": "lamat sa Iyong pag-ibig na "
+              },
+              {
+                "chord": "B",
+                "text": "walang hanggan"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Sa"
+              },
+              {
+                "chord": "E",
+                "text": "lamat, salamat, O "
+              },
+              {
+                "chord": "G#m",
+                "text": "Panginoon"
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ang "
+              },
+              {
+                "chord": "A",
+                "text": "puso ko'y nagpupuri sa "
+              },
+              {
+                "chord": "B",
+                "text": "Iyo kailan"
+              },
+              {
+                "chord": "E",
+                "text": "man"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-15",
+    "slug": "hesus-sa-buhay-ko",
+    "sourceType": "catalog",
+    "title": "Hesus Sa Buhay Ko",
+    "artist": "Rommel Guevara",
+    "writers": [
+      "Rommel Guevara"
+    ],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "G",
+    "tempoBpm": 68,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© Rommel Guevara Music",
+    "sourceNotes": "Gentle acoustic worship song centering on Jesus alone.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": true,
+            "segments": [
+              {
+                "chord": "G",
+                "text": " "
+              },
+              {
+                "chord": "Em7",
+                "text": " "
+              },
+              {
+                "chord": "C",
+                "text": " "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Talata",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Sa bawat "
+              },
+              {
+                "chord": "G",
+                "text": "araw na lumilipas "
+              },
+              {
+                "chord": "Em7",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ang pag-ibig "
+              },
+              {
+                "chord": "C",
+                "text": "Mo'y nararanasan "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Sa bawat "
+              },
+              {
+                "chord": "G",
+                "text": "sandali ng aking buhay "
+              },
+              {
+                "chord": "Em7",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ikaw ang "
+              },
+              {
+                "chord": "C",
+                "text": "siyang sandigan "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Koro",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Hesus sa buhay ko, "
+              },
+              {
+                "chord": "Em7",
+                "text": "Ikaw ang kailangan"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Hesus sa puso ko, "
+              },
+              {
+                "chord": "D",
+                "text": "Ikaw ang nilalaman"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Wala nang iba pang ha"
+              },
+              {
+                "chord": "Em7",
+                "text": "hanapin pa"
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Tanging sa 'Yo lamang may "
+              },
+              {
+                "chord": "D",
+                "text": "kapayapaan "
+              },
+              {
+                "chord": "G",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-16",
+    "slug": "wala-kang-katulad",
+    "sourceType": "catalog",
+    "title": "Wala Kang Katulad",
+    "artist": "Rommel Guevara",
+    "writers": [
+      "Rommel Guevara"
+    ],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "D",
+    "tempoBpm": 68,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© Rommel Guevara Music",
+    "sourceNotes": "A declaration of God's incomparable greatness and love.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": true,
+            "segments": [
+              {
+                "chord": "D",
+                "text": " "
+              },
+              {
+                "chord": "F#m",
+                "text": " "
+              },
+              {
+                "chord": "G",
+                "text": " "
+              },
+              {
+                "chord": "A",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Talata",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "D",
+                "text": "Awitin ko man lahat ng awit sa "
+              },
+              {
+                "chord": "F#m",
+                "text": "mundo"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Di kayang ilara"
+              },
+              {
+                "chord": "G",
+                "text": "wan ang kadakilaan "
+              },
+              {
+                "chord": "A",
+                "text": "Mo"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "D",
+                "text": "Kulang ang lahat ng mga salita "
+              },
+              {
+                "chord": "F#m",
+                "text": "ko"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Upang ipaha"
+              },
+              {
+                "chord": "G",
+                "text": "yag ang kabutihan "
+              },
+              {
+                "chord": "A",
+                "text": "Mo"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Koro",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Wala Kang ka"
+              },
+              {
+                "chord": "D",
+                "text": "tulad, wala Kang ka"
+              },
+              {
+                "chord": "F#m",
+                "text": "tulad"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Wala Kang ka"
+              },
+              {
+                "chord": "G",
+                "text": "tulad, O Pangi"
+              },
+              {
+                "chord": "A",
+                "text": "noon"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Mula noon, "
+              },
+              {
+                "chord": "D",
+                "text": "hanggang ngayon, at magpaka"
+              },
+              {
+                "chord": "F#m",
+                "text": "ilanman"
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ang pag-ibig "
+              },
+              {
+                "chord": "G",
+                "text": "Mo ay walang ka"
+              },
+              {
+                "chord": "A",
+                "text": "pantay, wala Kang ka"
+              },
+              {
+                "chord": "D",
+                "text": "tulad"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-17",
+    "slug": "kay-buti-buti-mo-panginoon",
+    "sourceType": "catalog",
+    "title": "Kay Buti-Buti Mo Panginoon",
+    "artist": "Rommel Guevara / Musikatha",
+    "writers": [
+      "Rommel Guevara"
+    ],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "D",
+    "tempoBpm": 72,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© Rommel Guevara Music",
+    "sourceNotes": "Praise and thanksgiving anthem in D major.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": true,
+            "segments": [
+              {
+                "chord": "D",
+                "text": " "
+              },
+              {
+                "chord": "G",
+                "text": " "
+              },
+              {
+                "chord": "D",
+                "text": " "
+              },
+              {
+                "chord": "A",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Talata",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "D",
+                "text": "Kay buti-buti Mo, Pangi"
+              },
+              {
+                "chord": "G",
+                "text": "noon"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Sa lahat "
+              },
+              {
+                "chord": "Em7",
+                "text": "ng oras, sa bawat "
+              },
+              {
+                "chord": "A",
+                "text": "araw"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "D",
+                "text": "Ika'y laging tapat kung magma"
+              },
+              {
+                "chord": "G",
+                "text": "hal"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ang Iyong "
+              },
+              {
+                "chord": "Em7",
+                "text": "awa ay magpaka"
+              },
+              {
+                "chord": "A",
+                "text": "ilanman"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Koro",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Pinupu"
+              },
+              {
+                "chord": "D",
+                "text": "ri't sinasamba "
+              },
+              {
+                "chord": "F#m",
+                "text": "Kita"
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Dakilang "
+              },
+              {
+                "chord": "G",
+                "text": "Diyos at Pangi"
+              },
+              {
+                "chord": "A",
+                "text": "noon"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Tunog ng pa"
+              },
+              {
+                "chord": "D",
+                "text": "puri'y iaalay sa "
+              },
+              {
+                "chord": "F#m",
+                "text": "Iyo"
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Kay buti-buti "
+              },
+              {
+                "chord": "G",
+                "text": "Mo, Pangi"
+              },
+              {
+                "chord": "A",
+                "text": "noon "
+              },
+              {
+                "chord": "D",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-18",
+    "slug": "tanging-pag-asa",
+    "sourceType": "catalog",
+    "title": "Tanging Pag-asa",
+    "artist": "Papuri!",
+    "writers": [
+      "Papuri! Singers"
+    ],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "G",
+    "tempoBpm": 68,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© Papuri! Music",
+    "sourceNotes": "Comforting worship song in times of trials and storms.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "verse",
+        "label": "Talata",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Sa gitna ng lumbay at "
+              },
+              {
+                "chord": "Em7",
+                "text": "kalungkutan"
+              }
+            ]
+          },
+          {
+            "id": "line-1-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "May isang tanglaw sa "
+              },
+              {
+                "chord": "D",
+                "text": "kadiliman"
+              }
+            ]
+          },
+          {
+            "id": "line-1-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Si Hesus ang tanging "
+              },
+              {
+                "chord": "Em7",
+                "text": "kanlungan"
+              }
+            ]
+          },
+          {
+            "id": "line-1-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Sandigan sa oras ng "
+              },
+              {
+                "chord": "D",
+                "text": "pangangailangan"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "chorus",
+        "label": "Koro",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Ikaw ang tanging pag-"
+              },
+              {
+                "chord": "Em7",
+                "text": "asa ko"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Ikaw ang lakas sa "
+              },
+              {
+                "chord": "D",
+                "text": "buhay ko"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "G",
+                "text": "Kahit anong bagyo ang "
+              },
+              {
+                "chord": "Em7",
+                "text": "dumating"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Sa 'Yo lamang ako "
+              },
+              {
+                "chord": "D",
+                "text": "aasa, Pangi"
+              },
+              {
+                "chord": "G",
+                "text": "noon"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-19",
+    "slug": "pupurihin-ka-sa-awit",
+    "sourceType": "catalog",
+    "title": "Pupurihin Ka Sa Awit",
+    "artist": "Musikatha",
+    "writers": [
+      "Paul Armesin / Musikatha"
+    ],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "E",
+    "tempoBpm": 110,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "© Musikatha Ministries Foundation",
+    "sourceNotes": "Joyful and upbeat praise anthem with lively rhythm.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": true,
+            "segments": [
+              {
+                "chord": "E",
+                "text": " "
+              },
+              {
+                "chord": "A",
+                "text": " "
+              },
+              {
+                "chord": "B",
+                "text": " "
+              },
+              {
+                "chord": "E",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Talata",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "E",
+                "text": "Walang hanggang pasasa"
+              },
+              {
+                "chord": "A",
+                "text": "lamat"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ang sa Iyo "
+              },
+              {
+                "chord": "B",
+                "text": "ay nararapat "
+              },
+              {
+                "chord": "E",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "E",
+                "text": "Ang dakila Mong gawa ay "
+              },
+              {
+                "chord": "A",
+                "text": "ihahayag"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Sa buong "
+              },
+              {
+                "chord": "B",
+                "text": "daigdig "
+              },
+              {
+                "chord": "E",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Koro",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Pupu"
+              },
+              {
+                "chord": "E",
+                "text": "rihin Ka sa awit "
+              },
+              {
+                "chord": "A",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ita"
+              },
+              {
+                "chord": "B",
+                "text": "taas ang Ngalan Mo "
+              },
+              {
+                "chord": "E",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Sasayaw "
+              },
+              {
+                "chord": "E",
+                "text": "sa kagalakan "
+              },
+              {
+                "chord": "A",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Dahil sa "
+              },
+              {
+                "chord": "B",
+                "text": "kabutihan Mo "
+              },
+              {
+                "chord": "E",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "song-20",
+    "slug": "ang-tanging-alay-ko",
+    "sourceType": "catalog",
+    "title": "Ang Tanging Alay Ko",
+    "artist": "Traditional / Papuri!",
+    "writers": [
+      "Traditional Tagalog Hymn"
+    ],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "hymn",
+      "label": "Traditional Hymn"
+    },
+    "originalKey": "C",
+    "tempoBpm": 72,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "authorized",
+    "attribution": "Traditional Filipino Hymn",
+    "sourceNotes": "Deeply cherished song of offering and consecration.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "lines": [
+          {
+            "id": "line-1-1",
+            "isInstrumental": true,
+            "segments": [
+              {
+                "chord": "C",
+                "text": " "
+              },
+              {
+                "chord": "G",
+                "text": " "
+              },
+              {
+                "chord": "Am",
+                "text": " "
+              },
+              {
+                "chord": "F",
+                "text": " "
+              },
+              {
+                "chord": "G",
+                "text": " "
+              },
+              {
+                "chord": "C",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Talata 1",
+        "lines": [
+          {
+            "id": "line-2-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Salamat sa Iyo, aking "
+              },
+              {
+                "chord": "G",
+                "text": "Panginoong Hesus"
+              }
+            ]
+          },
+          {
+            "id": "line-2-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ako'y inibig "
+              },
+              {
+                "chord": "Am",
+                "text": "Mo at inangking "
+              },
+              {
+                "chord": "Em",
+                "text": "lubos"
+              }
+            ]
+          },
+          {
+            "id": "line-2-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ang tanging "
+              },
+              {
+                "chord": "F",
+                "text": "alay ko sa Iyo ay "
+              },
+              {
+                "chord": "C",
+                "text": "buhay ko"
+              }
+            ]
+          },
+          {
+            "id": "line-2-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ito lamang, "
+              },
+              {
+                "chord": "Dm",
+                "text": "Ama, wala nang iba "
+              },
+              {
+                "chord": "G",
+                "text": "pa"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Koro",
+        "lines": [
+          {
+            "id": "line-3-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Wala akong maiha"
+              },
+              {
+                "chord": "C",
+                "text": "handog sa Iyo "
+              },
+              {
+                "chord": "Em",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "line-3-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Na maaaring maging "
+              },
+              {
+                "chord": "F",
+                "text": "karapat-dapat sa "
+              },
+              {
+                "chord": "G",
+                "text": "Iyo"
+              }
+            ]
+          },
+          {
+            "id": "line-3-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ngunit sa Iyong ha"
+              },
+              {
+                "chord": "C",
+                "text": "rap ako ay dumudu"
+              },
+              {
+                "chord": "Em",
+                "text": "log"
+              }
+            ]
+          },
+          {
+            "id": "line-3-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Tanggapin Mo ang "
+              },
+              {
+                "chord": "F",
+                "text": "alay kong puso't "
+              },
+              {
+                "chord": "G",
+                "text": "buhay "
+              },
+              {
+                "chord": "C",
+                "text": ""
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "verse",
+        "label": "Talata 2",
+        "lines": [
+          {
+            "id": "line-4-1",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "chord": "C",
+                "text": "Di ko akalain na ako'y "
+              },
+              {
+                "chord": "G",
+                "text": "Iyong bibigyang pansin"
+              }
+            ]
+          },
+          {
+            "id": "line-4-2",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ang taong tulad "
+              },
+              {
+                "chord": "Am",
+                "text": "ko'y di dapat "
+              },
+              {
+                "chord": "Em",
+                "text": "mahalin"
+              }
+            ]
+          },
+          {
+            "id": "line-4-3",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Ngunit dahil sa "
+              },
+              {
+                "chord": "F",
+                "text": "Iyong habag at "
+              },
+              {
+                "chord": "C",
+                "text": "pag-ibig"
+              }
+            ]
+          },
+          {
+            "id": "line-4-4",
+            "isInstrumental": false,
+            "segments": [
+              {
+                "text": "Binago Mo ang "
+              },
+              {
+                "chord": "Dm",
+                "text": "aking puso't "
+              },
+              {
+                "chord": "G",
+                "text": "isip"
+              }
             ]
           }
         ]

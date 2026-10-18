@@ -111,7 +111,7 @@ function SongsCatalogInner({
                 aria-hidden="true"
               />
               <span>
-                Demo Catalog ({builtInCount})
+                Worship Catalog ({builtInCount})
                 {customSongs.length > 0
                   ? ` + My Songs (${customSongs.length})`
                   : ''}

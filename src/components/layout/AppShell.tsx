@@ -161,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         </Link>
         <span className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
-          Demo MVP
+          v1.0
         </span>
       </header>
 
