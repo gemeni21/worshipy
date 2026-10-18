@@ -3,10 +3,16 @@ import type { OfflineSongEntry, SongRecord } from '../../types/song.ts';
 const DB_NAME = 'worship_companion_offline_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'offline_songs';
-const OFFLINE_CACHE_NAME = 'wmc-pages-cache-v1';
+const OFFLINE_CACHE_NAME = 'wmc-pages-cache-v3';
 
 export interface StorageOperationResult {
   ok: boolean;
+  error?: string;
+}
+
+export interface BatchStorageOperationResult {
+  ok: boolean;
+  savedCount: number;
   error?: string;
 }
 
@@ -149,6 +155,91 @@ export async function saveSongForOffline(
         err instanceof Error
           ? err.message
           : 'Could not save song for offline use due to a storage error.',
+    };
+  }
+}
+
+/**
+ * Saves multiple songs in a single IndexedDB transaction and pre-caches routes in Cache Storage.
+ */
+export async function saveBatchSongsForOffline(
+  songs: SongRecord[]
+): Promise<BatchStorageOperationResult> {
+  if (!isIndexedDbSupported()) {
+    return {
+      ok: false,
+      savedCount: 0,
+      error: 'Offline storage (IndexedDB) is unavailable in this browser.',
+    };
+  }
+
+  if (!songs || songs.length === 0) {
+    return { ok: true, savedCount: 0 };
+  }
+
+  try {
+    const db = await openDatabase();
+    const now = new Date().toISOString();
+
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+
+      for (const song of songs) {
+        const entry: OfflineSongEntry = {
+          songId: song.id,
+          savedAt: now,
+          version: 1,
+          song: JSON.parse(JSON.stringify(song)) as SongRecord,
+        };
+        store.put(entry);
+      }
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => {
+        const err = tx.error;
+        if (err && err.name === 'QuotaExceededError') {
+          reject(new Error('Device storage quota exceeded. Free up space and try again.'));
+        } else {
+          reject(err ?? new Error('Failed to write batch songs to offline storage.'));
+        }
+      };
+      tx.onabort = () => {
+        reject(new Error('Batch offline storage transaction was aborted.'));
+      };
+    });
+
+    // Best-effort cache pre-fetching in Cache Storage
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        const cache = await window.caches.open(OFFLINE_CACHE_NAME);
+        const urlsToCache = ['/songs', '/'];
+        for (const song of songs) {
+          urlsToCache.push(`/songs/${song.slug}`);
+        }
+        await Promise.allSettled(
+          urlsToCache.map((url) =>
+            fetch(url, { credentials: 'same-origin' }).then((res) => {
+              if (res.ok) {
+                return cache.put(url, res.clone());
+              }
+            })
+          )
+        );
+      } catch {
+        // Cache API is progressive enhancement
+      }
+    }
+
+    return { ok: true, savedCount: songs.length };
+  } catch (err) {
+    return {
+      ok: false,
+      savedCount: 0,
+      error:
+        err instanceof Error
+          ? err.message
+          : 'Could not complete batch offline save due to a storage error.',
     };
   }
 }

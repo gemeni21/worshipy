@@ -13,6 +13,7 @@ import {
   getAllOfflineSongs,
   removeSongFromOffline,
   saveSongForOffline,
+  saveBatchSongsForOffline,
   StorageOperationResult,
 } from '@/lib/storage/offlineSongsDb';
 import {
@@ -48,6 +49,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   theme: 'system',
   chartFontSize: 'md',
   enharmonicPreference: 'auto',
+  chartColumns: '1',
 };
 
 interface AppContextValue {
@@ -89,6 +91,9 @@ interface AppContextValue {
   isSongSavedOffline: (songId: string) => boolean;
   getOfflineSongRecord: (slugOrId: string) => SongRecord | undefined;
   saveSongOffline: (song: SongRecord) => Promise<StorageOperationResult>;
+  saveBatchSongsOffline: (
+    songs: SongRecord[]
+  ) => Promise<{ ok: boolean; savedCount: number; error?: string }>;
   removeSongOffline: (
     songId: string,
     slug?: string
@@ -512,6 +517,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const saveBatchSongsOffline = useCallback(
+    async (
+      songs: SongRecord[]
+    ): Promise<{ ok: boolean; savedCount: number; error?: string }> => {
+      const res = await saveBatchSongsForOffline(songs);
+      if (res.ok) {
+        const updated = await getAllOfflineSongs();
+        setOfflineEntries(updated);
+      } else if (res.error) {
+        setStorageWarning(res.error);
+      }
+      return res;
+    },
+    []
+  );
+
   const removeSongOffline = useCallback(
     async (
       songId: string,
@@ -744,6 +765,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isSongSavedOffline,
       getOfflineSongRecord,
       saveSongOffline,
+      saveBatchSongsOffline,
       removeSongOffline,
       settings,
       updateSettings,
@@ -781,6 +803,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isSongSavedOffline,
       getOfflineSongRecord,
       saveSongOffline,
+      saveBatchSongsOffline,
       removeSongOffline,
       settings,
       updateSettings,

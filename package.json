@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/lib/music/__tests__/transposition.test.ts src/lib/live/__tests__/liveSync.test.ts src/lib/tuner/__tests__/tuner.test.ts src/lib/chordpro/__tests__/chordPro.test.ts"
+    "test": "node --test src/lib/music/__tests__/transposition.test.ts src/lib/music/__tests__/chordDiagrams.test.ts src/lib/live/__tests__/liveSync.test.ts src/lib/tuner/__tests__/tuner.test.ts src/lib/chordpro/__tests__/chordPro.test.ts"
   },
   "dependencies": {
     "lucide-react": "^1.59.0",

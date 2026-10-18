@@ -6,9 +6,11 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
+  Download,
   Edit3,
   Info,
   ListMusic,
+  Loader2,
   Plus,
   Radio,
   Trash2,
@@ -19,6 +21,7 @@ import {
   formatSignedSemitones,
   transposeKey,
 } from '@/lib/music/transposition';
+import type { SongRecord } from '@/types/song';
 
 export default function SetlistsPage() {
   const {
@@ -31,6 +34,8 @@ export default function SetlistsPage() {
     addSongToSetlist,
     removeSongFromSetlist,
     moveSongInSetlist,
+    isSongSavedOffline,
+    saveBatchSongsOffline,
   } = useApp();
 
   const allSongs = allAvailableSongs;
@@ -42,12 +47,34 @@ export default function SetlistsPage() {
     Record<string, string>
   >({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [savingSetlistId, setSavingSetlistId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!statusMessage) return;
     const timer = window.setTimeout(() => setStatusMessage(null), 4000);
     return () => window.clearTimeout(timer);
   }, [statusMessage]);
+
+  const handleSaveSetlistOffline = async (
+    setlistId: string,
+    setlistName: string,
+    songs: SongRecord[]
+  ) => {
+    if (songs.length === 0) return;
+    setSavingSetlistId(setlistId);
+    try {
+      const res = await saveBatchSongsOffline(songs);
+      if (res.ok) {
+        setStatusMessage(
+          `Saved all ${songs.length} song${songs.length === 1 ? '' : 's'} from "${setlistName}" for offline use.`
+        );
+      } else {
+        setStatusMessage(res.error || 'Could not save songs offline.');
+      }
+    } finally {
+      setSavingSetlistId(null);
+    }
+  };
 
   const handleCreateSetlist = (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,6 +224,15 @@ export default function SetlistsPage() {
             const currentPickerSongId =
               selectedSongBySetlist[setlist.id] ?? firstUnaddedSong?.id ?? '';
 
+            const setlistSongs = setlist.items
+              .map((i) => getSongByIdOrSlug(i.songId))
+              .filter((s): s is SongRecord => s !== undefined);
+            const offlineCount = setlistSongs.filter((s) =>
+              isSongSavedOffline(s.id)
+            ).length;
+            const allSavedOffline =
+              setlistSongs.length > 0 && offlineCount === setlistSongs.length;
+
             return (
               <section
                 key={setlist.id}
@@ -238,15 +274,80 @@ export default function SetlistsPage() {
                       />
                       <div>
                         <h2 className="text-lg font-bold">{setlist.name}</h2>
-                        <span className="text-xs text-[var(--text-secondary)]">
-                          {setlist.items.length}{' '}
-                          {setlist.items.length === 1 ? 'song' : 'songs'}
-                        </span>
+                        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                          <span>
+                            {setlist.items.length}{' '}
+                            {setlist.items.length === 1 ? 'song' : 'songs'}
+                          </span>
+                          {setlistSongs.length > 0 && (
+                            <>
+                              <span>·</span>
+                              {allSavedOffline ? (
+                                <span className="inline-flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+                                  <Check className="w-3 h-3" aria-hidden="true" />
+                                  <span>Ready Offline</span>
+                                </span>
+                              ) : (
+                                <span>
+                                  {offlineCount}/{setlistSongs.length} offline
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
 
                   <div className="flex flex-wrap items-center gap-2">
+                    {setlistSongs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSaveSetlistOffline(
+                            setlist.id,
+                            setlist.name,
+                            setlistSongs
+                          )
+                        }
+                        disabled={savingSetlistId === setlist.id}
+                        title={
+                          allSavedOffline
+                            ? 'All songs in this setlist are cached for offline use.'
+                            : 'Download all songs in this setlist for offline stage use'
+                        }
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                          allSavedOffline
+                            ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                            : 'border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {savingSetlistId === setlist.id ? (
+                          <Loader2
+                            className="w-3.5 h-3.5 animate-spin"
+                            aria-hidden="true"
+                          />
+                        ) : allSavedOffline ? (
+                          <Check
+                            className="w-3.5 h-3.5 text-emerald-500"
+                            aria-hidden="true"
+                          />
+                        ) : (
+                          <Download
+                            className="w-3.5 h-3.5 text-[var(--brand-accent)]"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span>
+                          {savingSetlistId === setlist.id
+                            ? 'Saving...'
+                            : allSavedOffline
+                            ? 'Saved Offline'
+                            : 'Save Setlist Offline'}
+                        </span>
+                      </button>
+                    )}
+
                     {setlist.items.length > 0 && (
                       <Link
                         href={`/live?startSetlist=${encodeURIComponent(
@@ -344,12 +445,23 @@ export default function SetlistsPage() {
                               {idx + 1}
                             </span>
                             <div className="min-w-0">
-                              <Link
-                                href={songHref}
-                                className="font-semibold text-sm sm:text-base text-[var(--text-primary)] hover:text-[var(--brand-accent)] truncate block"
-                              >
-                                {song.title}
-                              </Link>
+                              <div className="flex items-center gap-2">
+                                <Link
+                                  href={songHref}
+                                  className="font-semibold text-sm sm:text-base text-[var(--text-primary)] hover:text-[var(--brand-accent)] truncate block"
+                                >
+                                  {song.title}
+                                </Link>
+                                {isSongSavedOffline(song.id) && (
+                                  <span
+                                    title="Saved for offline use"
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0"
+                                  >
+                                    <Check className="w-2.5 h-2.5" aria-hidden="true" />
+                                    <span>Offline</span>
+                                  </span>
+                                )}
+                              </div>
                               <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center gap-2">
                                 <span>Original Key: {song.originalKey}</span>
                                 {preferredKey && (

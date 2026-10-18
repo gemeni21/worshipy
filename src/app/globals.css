@@ -184,9 +184,91 @@ p {
   user-select: all;
 }
 
+.chart-chord-btn {
+  display: inline-block;
+  border-radius: 0.25rem;
+  padding: 0 0.125rem;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+  cursor: pointer;
+}
+
+.chart-chord-btn:hover {
+  background-color: var(--brand-surface);
+  color: var(--brand-accent);
+  text-decoration: underline;
+}
+
 .chart-lyric-row {
   display: inline-block;
   color: var(--text-primary);
   line-height: 1.55;
   min-height: 1.55em;
+}
+
+/* 2-Column Responsive Layout for Tablet & Wide Desktops */
+@media (min-width: 768px) {
+  .chart-columns-2 {
+    columns: 2;
+    column-gap: 1.5rem;
+  }
+
+  .chart-columns-2 > section {
+    break-inside: avoid;
+    display: inline-block;
+    width: 100%;
+    margin-bottom: 1.5rem;
+  }
+}
+
+/* Dedicated Print / Sheet Music Export Styles */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+  }
+
+  /* Hide app navigation, sidebars, buttons, floating controls */
+  aside,
+  nav,
+  header,
+  footer,
+  .no-print,
+  button,
+  select,
+  [role="dialog"] {
+    display: none !important;
+  }
+
+  /* Reset main container layout for paper */
+  main {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .chart-print-header {
+    display: block !important;
+    border-bottom: 2px solid #000000;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .chart-chord-row {
+    color: #000000 !important;
+    font-weight: 800 !important;
+  }
+
+  .chart-lyric-row {
+    color: #111111 !important;
+  }
+
+  section {
+    border: 1px solid #e2e8f0 !important;
+    background: transparent !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 1rem !important;
+    box-shadow: none !important;
+  }
 }

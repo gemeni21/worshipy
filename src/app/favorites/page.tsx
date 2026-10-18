@@ -1,8 +1,16 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Clock, Heart, Info, Trash2 } from 'lucide-react';
+import {
+  Check,
+  Clock,
+  Download,
+  Heart,
+  Info,
+  Loader2,
+  Trash2,
+} from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { resolveSongsByIds } from '@/lib/catalog/songCatalog';
 import { SongRowCard } from '@/components/songs/SongRowCard';
@@ -12,12 +20,31 @@ export default function FavoritesPage() {
     allAvailableSongs,
     favorites,
     recentlyViewed,
+    isSongSavedOffline,
+    saveBatchSongsOffline,
     clearFavorites,
     clearRecentlyViewed,
   } = useApp();
 
   const favoriteSongs = resolveSongsByIds(favorites, allAvailableSongs);
   const recentSongs = resolveSongsByIds(recentlyViewed, allAvailableSongs);
+
+  const [isSavingFavoritesOffline, setIsSavingFavoritesOffline] =
+    useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!statusMessage) return;
+    const timer = window.setTimeout(() => setStatusMessage(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [statusMessage]);
+
+  const offlineFavoriteCount = favoriteSongs.filter((s) =>
+    isSongSavedOffline(s.id)
+  ).length;
+  const allFavoritesOffline =
+    favoriteSongs.length > 0 &&
+    offlineFavoriteCount === favoriteSongs.length;
 
   return (
     <div className="space-y-8">
@@ -46,34 +73,114 @@ export default function FavoritesPage() {
         </div>
       </header>
 
+      {statusMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-xl bg-[var(--brand-surface)] border border-[var(--brand-accent)]/30 text-[var(--brand-accent)] px-4 py-3 text-sm font-medium flex items-center justify-between gap-2"
+        >
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>{statusMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatusMessage(null)}
+            className="text-xs underline cursor-pointer shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Favorites Section */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-bold inline-flex items-center gap-2">
-            <Heart
-              className="w-5 h-5 text-rose-500 fill-current"
-              aria-hidden="true"
-            />
-            <span>Favorite Songs ({favoriteSongs.length})</span>
-          </h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold inline-flex items-center gap-2">
+              <Heart
+                className="w-5 h-5 text-rose-500 fill-current"
+                aria-hidden="true"
+              />
+              <span>Favorite Songs ({favoriteSongs.length})</span>
+            </h2>
+            {favoriteSongs.length > 0 && (
+              <span className="text-xs text-[var(--text-secondary)]">
+                · {allFavoritesOffline ? 'All ready offline' : `${offlineFavoriteCount}/${favoriteSongs.length} offline`}
+              </span>
+            )}
+          </div>
 
           {favoriteSongs.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  window.confirm(
-                    'Clear all favorite songs stored on this device?'
-                  )
-                ) {
-                  clearFavorites();
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isSavingFavoritesOffline}
+                onClick={async () => {
+                  setIsSavingFavoritesOffline(true);
+                  try {
+                    const res = await saveBatchSongsOffline(favoriteSongs);
+                    if (res.ok) {
+                      setStatusMessage(
+                        `Saved all ${favoriteSongs.length} favorite songs for offline use.`
+                      );
+                    } else {
+                      setStatusMessage(
+                        res.error || 'Could not save favorites offline.'
+                      );
+                    }
+                  } finally {
+                    setIsSavingFavoritesOffline(false);
+                  }
+                }}
+                title={
+                  allFavoritesOffline
+                    ? 'All favorites are saved for offline use.'
+                    : 'Download all favorite songs for offline use'
                 }
-              }}
-              className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-secondary)] hover:text-rose-500 transition-colors cursor-pointer"
-            >
-              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Clear Favorites</span>
-            </button>
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                  allFavoritesOffline
+                    ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-[var(--text-primary)]'
+                }`}
+              >
+                {isSavingFavoritesOffline ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                ) : allFavoritesOffline ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-500" aria-hidden="true" />
+                ) : (
+                  <Download
+                    className="w-3.5 h-3.5 text-[var(--brand-accent)]"
+                    aria-hidden="true"
+                  />
+                )}
+                <span>
+                  {isSavingFavoritesOffline
+                    ? 'Saving...'
+                    : allFavoritesOffline
+                    ? 'Favorites Offline'
+                    : 'Save All Offline'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Clear all favorite songs stored on this device?'
+                    )
+                  ) {
+                    clearFavorites();
+                    setStatusMessage('Cleared all favorite songs.');
+                  }
+                }}
+                className="inline-flex items-center gap-1 text-xs font-medium text-[var(--text-secondary)] hover:text-rose-500 transition-colors cursor-pointer px-2 py-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Clear Favorites</span>
+              </button>
+            </div>
           )}
         </div>
 

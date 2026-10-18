@@ -109,12 +109,15 @@ export type EnharmonicPreference = 'auto' | 'sharp' | 'flat';
 
 export type ChartFontSize = 'sm' | 'md' | 'lg' | 'xl';
 
+export type ChartColumnsPreference = '1' | '2';
+
 export type ThemePreference = 'system' | 'light' | 'dark';
 
 export interface UserSettings {
   theme: ThemePreference;
   chartFontSize: ChartFontSize;
   enharmonicPreference: EnharmonicPreference;
+  chartColumns?: ChartColumnsPreference;
 }
 
 export interface SetlistItem {

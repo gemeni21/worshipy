@@ -1,16 +1,18 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
   Check,
   ChevronDown,
   ChevronUp,
+  Columns,
   Download,
   Edit3,
   FileCode2,
   FolderHeart,
+  Guitar,
   Heart,
   ListPlus,
   Maximize2,
@@ -19,6 +21,7 @@ import {
   Pause,
   Play,
   Plus,
+  Printer,
   Radio,
   RotateCcw,
   Sparkles,
@@ -30,6 +33,11 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { downloadSongAsChordPro } from '@/lib/chordpro/chordProDownload';
+import { ChordInspectorModal } from '@/components/music/ChordInspectorModal';
+import {
+  getGuitarCapoSuggestions,
+  getCapoRelativeChord,
+} from '@/lib/music/instrumentGuidance';
 import {
   formatSignedSemitones,
   getDestinationKeyOptions,
@@ -116,6 +124,16 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
   const [isPerformanceMode, setIsPerformanceMode] = useState(false);
   const [perfDarkSurface, setPerfDarkSurface] = useState(true);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
+
+  // Chord Inspector & Column Layout State
+  const [inspectedChord, setInspectedChord] = useState<string | null>(null);
+  const [columnMode, setColumnMode] = useState<'1' | '2'>(
+    settings.chartColumns ?? '1'
+  );
+  const [selectedCapo, setSelectedCapo] = useState<number>(0);
+  const [capoDisplayMode, setCapoDisplayMode] = useState<
+    'concert' | 'capo' | 'both'
+  >('concert');
 
   // Setlist modal/popover state
   const [showSetlistMenu, setShowSetlistMenu] = useState(false);
@@ -264,6 +282,58 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     };
   }, [isPerformanceMode]);
 
+  // Transposition & Capo Calculation
+  const transposed = useMemo(() => {
+    if (!activeSourceSong) return null;
+    return transposeSong(activeSourceSong, semitones, effectiveSpelling);
+  }, [activeSourceSong, semitones, effectiveSpelling]);
+
+  const displaySong = transposed?.song;
+  const displayedKey = transposed?.displayedKey ?? '';
+  const normalizedSemitones = transposed?.normalizedSemitones ?? 0;
+
+  const keyOptions = useMemo(() => {
+    if (!activeSourceSong) return [];
+    return getDestinationKeyOptions(
+      activeSourceSong.originalKey,
+      effectiveSpelling
+    );
+  }, [activeSourceSong, effectiveSpelling]);
+
+  const isTransposed =
+    normalizedSemitones !== 0 ||
+    (spellingOverride !== null && spellingOverride !== 'auto');
+
+  const favored = activeSourceSong ? isFavorite(activeSourceSong.id) : false;
+  const savedOffline = activeSourceSong
+    ? isSongSavedOffline(activeSourceSong.id)
+    : false;
+
+  const capoSuggestions = useMemo(
+    () => (displayedKey ? getGuitarCapoSuggestions(displayedKey) : []),
+    [displayedKey]
+  );
+
+  const formatChordDisplay = useCallback(
+    (chordToken: string | undefined): string | undefined => {
+      if (!chordToken) return undefined;
+      if (!selectedCapo || selectedCapo <= 0 || capoDisplayMode === 'concert') {
+        return chordToken;
+      }
+      const targetShapeContext = capoSuggestions[0]?.shapeKey;
+      const capoChord = getCapoRelativeChord(
+        chordToken,
+        selectedCapo,
+        targetShapeContext
+      );
+      if (capoDisplayMode === 'capo') {
+        return capoChord;
+      }
+      return `${chordToken} (${capoChord})`;
+    },
+    [selectedCapo, capoDisplayMode, capoSuggestions]
+  );
+
   // Offline unavailable state
   if (effectiveOffline && !activeSourceSong) {
     return (
@@ -297,7 +367,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     );
   }
 
-  if (!activeSourceSong) {
+  if (!activeSourceSong || !displaySong) {
     if (!isHydrated) {
       return (
         <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-8 text-center text-sm text-[var(--text-secondary)]">
@@ -331,25 +401,6 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
       </div>
     );
   }
-
-  // Non-destructive transposition calculation
-  const {
-    song: displaySong,
-    displayedKey,
-    normalizedSemitones,
-  } = transposeSong(activeSourceSong, semitones, effectiveSpelling);
-
-  const keyOptions = getDestinationKeyOptions(
-    activeSourceSong.originalKey,
-    effectiveSpelling
-  );
-
-  const isTransposed =
-    normalizedSemitones !== 0 ||
-    (spellingOverride !== null && spellingOverride !== 'auto');
-
-  const favored = isFavorite(activeSourceSong.id);
-  const savedOffline = isSongSavedOffline(activeSourceSong.id);
 
   const handleStepSemitone = (delta: number) => {
     setSemitones((prev) => normalizeSemitones(prev + delta));
@@ -689,6 +740,30 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 )}
               </button>
 
+              {/* Column Layout Toggle in Performance Mode */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = columnMode === '1' ? '2' : '1';
+                  setColumnMode(next);
+                  updateSettings({ chartColumns: next });
+                }}
+                title={
+                  columnMode === '2'
+                    ? 'Switch to 1-column view'
+                    : 'Switch to 2-column view'
+                }
+                className={`w-10 h-10 inline-flex items-center justify-center rounded-lg border text-xs cursor-pointer ${
+                  columnMode === '2'
+                    ? 'border-teal-500 bg-teal-500/20 text-teal-300 font-bold'
+                    : perfDarkSurface
+                    ? 'border-slate-800 bg-slate-900 text-slate-300'
+                    : 'border-stone-300 bg-white text-slate-700'
+                }`}
+              >
+                <Columns className="w-4 h-4" aria-hidden="true" />
+              </button>
+
               {/* Exit Performance Mode */}
               <button
                 type="button"
@@ -714,6 +789,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               {displaySong.timeSignature
                 ? ` · ${displaySong.timeSignature}`
                 : ''}
+              {selectedCapo > 0 ? ` · Capo ${selectedCapo}` : ''}
             </div>
             <div>
               {wakeLockStatus === 'active' && (
@@ -731,7 +807,11 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
             </div>
           </div>
 
-          <div className={`space-y-8 ${fontSizeConfig.performance}`}>
+          <div
+            className={`${fontSizeConfig.performance} ${
+              columnMode === '2' ? 'chart-columns-2 space-y-0' : 'space-y-8'
+            }`}
+          >
             {displaySong.sections.map((section, secIndex) => (
               <section
                 key={section.id}
@@ -770,16 +850,25 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                               [Instrumental]
                             </span>
                             {line.segments.map((seg, segIdx) => (
-                              <span
+                              <button
                                 key={segIdx}
-                                className={`px-2.5 py-1 rounded ${
+                                type="button"
+                                onClick={() =>
+                                  seg.chord && setInspectedChord(seg.chord)
+                                }
+                                className={`px-2.5 py-1 rounded cursor-pointer transition-colors ${
                                   perfDarkSurface
-                                    ? 'bg-teal-500/15 text-teal-300'
-                                    : 'bg-teal-50 text-teal-800'
+                                    ? 'bg-teal-500/15 text-teal-300 hover:bg-teal-500/30'
+                                    : 'bg-teal-50 text-teal-800 hover:bg-teal-100'
                                 }`}
+                                title={
+                                  seg.chord
+                                    ? `Inspect ${seg.chord} chord diagram`
+                                    : undefined
+                                }
                               >
-                                | {seg.chord || 'N.C.'}
-                              </span>
+                                | {formatChordDisplay(seg.chord) || 'N.C.'}
+                              </button>
                             ))}
                             <span className="opacity-50">|</span>
                           </div>
@@ -795,22 +884,35 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                           </div>
                         )}
                         <div className="chart-line-segments">
-                          {line.segments.map((seg, segIdx) => (
-                            <span key={segIdx} className="chart-segment">
-                              <span
-                                className="chart-chord-row"
-                                style={{
-                                  color: perfDarkSurface
-                                    ? '#5eead4'
-                                    : '#0f766e',
-                                }}
-                              >
-                                {seg.chord ? seg.chord : '\u00A0'}
-                              </span>
-                              <span
-                                className="chart-lyric-row"
-                                style={{
-                                  color: perfDarkSurface
+                          {line.segments.map((seg, segIdx) => {
+                            const displayChord = formatChordDisplay(seg.chord);
+                            return (
+                              <span key={segIdx} className="chart-segment">
+                                {seg.chord ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setInspectedChord(seg.chord!)
+                                    }
+                                    className="chart-chord-row chart-chord-btn text-left"
+                                    style={{
+                                      color: perfDarkSurface
+                                        ? '#5eead4'
+                                        : '#0f766e',
+                                    }}
+                                    title={`Inspect ${seg.chord} chord diagram & fingering`}
+                                  >
+                                    {displayChord}
+                                  </button>
+                                ) : (
+                                  <span className="chart-chord-row">
+                                    {'\u00A0'}
+                                  </span>
+                                )}
+                                <span
+                                  className="chart-lyric-row"
+                                  style={{
+                                    color: perfDarkSurface
                                     ? '#f8fafc'
                                     : '#0f172a',
                                 }}
@@ -818,7 +920,8 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                                 {seg.text || '\u00A0'}
                               </span>
                             </span>
-                          ))}
+                          );
+                        })}
                         </div>
                       </div>
                     );
@@ -892,6 +995,25 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           </button>
         </div>
       )}
+
+      {/* Dedicated Print Sheet Music Header */}
+      <div className="hidden print:block mb-6 pb-3 border-b-2 border-black">
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-2xl font-extrabold text-black">{displaySong.title}</h1>
+            <p className="text-sm text-stone-700 font-medium">
+              {displaySong.artist || 'Traditional'}
+              {displaySong.writers?.length ? ` · Written by ${displaySong.writers.join(', ')}` : ''}
+            </p>
+          </div>
+          <div className="text-right text-xs font-mono text-stone-800 space-y-0.5">
+            <div>Key: <strong>{displayedKey}</strong> {isTransposed ? `(Orig: ${activeSourceSong.originalKey})` : ''}</div>
+            {displaySong.tempoBpm ? <div>Tempo: {displaySong.tempoBpm} BPM</div> : null}
+            {displaySong.timeSignature ? <div>Meter: {displaySong.timeSignature}</div> : null}
+            {selectedCapo > 0 ? <div>Capo: Fret {selectedCapo}</div> : null}
+          </div>
+        </div>
+      </div>
 
       {/* Song Header Card */}
       <header className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
@@ -978,6 +1100,40 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 <span>Edit Song</span>
               </Link>
             )}
+
+            {/* 2-Column Responsive Layout Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = columnMode === '1' ? '2' : '1';
+                setColumnMode(next);
+                updateSettings({ chartColumns: next });
+              }}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-colors cursor-pointer min-h-[2.75rem] ${
+                columnMode === '2'
+                  ? 'border-[var(--brand-accent)] bg-[var(--brand-surface)] text-[var(--brand-accent)] font-semibold'
+                  : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--brand-accent)]'
+              }`}
+              title={
+                columnMode === '2'
+                  ? 'Switch to 1-column view'
+                  : 'Switch to 2-column view (best for tablets and wide screens)'
+              }
+            >
+              <Columns className="w-4 h-4" aria-hidden="true" />
+              <span>{columnMode === '2' ? '2 Columns' : '1 Column'}</span>
+            </button>
+
+            {/* Print or Save as PDF */}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--brand-accent)] text-sm font-medium transition-colors cursor-pointer min-h-[2.75rem]"
+              title="Print clean chord sheet or export to PDF"
+            >
+              <Printer className="w-4 h-4" aria-hidden="true" />
+              <span>Print Sheet</span>
+            </button>
 
             {/* Export ChordPro (.cho) */}
             <button
@@ -1272,6 +1428,74 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Reset to Original ({activeSourceSong.originalKey})</span>
             </button>
+
+            {/* Guitar Capo Selector & Display Mode */}
+            <div className="flex flex-wrap items-center gap-2 border-l border-[var(--border-subtle)] pl-2 sm:pl-3">
+              <div className="flex items-center gap-1.5">
+                <label
+                  htmlFor="song-capo-select"
+                  className="text-xs font-medium text-[var(--text-secondary)] inline-flex items-center gap-1"
+                >
+                  <Guitar className="w-3.5 h-3.5 text-[var(--brand-accent)]" aria-hidden="true" />
+                  <span>Capo:</span>
+                </label>
+                <select
+                  id="song-capo-select"
+                  value={selectedCapo}
+                  onChange={(e) => setSelectedCapo(Number(e.target.value))}
+                  className="h-11 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-2.5 text-xs font-semibold cursor-pointer"
+                >
+                  <option value={0}>No Capo</option>
+                  {[1, 2, 3, 4, 5, 6, 7].map((fret) => (
+                    <option key={fret} value={fret}>
+                      Capo {fret}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedCapo > 0 && (
+                <div
+                  role="group"
+                  aria-label="Capo chord display mode"
+                  className="inline-flex items-center rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-1 text-xs"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setCapoDisplayMode('concert')}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
+                      capoDisplayMode === 'concert'
+                        ? 'bg-[var(--bg-surface)] text-[var(--brand-accent)] shadow-xs'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Concert
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCapoDisplayMode('capo')}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
+                      capoDisplayMode === 'capo'
+                        ? 'bg-[var(--bg-surface)] text-[var(--brand-accent)] shadow-xs'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Capo Shapes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCapoDisplayMode('both')}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
+                      capoDisplayMode === 'both'
+                        ? 'bg-[var(--bg-surface)] text-[var(--brand-accent)] shadow-xs'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    Both
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Enharmonic Spelling + Font Size Controls */}
@@ -1355,7 +1579,9 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
       {/* Main Song Chord Chart Sections */}
       <article
         aria-label="Song Chord Chart"
-        className={`space-y-6 ${fontSizeConfig.normal}`}
+        className={`${fontSizeConfig.normal} ${
+          columnMode === '2' ? 'chart-columns-2 space-y-0' : 'space-y-6'
+        }`}
       >
         {displaySong.sections.map((section, secIndex) => (
           <section
@@ -1391,12 +1617,21 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                           Chords:
                         </span>
                         {line.segments.map((seg, segIdx) => (
-                          <span
+                          <button
                             key={segIdx}
-                            className="px-3 py-1 rounded-lg bg-[var(--chord-bg)] text-[var(--chord-color)] border border-[var(--border-subtle)]"
+                            type="button"
+                            onClick={() =>
+                              seg.chord && setInspectedChord(seg.chord)
+                            }
+                            className="px-3 py-1 rounded-lg bg-[var(--chord-bg)] text-[var(--chord-color)] border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] transition-colors cursor-pointer"
+                            title={
+                              seg.chord
+                                ? `Inspect ${seg.chord} chord diagram & fingering`
+                                : undefined
+                            }
                           >
-                            | {seg.chord || 'N.C.'}
-                          </span>
+                            | {formatChordDisplay(seg.chord) || 'N.C.'}
+                          </button>
                         ))}
                         <span className="text-[var(--text-secondary)]">|</span>
                       </div>
@@ -1412,16 +1647,30 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                       </div>
                     )}
                     <div className="chart-line-segments">
-                      {line.segments.map((seg, segIdx) => (
-                        <span key={segIdx} className="chart-segment">
-                          <span className="chart-chord-row">
-                            {seg.chord ? seg.chord : '\u00A0'}
+                      {line.segments.map((seg, segIdx) => {
+                        const displayChord = formatChordDisplay(seg.chord);
+                        return (
+                          <span key={segIdx} className="chart-segment">
+                            {seg.chord ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setInspectedChord(seg.chord!)
+                                }
+                                className="chart-chord-row chart-chord-btn text-left"
+                                title={`Inspect ${seg.chord} chord diagram & fingering`}
+                              >
+                                {displayChord}
+                              </button>
+                            ) : (
+                              <span className="chart-chord-row">{'\u00A0'}</span>
+                            )}
+                            <span className="chart-lyric-row">
+                              {seg.text || '\u00A0'}
+                            </span>
                           </span>
-                          <span className="chart-lyric-row">
-                            {seg.text || '\u00A0'}
-                          </span>
-                        </span>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -1459,6 +1708,15 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           source song record.
         </div>
       </footer>
+
+      {/* Interactive Chord Inspector Modal */}
+      {inspectedChord && (
+        <ChordInspectorModal
+          chord={inspectedChord}
+          onClose={() => setInspectedChord(null)}
+          keyContext={displayedKey}
+        />
+      )}
     </div>
   );
 }

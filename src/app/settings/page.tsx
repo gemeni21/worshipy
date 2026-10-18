@@ -4,7 +4,10 @@ import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   AlertTriangle,
   Check,
+  Columns,
+  Download,
   HardDrive,
+  Loader2,
   Monitor,
   Moon,
   Sun,
@@ -13,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import type {
+  ChartColumnsPreference,
   ChartFontSize,
   EnharmonicPreference,
   ThemePreference,
@@ -38,11 +42,13 @@ export default function SettingsPage() {
   const {
     settings,
     updateSettings,
+    allAvailableSongs,
     customSongs,
     favorites,
     recentlyViewed,
     setlists,
     offlineEntries,
+    saveBatchSongsOffline,
     simulateOffline,
     setSimulateOffline,
     clearCustomSongs,
@@ -52,6 +58,8 @@ export default function SettingsPage() {
     clearOfflineDownloads,
     clearAllLocalData,
   } = useApp();
+
+  const [isDownloadingCatalog, setIsDownloadingCatalog] = useState(false);
 
   const systemDark = useSyncExternalStore(
     subscribeColorScheme,
@@ -124,6 +132,41 @@ export default function SettingsPage() {
       desc: 'Spells accidentals with flats (Db, Eb, Gb, Ab, Bb)',
     },
   ];
+
+  const columnOptions: {
+    id: ChartColumnsPreference;
+    label: string;
+    desc: string;
+  }[] = [
+    {
+      id: '1',
+      label: 'Single Column (Standard)',
+      desc: 'Traditional scrolling layout, great for phones and portrait reading',
+    },
+    {
+      id: '2',
+      label: 'Two Columns (Side-by-Side)',
+      desc: 'Splits song sections side-by-side to fit tablets, iPads, and desktop displays',
+    },
+  ];
+
+  const handleDownloadAllCatalog = async () => {
+    setIsDownloadingCatalog(true);
+    try {
+      const res = await saveBatchSongsOffline(allAvailableSongs);
+      if (res.ok) {
+        setStatusMessage(
+          `Successfully saved all ${allAvailableSongs.length} songs for offline use!`
+        );
+      } else {
+        setStatusMessage(
+          res.error || 'Failed to download songs for offline use.'
+        );
+      }
+    } finally {
+      setIsDownloadingCatalog(false);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -270,6 +313,130 @@ export default function SettingsPage() {
               );
             })}
           </div>
+        </div>
+
+        <div className="pt-4 border-t border-[var(--border-subtle)] space-y-3">
+          <div>
+            <h2 className="text-lg font-bold inline-flex items-center gap-2">
+              <Columns className="w-4 h-4 text-[var(--brand-accent)]" aria-hidden="true" />
+              <span>Default Chart Columns</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+              Choose whether chord charts open in a single continuous scroll or a 2-column side-by-side layout.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {columnOptions.map((opt) => {
+              const active = (settings.chartColumns ?? '1') === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => updateSettings({ chartColumns: opt.id })}
+                  className={`text-left rounded-xl border p-3.5 transition-colors cursor-pointer ${
+                    active
+                      ? 'border-[var(--brand-accent)] bg-[var(--brand-surface)]'
+                      : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--border-strong)]'
+                  }`}
+                >
+                  <div className="font-semibold text-sm">{opt.label}</div>
+                  <div className="text-xs text-[var(--text-secondary)] mt-0.5">
+                    {opt.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Offline Storage Manager & Bulk Download */}
+      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <h2 className="text-lg font-bold inline-flex items-center gap-2">
+              <Download
+                className="w-5 h-5 text-[var(--brand-accent)]"
+                aria-hidden="true"
+              />
+              <span>Offline Song Storage</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+              Save chord charts and app assets directly to this browser so you can lead worship on stage without relying on Wi-Fi or cellular service.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-subtle)] shrink-0">
+              {offlineEntries.length} of {allAvailableSongs.length} songs cached
+            </span>
+          </div>
+        </div>
+
+        {/* Storage progress bar */}
+        <div className="w-full bg-[var(--bg-subtle)] h-2 rounded-full overflow-hidden border border-[var(--border-subtle)]">
+          <div
+            className="bg-[var(--brand-accent)] h-full transition-all duration-300"
+            style={{
+              width: `${
+                allAvailableSongs.length > 0
+                  ? Math.min(
+                      100,
+                      Math.round(
+                        (offlineEntries.length / allAvailableSongs.length) * 100
+                      )
+                    )
+                  : 0
+              }%`,
+            }}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            type="button"
+            disabled={isDownloadingCatalog}
+            onClick={handleDownloadAllCatalog}
+            className="px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] font-semibold text-xs sm:text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-sm"
+          >
+            {isDownloadingCatalog ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                <span>Downloading Catalog...</span>
+              </>
+            ) : offlineEntries.length === allAvailableSongs.length && allAvailableSongs.length > 0 ? (
+              <>
+                <Check className="w-4 h-4" aria-hidden="true" />
+                <span>All {allAvailableSongs.length} Songs Downloaded (Refresh)</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4" aria-hidden="true" />
+                <span>Download Entire Catalog ({allAvailableSongs.length} Songs)</span>
+              </>
+            )}
+          </button>
+
+          {offlineEntries.length > 0 && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (
+                  window.confirm(
+                    `Remove all ${offlineEntries.length} offline-saved songs from this device? (Favorites and setlists will not be removed.)`
+                  )
+                ) {
+                  await clearOfflineDownloads();
+                  setStatusMessage('Cleared all offline song downloads.');
+                }
+              }}
+              className="px-3.5 py-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-rose-500/40 text-xs sm:text-sm font-medium inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-500" aria-hidden="true" />
+              <span>Clear Offline Cache</span>
+            </button>
+          )}
         </div>
       </section>
 
