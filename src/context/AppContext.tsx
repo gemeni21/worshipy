@@ -30,6 +30,7 @@ import {
   mergeCatalogAndCustomSongs,
 } from '@/lib/catalog/songCatalog';
 import type {
+  AccentColor,
   OfflineSongEntry,
   PersonalSetlist,
   SongRecord,
@@ -47,6 +48,7 @@ const STORAGE_KEYS = {
 
 const DEFAULT_SETTINGS: UserSettings = {
   theme: 'system',
+  accentColor: 'teal',
   chartFontSize: 'md',
   enharmonicPreference: 'auto',
 };
@@ -167,6 +169,11 @@ function applyColorSchemeToDocument(theme: ThemePreference) {
   }
 }
 
+export function applyAccentToDocument(accent: AccentColor = 'teal') {
+  if (typeof document === 'undefined') return;
+  document.documentElement.setAttribute('data-accent', accent);
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -224,6 +231,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSetlists(Array.isArray(loadedSetlists) ? loadedSetlists : []);
       setSettings(mergedSettings);
       applyColorSchemeToDocument(mergedSettings.theme);
+      applyAccentToDocument(mergedSettings.accentColor || 'teal');
       setIsHydrated(true);
     });
 
@@ -681,6 +689,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       safeWriteJson(STORAGE_KEYS.SETTINGS, next);
       if (partial.theme !== undefined) {
         applyColorSchemeToDocument(partial.theme);
+      }
+      if (partial.accentColor !== undefined) {
+        applyAccentToDocument(partial.accentColor);
       }
       return next;
     });

@@ -1,17 +1,25 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
   BookOpen,
+  Calendar,
+  Check,
+  ChevronRight,
   Clock,
   Download,
   FolderHeart,
   Gauge,
   Heart,
+  Layers,
   ListMusic,
+  Music2,
+  Palette,
+  Play,
+  Plus,
   Radio,
   Search,
   Sparkles,
@@ -22,10 +30,39 @@ import {
   resolveSongsByIds,
 } from '@/lib/catalog/songCatalog';
 import { SongRowCard } from '@/components/songs/SongRowCard';
+import type { AccentColor, SongRecord } from '@/types/song';
+
+function getNextSundayInfo(): { dateLabel: string; isTodaySunday: boolean } {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sunday
+  const isTodaySunday = day === 0;
+  const daysUntilSunday = isTodaySunday ? 0 : 7 - day;
+  const targetDate = new Date(now);
+  targetDate.setDate(now.getDate() + daysUntilSunday);
+
+  const formatted = targetDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+
+  return {
+    dateLabel: isTodaySunday ? `Today (Sunday, ${formatted})` : `This Sunday, ${formatted}`,
+    isTodaySunday,
+  };
+}
+
+function getDayPeriodGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export default function HomePage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [createdStarterToast, setCreatedStarterToast] = useState(false);
+
   const {
     allAvailableSongs,
     customSongs,
@@ -33,6 +70,10 @@ export default function HomePage() {
     recentlyViewed,
     setlists,
     offlineEntries,
+    createSetlist,
+    addSongToSetlist,
+    settings,
+    updateSettings,
   } = useApp();
 
   const allSongs = allAvailableSongs;
@@ -41,6 +82,41 @@ export default function HomePage() {
   const recentSongs = resolveSongsByIds(recentlyViewed, allSongs).slice(0, 4);
   const favoriteSongs = resolveSongsByIds(favorites, allSongs).slice(0, 4);
   const featuredSongs = allSongs.slice(0, 4);
+
+  const [sundayInfo, setSundayInfo] = useState<{
+    dateLabel: string;
+    isTodaySunday: boolean;
+  }>({
+    dateLabel: 'This Sunday',
+    isTodaySunday: false,
+  });
+  const [greeting, setGreeting] = useState('Welcome');
+
+  useEffect(() => {
+    setSundayInfo(getNextSundayInfo());
+    setGreeting(getDayPeriodGreeting());
+  }, []);
+
+  // Find either a setlist explicitly with "sunday" in its name, or default to the first setlist
+  const sundaySetlist = useMemo(() => {
+    if (setlists.length === 0) return null;
+    const found = setlists.find((s) => s.name.toLowerCase().includes('sunday'));
+    return found || setlists[0];
+  }, [setlists]);
+
+  // Resolve songs inside the active spotlight setlist
+  const spotlightSongs = useMemo(() => {
+    if (!sundaySetlist) return [];
+    return sundaySetlist.items
+      .map((item) => allSongs.find((s) => s.id === item.songId))
+      .filter(Boolean) as SongRecord[];
+  }, [sundaySetlist, allSongs]);
+
+  // Key sequence flow e.g. "G → G → D → G"
+  const keyFlow = useMemo(() => {
+    if (spotlightSongs.length === 0) return '';
+    return spotlightSongs.map((s) => s.originalKey).join(' → ');
+  }, [spotlightSongs]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,37 +128,92 @@ export default function HomePage() {
     }
   };
 
+  const handleQuickCreateSundaySetlist = () => {
+    const created = createSetlist(
+      'Sunday Service Worship',
+      'Curated worship setlist for upcoming Sunday service'
+    );
+    if (created) {
+      const demoIds = ['song-01', 'song-02', 'song-04', 'song-03'];
+      demoIds.forEach((id) => {
+        const s = allSongs.find((song) => song.id === id);
+        if (s) {
+          addSongToSetlist(created.id, s.id);
+        }
+      });
+      setCreatedStarterToast(true);
+      setTimeout(() => setCreatedStarterToast(false), 4500);
+    }
+  };
+
+  const ACCENTS: { id: AccentColor; label: string; swatch: string }[] = [
+    { id: 'teal', label: 'Deep Teal', swatch: 'bg-teal-600' },
+    { id: 'indigo', label: 'Royal Indigo', swatch: 'bg-indigo-600' },
+    { id: 'emerald', label: 'Emerald', swatch: 'bg-emerald-600' },
+    { id: 'amber', label: 'Warm Amber', swatch: 'bg-amber-600' },
+  ];
+
   return (
     <div className="space-y-8">
-      {/* Hero & Prominent Search */}
-      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-8 space-y-5">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)]">
-            <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-            <span>
-              Worship Song Catalog · 53 Famous Christian Songs & Anthems
-              {customSongs.length > 0
-                ? ` + ${customSongs.length} Personal ${
-                    customSongs.length === 1 ? 'Song' : 'Songs'
-                  }`
-                : ''}
-            </span>
+      {/* Modern Hero Greeting & Accent Quick Switcher */}
+      <section className="relative overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-gradient-to-b from-[var(--bg-surface)] via-[var(--bg-surface)] to-[var(--bg-subtle)]/40 p-6 sm:p-8 space-y-6 shadow-sm">
+        {/* Subtle Decorative Ambient Radial Glow */}
+        <div
+          className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-[var(--brand-accent)]/10 blur-3xl pointer-events-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/20 shadow-xs">
+              <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Worship Companion MVP · 53 Anthems {customSongs.length > 0 ? `+ ${customSongs.length} Personal` : ''}</span>
+            </div>
+            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight" suppressHydrationWarning>
+              {greeting}, Worship Leader
+            </h1>
+            <p className="text-sm sm:text-base text-[var(--text-secondary)] max-w-xl">
+              Transpose chord charts instantly, sync your band in real time, and keep music stand charts readable without glare.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            Find a song, transpose instantly, and play with clarity.
-          </h1>
-          <p className="text-sm sm:text-base text-[var(--text-secondary)]">
-            Search chord charts by title, artist, language, category, or key.
-            All personal songs, favorites, setlists, and offline charts stay
-            stored on this device.
-          </p>
+
+          {/* Quick Accent Theme Pill Selector */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 p-2 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-xs shrink-0">
+            <span className="text-xs font-semibold text-[var(--text-secondary)] px-2 flex items-center gap-1.5">
+              <Palette className="w-3.5 h-3.5 text-[var(--brand-accent)]" aria-hidden="true" />
+              <span>Theme:</span>
+            </span>
+            <div className="flex items-center gap-1.5">
+              {ACCENTS.map((acc) => {
+                const active = (settings.accentColor || 'teal') === acc.id;
+                return (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => updateSettings({ accentColor: acc.id })}
+                    title={`Switch accent to ${acc.label}`}
+                    aria-label={`Theme accent ${acc.label}`}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                      active
+                        ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] ring-1 ring-[var(--brand-accent)]/30 font-bold shadow-xs'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)]'
+                    }`}
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full ${acc.swatch}`} />
+                    <span className="hidden sm:inline">{acc.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
+        {/* Search Bar */}
         <form
           onSubmit={handleSearchSubmit}
           role="search"
           aria-label="Search songs"
-          className="flex flex-col sm:flex-row gap-2.5"
+          className="relative z-10 flex flex-col sm:flex-row gap-2.5"
         >
           <div className="relative flex-1">
             <Search
@@ -93,54 +224,231 @@ export default function HomePage() {
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by song title, artist, Filipino/English, or key (e.g. G, Bb, F#m)..."
+              placeholder="Search by song title, artist, language, or key (e.g. Goodness of God, Way Maker, G, Bb)..."
               aria-label="Search songs by title, artist, language, category, or key"
-              className="w-full h-12 pl-11 pr-4 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] text-sm sm:text-base placeholder:text-[var(--text-secondary)] focus:bg-[var(--bg-surface)]"
+              className="w-full h-12 pl-11 pr-4 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] text-sm sm:text-base placeholder:text-[var(--text-secondary)] focus:bg-[var(--bg-surface)] focus:border-[var(--brand-accent)] transition-colors"
             />
           </div>
           <button
             type="submit"
-            className="h-12 px-6 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] font-semibold text-sm sm:text-base hover:opacity-95 transition-opacity cursor-pointer shrink-0"
+            className="h-12 px-6 rounded-xl bg-[var(--brand-accent)] text-white font-semibold text-sm sm:text-base hover:opacity-95 active:scale-98 transition-all cursor-pointer shadow-md shadow-[var(--brand-accent)]/20 shrink-0"
           >
             Search Songs
           </button>
         </form>
 
-        {/* Browse by Category Controls */}
-        <div className="pt-2 space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-              Browse by Category
-            </h2>
-            <Link
-              href="/songs"
-              className="text-xs font-semibold text-[var(--brand-accent)] hover:underline inline-flex items-center gap-1"
+        {/* Popular Worship Search Suggestions */}
+        <div className="relative z-10 flex flex-wrap items-center gap-2 pt-1 text-xs">
+          <span className="text-[var(--text-secondary)] font-medium">Popular:</span>
+          {['Goodness of God', 'Way Maker', '10,000 Reasons', 'Gratitude', 'Salamat Panginoon'].map((tag) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => router.push(`/songs?q=${encodeURIComponent(tag)}`)}
+              className="px-2.5 py-1 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--brand-surface)] text-[var(--text-secondary)] hover:text-[var(--brand-accent)] border border-[var(--border-subtle)] transition-colors cursor-pointer"
             >
-              <span>View Full Catalog ({allSongs.length})</span>
-              <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+              {tag}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* "This Sunday's Setlist" Spotlight Card */}
+      <section className="relative overflow-hidden rounded-3xl border border-[var(--brand-accent)]/30 bg-gradient-to-br from-[var(--bg-surface)] via-[var(--bg-surface)] to-[var(--brand-surface)]/50 p-5 sm:p-7 shadow-lg space-y-5">
+        {/* Subtle decorative glowing corner aura */}
+        <div
+          className="absolute -bottom-16 -right-16 w-64 h-64 rounded-full bg-[var(--brand-accent)]/15 blur-3xl pointer-events-none"
+          aria-hidden="true"
+        />
+
+        {/* Toast confirmation when starter setlist created */}
+        {createdStarterToast && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200 px-4 py-2.5 text-xs font-semibold flex items-center justify-between gap-2"
+          >
+            <div className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>Created &quot;Sunday Service Worship&quot; with 4 curated worship anthems!</span>
+            </div>
+            <Link href="/setlists" className="underline hover:opacity-80">
+              View Setlists
             </Link>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {categories.map((cat) => {
-              const count = allSongs.filter(
-                (s) => s.category.id === cat.id
-              ).length;
-              return (
-                <Link
-                  key={cat.id}
-                  href={`/songs?category=${encodeURIComponent(cat.id)}`}
-                  className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--brand-accent)] px-3.5 py-3 transition-colors flex flex-col justify-between"
-                >
-                  <span className="font-semibold text-sm text-[var(--text-primary)]">
-                    {cat.label}
-                  </span>
-                  <span className="text-xs text-[var(--text-secondary)] mt-1">
-                    {count} {count === 1 ? 'song' : 'songs'}
-                  </span>
-                </Link>
-              );
-            })}
+        )}
+
+        {/* Spotlight Card Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-[var(--brand-accent)] text-white shadow-xs">
+                <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
+                <span suppressHydrationWarning>{sundayInfo.dateLabel}</span>
+              </span>
+              <span className="text-xs font-semibold text-[var(--text-secondary)] hidden sm:inline">
+                Spotlight Setlist
+              </span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)]">
+              {sundaySetlist ? sundaySetlist.name : "This Sunday's Setlist"}
+            </h2>
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+              {sundaySetlist
+                ? `${spotlightSongs.length} ${spotlightSongs.length === 1 ? 'song' : 'songs'} queued for service${
+                    keyFlow ? ` · Flow: ${keyFlow}` : ''
+                  }`
+                : 'No setlist created yet. Plan your Sunday worship service with curated anthems or custom charts.'}
+            </p>
           </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {sundaySetlist ? (
+              <>
+                <Link
+                  href="/live"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[var(--brand-accent)] to-teal-500 text-white font-semibold text-xs sm:text-sm shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Radio className="w-4 h-4 animate-pulse" aria-hidden="true" />
+                  <span>Launch Live Sync</span>
+                </Link>
+                <Link
+                  href="/setlists"
+                  className="inline-flex items-center gap-1 px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--brand-surface)] text-[var(--text-primary)] font-semibold text-xs sm:text-sm transition-colors cursor-pointer"
+                >
+                  <ListMusic className="w-4 h-4 text-[var(--brand-accent)]" aria-hidden="true" />
+                  <span>Edit</span>
+                </Link>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={handleQuickCreateSundaySetlist}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] text-white font-semibold text-xs sm:text-sm shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" aria-hidden="true" />
+                <span>1-Click Create Sunday Setlist</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Songs in Sunday Setlist */}
+        {sundaySetlist && spotlightSongs.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {spotlightSongs.map((song, idx) => (
+              <Link
+                key={song.id + idx}
+                href={`/songs/${song.slug}`}
+                className="group flex items-center justify-between p-3 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] shadow-xs transition-all hover:scale-101"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="w-6 h-6 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] font-mono font-bold text-xs flex items-center justify-center shrink-0">
+                    {idx + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-sm text-[var(--text-primary)] group-hover:text-[var(--brand-accent)] transition-colors truncate">
+                      {song.title}
+                    </h3>
+                    <p className="text-xs text-[var(--text-secondary)] truncate">
+                      {song.artist || 'Worship Leader'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-2 py-0.5 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] font-mono font-bold text-xs">
+                    {song.originalKey}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-[var(--text-secondary)] group-hover:text-[var(--brand-accent)] group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : !sundaySetlist ? (
+          /* Starter Setlist Preview with 1-Click Setup */
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {[
+                { title: 'Goodness of God', artist: 'Bethel Music', key: 'G', slug: 'goodness-of-god' },
+                { title: 'Way Maker', artist: 'Sinach / Leeland', key: 'G', slug: 'way-maker' },
+                { title: '10,000 Reasons', artist: 'Matt Redman', key: 'G', slug: '10000-reasons' },
+                { title: 'What a Beautiful Name', artist: 'Hillsong Worship', key: 'D', slug: 'what-a-beautiful-name' },
+              ].map((song, idx) => (
+                <div
+                  key={song.slug}
+                  className="flex items-center justify-between p-3 rounded-2xl bg-[var(--bg-surface)]/70 border border-dashed border-[var(--border-strong)] text-xs text-[var(--text-secondary)]"
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    <span className="w-5 h-5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-mono font-bold text-[0.6875rem] flex items-center justify-center shrink-0">
+                      {idx + 1}
+                    </span>
+                    <span className="font-semibold text-[var(--text-primary)] truncate">{song.title}</span>
+                    <span className="truncate hidden sm:inline">• {song.artist}</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-[var(--bg-subtle)] font-mono font-bold text-[var(--text-primary)] text-[0.6875rem]">
+                    Key {song.key}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-[var(--text-secondary)]">
+              <span>Tap above to populate this setlist automatically, or build one from your custom library.</span>
+              <Link href="/setlists" className="font-semibold text-[var(--brand-accent)] hover:underline inline-flex items-center gap-1">
+                <span>Go to Setlists Manager</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-6 space-y-2">
+            <p className="text-sm text-[var(--text-secondary)]">
+              This setlist is currently empty. Add songs from the catalog or your custom library.
+            </p>
+            <Link
+              href="/songs"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--brand-accent)] hover:underline"
+            >
+              <span>Browse Song Catalog to Add Charts</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        )}
+      </section>
+
+      {/* Browse by Category Controls */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+            Browse Catalog by Category
+          </h2>
+          <Link
+            href="/songs"
+            className="text-xs font-semibold text-[var(--brand-accent)] hover:underline inline-flex items-center gap-1"
+          >
+            <span>View All ({allSongs.length})</span>
+            <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {categories.map((cat) => {
+            const count = allSongs.filter((s) => s.category.id === cat.id).length;
+            return (
+              <Link
+                key={cat.id}
+                href={`/songs?category=${encodeURIComponent(cat.id)}`}
+                className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--brand-accent)] p-3.5 transition-all hover:scale-101 flex flex-col justify-between shadow-xs"
+              >
+                <span className="font-semibold text-sm text-[var(--text-primary)]">
+                  {cat.label}
+                </span>
+                <span className="text-xs text-[var(--text-secondary)] mt-1">
+                  {count} {count === 1 ? 'song' : 'songs'}
+                </span>
+              </Link>
+            );
+          })}
         </div>
       </section>
 

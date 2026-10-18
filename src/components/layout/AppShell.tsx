@@ -1,19 +1,22 @@
 'use client';
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   BookOpen,
+  Download,
   FolderHeart,
   Gauge,
   Heart,
   Home,
   ListMusic,
+  MoreHorizontal,
   Music2,
   Radio,
   Settings,
   WifiOff,
+  X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { FloatingVoiceSearchButton } from '@/components/search/FloatingVoiceSearchButton';
@@ -66,36 +69,190 @@ function DesktopNavLinksActive() {
 }
 
 function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+
+  useEffect(() => {
+    setIsMoreOpen(false);
+  }, [pathname]);
+
   const isActive = (href: string) => {
     if (!pathname) return false;
     if (href === '/') return pathname === '/';
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
+  const isMoreActive =
+    isActive('/my-songs') ||
+    isActive('/favorites') ||
+    isActive('/settings') ||
+    (pathname === '/songs' && typeof window !== 'undefined' && window.location.search.includes('offline=1'));
+
+  const PRIMARY_NAV = [
+    { href: '/', label: 'Home', icon: Home },
+    { href: '/songs', label: 'Songs', icon: BookOpen },
+    { href: '/tuner', label: 'Tuner', icon: Gauge },
+    { href: '/live', label: 'Live', icon: Radio },
+    { href: '/setlists', label: 'Setlists', icon: ListMusic },
+  ] as const;
+
+  const MORE_ITEMS = [
+    {
+      href: '/my-songs',
+      label: 'My Songs & Editor',
+      sublabel: 'Custom charts & ChordPro',
+      icon: FolderHeart,
+      active: isActive('/my-songs'),
+    },
+    {
+      href: '/favorites',
+      label: 'Favorite Songs',
+      sublabel: 'Quick access collection',
+      icon: Heart,
+      active: isActive('/favorites'),
+    },
+    {
+      href: '/songs?offline=1',
+      label: 'Offline Saved',
+      sublabel: 'Available without internet',
+      icon: Download,
+      active: pathname === '/songs',
+    },
+    {
+      href: '/settings',
+      label: 'Settings & Themes',
+      sublabel: 'Accent colors, fonts & storage',
+      icon: Settings,
+      active: isActive('/settings'),
+    },
+  ];
+
   return (
-    <nav
-      aria-label="Mobile Bottom Navigation"
-      className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-[var(--bg-surface)] border-t border-[var(--border-subtle)] grid grid-cols-8 overflow-x-auto"
-    >
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-        const active = isActive(href);
-        return (
-          <Link
-            key={href}
-            href={href}
-            aria-current={active ? 'page' : undefined}
-            className={`flex flex-col items-center justify-center py-2 px-0.5 text-[0.625rem] font-medium transition-colors min-h-[3.5rem] ${
-              active
-                ? 'text-[var(--brand-accent)] font-semibold'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+    <>
+      {/* Dimmed backdrop when More popover is open */}
+      {isMoreOpen && (
+        <div
+          role="presentation"
+          onClick={() => setIsMoreOpen(false)}
+          className="md:hidden fixed inset-0 z-30 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in"
+        />
+      )}
+
+      {/* Floating "More" Quick Sheet */}
+      {isMoreOpen && (
+        <div
+          role="dialog"
+          aria-label="Additional Navigation Options"
+          className="md:hidden fixed bottom-20 inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-md z-40 bg-[var(--bg-surface)]/95 backdrop-blur-2xl border border-white/20 dark:border-white/10 rounded-3xl p-3 shadow-2xl space-y-1 animate-in slide-in-from-bottom-3 duration-200"
+        >
+          <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-subtle)] mb-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+              Library & Settings
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsMoreOpen(false)}
+              className="p-1 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+              aria-label="Close menu"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            {MORE_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setIsMoreOpen(false)}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl transition-all cursor-pointer ${
+                  item.active
+                    ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] font-semibold ring-1 ring-[var(--brand-accent)]/30'
+                    : 'text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
+                }`}
+              >
+                <item.icon className="w-5 h-5 shrink-0" aria-hidden="true" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{item.label}</div>
+                  <div className="text-xs text-[var(--text-secondary)] truncate">
+                    {item.sublabel}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Floating Native-Feeling Bottom Nav Bar */}
+      <nav
+        aria-label="Mobile Bottom Navigation"
+        className="md:hidden fixed bottom-3 inset-x-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-full sm:max-w-lg z-30 bg-[var(--bg-surface)]/85 dark:bg-[var(--bg-surface)]/90 backdrop-blur-2xl border border-white/25 dark:border-white/10 shadow-[0_12px_36px_-6px_rgba(0,0,0,0.3)] rounded-2xl p-1.5 flex items-center justify-around gap-1"
+      >
+        {PRIMARY_NAV.map(({ href, label, icon: Icon }) => {
+          const active = isActive(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={active ? 'page' : undefined}
+              className={`relative flex flex-col items-center justify-center py-1.5 px-2.5 rounded-xl transition-all duration-200 cursor-pointer min-w-[3.5rem] ${
+                active
+                  ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold ring-1 ring-[var(--brand-accent)]/25 shadow-xs scale-102'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]/50 active:scale-95'
+              }`}
+            >
+              <Icon
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  active ? 'scale-110 text-[var(--brand-accent)]' : ''
+                }`}
+                aria-hidden="true"
+              />
+              <span className="text-[0.6875rem] leading-tight mt-0.5 font-medium tracking-tight">
+                {label}
+              </span>
+
+              {/* Glowing active indicator dot */}
+              {active && (
+                <span
+                  className="w-1.5 h-1.5 rounded-full bg-[var(--brand-accent)] shadow-[0_0_8px_var(--brand-accent)] mt-0.5 animate-pulse"
+                  aria-hidden="true"
+                />
+              )}
+            </Link>
+          );
+        })}
+
+        {/* 6th "More" tab button */}
+        <button
+          type="button"
+          onClick={() => setIsMoreOpen((prev) => !prev)}
+          aria-expanded={isMoreOpen}
+          aria-label="More navigation destinations"
+          className={`relative flex flex-col items-center justify-center py-1.5 px-2.5 rounded-xl transition-all duration-200 cursor-pointer min-w-[3.5rem] ${
+            isMoreActive || isMoreOpen
+              ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold ring-1 ring-[var(--brand-accent)]/25 shadow-xs scale-102'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]/50 active:scale-95'
+          }`}
+        >
+          <MoreHorizontal
+            className={`w-5 h-5 transition-transform duration-200 ${
+              isMoreActive || isMoreOpen ? 'scale-110 text-[var(--brand-accent)]' : ''
             }`}
-          >
-            <Icon className="w-4 h-4 mb-0.5" aria-hidden="true" />
-            <span className="truncate max-w-full">{label}</span>
-          </Link>
-        );
-      })}
-    </nav>
+            aria-hidden="true"
+          />
+          <span className="text-[0.6875rem] leading-tight mt-0.5 font-medium tracking-tight">
+            More
+          </span>
+
+          {(isMoreActive || isMoreOpen) && (
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-[var(--brand-accent)] shadow-[0_0_8px_var(--brand-accent)] mt-0.5 animate-pulse"
+              aria-hidden="true"
+            />
+          )}
+        </button>
+      </nav>
+    </>
   );
 }
 
@@ -167,7 +324,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 md:pl-64 flex flex-col min-h-screen pb-20 md:pb-8">
+      <div className="flex-1 md:pl-64 flex flex-col min-h-screen pb-24 md:pb-8">
         {effectiveOffline && (
           <div
             role="status"

@@ -9,12 +9,14 @@ import {
   Loader2,
   Monitor,
   Moon,
+  Palette,
   Sun,
   Trash2,
   WifiOff,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import type {
+  AccentColor,
   ChartFontSize,
   EnharmonicPreference,
   ThemePreference,
@@ -95,6 +97,43 @@ export default function SettingsPage() {
       label: 'Dark',
       sublabel: 'Low-glare dark surface for dim stages',
       icon: Moon,
+    },
+  ];
+
+  const accentOptions: {
+    id: AccentColor;
+    label: string;
+    sublabel: string;
+    swatchHex: string;
+    gradientClass: string;
+  }[] = [
+    {
+      id: 'teal',
+      label: 'Deep Teal',
+      sublabel: 'Default ocean teal tone',
+      swatchHex: '#0f766e',
+      gradientClass: 'from-teal-600 to-teal-400',
+    },
+    {
+      id: 'indigo',
+      label: 'Royal Indigo',
+      sublabel: 'Vibrant modern purple-blue',
+      swatchHex: '#4f46e5',
+      gradientClass: 'from-indigo-600 to-indigo-400',
+    },
+    {
+      id: 'emerald',
+      label: 'Emerald',
+      sublabel: 'Lush organic worship green',
+      swatchHex: '#059669',
+      gradientClass: 'from-emerald-600 to-emerald-400',
+    },
+    {
+      id: 'amber',
+      label: 'Warm Amber',
+      sublabel: 'Cozy acoustic golden glow',
+      swatchHex: '#d97706',
+      gradientClass: 'from-amber-600 to-amber-400',
     },
   ];
 
@@ -220,6 +259,58 @@ export default function SettingsPage() {
                   <div className="text-xs text-[var(--text-secondary)] mt-0.5">
                     {sublabel}
                   </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Theme Accent Color */}
+      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <Palette className="w-5 h-5 text-[var(--brand-accent)]" aria-hidden="true" />
+            <span>Theme Accent Color</span>
+          </h2>
+          <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+            Personalize chord highlights, buttons, active navigation indicators, and branding accents.
+          </p>
+        </div>
+
+        <div
+          role="radiogroup"
+          aria-label="Theme Accent Color"
+          className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+        >
+          {accentOptions.map(({ id, label, sublabel, gradientClass }) => {
+            const active = (settings.accentColor || 'teal') === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => updateSettings({ accentColor: id })}
+                className={`text-left rounded-xl border p-4 transition-all duration-150 cursor-pointer flex flex-col justify-between gap-3 relative overflow-hidden ${
+                  active
+                    ? 'border-[var(--brand-accent)] bg-[var(--brand-surface)] ring-2 ring-[var(--brand-accent)]/20 shadow-xs'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--border-strong)]'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${gradientClass} shadow-md flex items-center justify-center ring-2 ring-white/20`}>
+                    {active && <Check className="w-4 h-4 text-white" aria-hidden="true" />}
+                  </div>
+                  {active && (
+                    <span className="text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-[var(--brand-accent)] text-white">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <div className="font-semibold text-sm">{label}</div>
+                  <div className="text-xs text-[var(--text-secondary)] mt-0.5">{sublabel}</div>
                 </div>
               </button>
             );

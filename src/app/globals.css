@@ -40,6 +40,52 @@
   --chord-bg-light: #f0fdfa;
   --chord-bg-dark: rgba(20, 184, 166, 0.14);
 
+  /* Custom Theme Accent Palettes */
+  &[data-accent="teal"],
+  &:not([data-accent]) {
+    --brand-accent-light: #0f766e;
+    --brand-accent-dark: #2dd4bf;
+    --brand-surface-light: #f0fdfa;
+    --brand-surface-dark: #134e4a;
+    --chord-color-light: #0f766e;
+    --chord-color-dark: #5eead4;
+    --chord-bg-light: #f0fdfa;
+    --chord-bg-dark: rgba(20, 184, 166, 0.14);
+  }
+
+  &[data-accent="indigo"] {
+    --brand-accent-light: #4f46e5;
+    --brand-accent-dark: #818cf8;
+    --brand-surface-light: #eef2ff;
+    --brand-surface-dark: #312e81;
+    --chord-color-light: #4f46e5;
+    --chord-color-dark: #a5b4fc;
+    --chord-bg-light: #eef2ff;
+    --chord-bg-dark: rgba(99, 102, 241, 0.14);
+  }
+
+  &[data-accent="emerald"] {
+    --brand-accent-light: #059669;
+    --brand-accent-dark: #34d399;
+    --brand-surface-light: #ecfdf5;
+    --brand-surface-dark: #064e3b;
+    --chord-color-light: #059669;
+    --chord-color-dark: #6ee7b7;
+    --chord-bg-light: #ecfdf5;
+    --chord-bg-dark: rgba(16, 185, 129, 0.14);
+  }
+
+  &[data-accent="amber"] {
+    --brand-accent-light: #d97706;
+    --brand-accent-dark: #fbbf24;
+    --brand-surface-light: #fffbeb;
+    --brand-surface-dark: #78350f;
+    --chord-color-light: #b45309;
+    --chord-color-dark: #fcd34d;
+    --chord-bg-light: #fffbeb;
+    --chord-bg-dark: rgba(245, 158, 11, 0.14);
+  }
+
   /* Fallback defaults for browsers without light-dark() support */
   --bg-canvas: var(--bg-canvas-light);
   --bg-surface: var(--bg-surface-light);
