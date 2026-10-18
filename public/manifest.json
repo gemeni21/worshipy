@@ -1,0 +1,18 @@
+{
+  "name": "Worship Music Companion",
+  "short_name": "Worship Companion",
+  "description": "Find worship songs, read chord charts and lyrics, transpose keys instantly, and save charts for offline practice and performance.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f766e",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

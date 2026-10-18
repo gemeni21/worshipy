@@ -1,0 +1,192 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Light and dark raw design tokens */
+  --bg-canvas-light: #f8fafc;
+  --bg-canvas-dark: #0b1120;
+
+  --bg-surface-light: #ffffff;
+  --bg-surface-dark: #111827;
+
+  --bg-subtle-light: #f1f5f9;
+  --bg-subtle-dark: #1e293b;
+
+  --text-primary-light: #0f172a;
+  --text-primary-dark: #f8fafc;
+
+  --text-secondary-light: #475569;
+  --text-secondary-dark: #94a3b8;
+
+  --text-muted-light: #64748b;
+  --text-muted-dark: #64748b;
+
+  --border-subtle-light: #e2e8f0;
+  --border-subtle-dark: #1e293b;
+
+  --border-strong-light: #cbd5e1;
+  --border-strong-dark: #334155;
+
+  --brand-accent-light: #0f766e;
+  --brand-accent-dark: #2dd4bf;
+
+  --brand-surface-light: #f0fdfa;
+  --brand-surface-dark: #134e4a;
+
+  --chord-color-light: #0f766e;
+  --chord-color-dark: #5eead4;
+
+  --chord-bg-light: #f0fdfa;
+  --chord-bg-dark: rgba(20, 184, 166, 0.14);
+
+  /* Fallback defaults for browsers without light-dark() support */
+  --bg-canvas: var(--bg-canvas-light);
+  --bg-surface: var(--bg-surface-light);
+  --bg-subtle: var(--bg-subtle-light);
+  --text-primary: var(--text-primary-light);
+  --text-secondary: var(--text-secondary-light);
+  --text-muted: var(--text-muted-light);
+  --border-subtle: var(--border-subtle-light);
+  --border-strong: var(--border-strong-light);
+  --brand-accent: var(--brand-accent-light);
+  --brand-surface: var(--brand-surface-light);
+  --chord-color: var(--chord-color-light);
+  --chord-bg: var(--chord-bg-light);
+
+  @media (prefers-color-scheme: dark) {
+    --bg-canvas: var(--bg-canvas-dark);
+    --bg-surface: var(--bg-surface-dark);
+    --bg-subtle: var(--bg-subtle-dark);
+    --text-primary: var(--text-primary-dark);
+    --text-secondary: var(--text-secondary-dark);
+    --text-muted: var(--text-muted-dark);
+    --border-subtle: var(--border-subtle-dark);
+    --border-strong: var(--border-strong-dark);
+    --brand-accent: var(--brand-accent-dark);
+    --brand-surface: var(--brand-surface-dark);
+    --chord-color: var(--chord-color-dark);
+    --chord-bg: var(--chord-bg-dark);
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --bg-canvas: light-dark(var(--bg-canvas-light), var(--bg-canvas-dark));
+    --bg-surface: light-dark(var(--bg-surface-light), var(--bg-surface-dark));
+    --bg-subtle: light-dark(var(--bg-subtle-light), var(--bg-subtle-dark));
+    --text-primary: light-dark(var(--text-primary-light), var(--text-primary-dark));
+    --text-secondary: light-dark(var(--text-secondary-light), var(--text-secondary-dark));
+    --text-muted: light-dark(var(--text-muted-light), var(--text-muted-dark));
+    --border-subtle: light-dark(var(--border-subtle-light), var(--border-subtle-dark));
+    --border-strong: light-dark(var(--border-strong-light), var(--border-strong-dark));
+    --brand-accent: light-dark(var(--brand-accent-light), var(--brand-accent-dark));
+    --brand-surface: light-dark(var(--brand-surface-light), var(--brand-surface-dark));
+    --chord-color: light-dark(var(--chord-color-light), var(--chord-color-dark));
+    --chord-bg: light-dark(var(--chord-bg-light), var(--chord-bg-dark));
+  }
+
+  /* MANDATORY: Apply color-scheme to :root for viewport-wide native UI theming */
+  color-scheme: light dark;
+  accent-color: var(--brand-accent);
+
+  /* Reflect user override from data-theme or <meta name="color-scheme"> back into CSS */
+  &[data-theme="dark"],
+  &:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+    --bg-canvas: var(--bg-canvas-dark);
+    --bg-surface: var(--bg-surface-dark);
+    --bg-subtle: var(--bg-subtle-dark);
+    --text-primary: var(--text-primary-dark);
+    --text-secondary: var(--text-secondary-dark);
+    --text-muted: var(--text-muted-dark);
+    --border-subtle: var(--border-subtle-dark);
+    --border-strong: var(--border-strong-dark);
+    --brand-accent: var(--brand-accent-dark);
+    --brand-surface: var(--brand-surface-dark);
+    --chord-color: var(--chord-color-dark);
+    --chord-bg: var(--chord-bg-dark);
+  }
+
+  &[data-theme="light"],
+  &:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+    --bg-canvas: var(--bg-canvas-light);
+    --bg-surface: var(--bg-surface-light);
+    --bg-subtle: var(--bg-subtle-light);
+    --text-primary: var(--text-primary-light);
+    --text-secondary: var(--text-secondary-light);
+    --text-muted: var(--text-muted-light);
+    --border-subtle: var(--border-subtle-light);
+    --border-strong: var(--border-strong-light);
+    --brand-accent: var(--brand-accent-light);
+    --brand-surface: var(--brand-surface-light);
+    --chord-color: var(--chord-color-light);
+    --chord-bg: var(--chord-bg-light);
+  }
+}
+
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  text-align: start;
+  overflow-wrap: break-word;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+  max-width: 80ch;
+}
+
+/* Focus visibility for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
+/* Structured Chord-Over-Lyric Alignment Primitives */
+.chart-line-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding-bottom: 0.25rem;
+}
+
+.chart-line-segments {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  min-width: 100%;
+}
+
+.chart-segment {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  vertical-align: bottom;
+  white-space: pre;
+}
+
+.chart-chord-row {
+  display: inline-block;
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  color: var(--chord-color);
+  line-height: 1.35;
+  padding-right: 0.5ch;
+  min-height: 1.35em;
+  user-select: all;
+}
+
+.chart-lyric-row {
+  display: inline-block;
+  color: var(--text-primary);
+  line-height: 1.55;
+  min-height: 1.55em;
+}

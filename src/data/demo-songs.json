@@ -1,0 +1,1139 @@
+[
+  {
+    "id": "demo-song-01",
+    "slug": "morning-of-grace",
+    "title": "Morning of Grace",
+    "artist": "Worship Companion Demo Collective",
+    "writers": ["Elena Reyes", "Marcus Vance"],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
+    },
+    "originalKey": "G",
+    "tempoBpm": 74,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "demo",
+    "sourceNotes": "Original fictional demo song created for Worship Music Companion MVP testing.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "cue": "Warm acoustic guitar & pad",
+        "lines": [
+          {
+            "isInstrumental": true,
+            "segments": [
+              { "chord": "G", "text": "" },
+              { "chord": "D/F#", "text": "" },
+              { "chord": "Em7", "text": "" },
+              { "chord": "Cadd9", "text": "" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "G", "text": "Before the dawn breaks " },
+              { "chord": "D/F#", "text": "across the quiet hill," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Em7", "text": "Your mercy meets us " },
+              { "chord": "Cadd9", "text": "when our hearts are still." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "G/B", "text": "No shadow lingers " },
+              { "chord": "C", "text": "where Your promise shines," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Am7", "text": "We lay our burdens down " },
+              { "chord": "Dsus4", "text": "and leave the night " },
+              { "chord": "D", "text": "behind." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Chorus",
+        "cue": "Build gently with full band",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "G", "text": "In this morning of " },
+              { "chord": "Cadd9", "text": "grace, we lift our eyes," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Em7", "text": "Faithful Redeem" },
+              { "chord": "D", "text": "er, forever wise." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "G/B", "text": "Through every sea" },
+              { "chord": "C", "text": "son Your love remains," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Am7", "text": "All glory and hon" },
+              { "chord": "D", "text": "or to Your " },
+              { "chord": "G", "text": "holy name." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "verse",
+        "label": "Verse 2",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "G", "text": "When weary footsteps " },
+              { "chord": "D/F#", "text": "falter on the road," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Em7", "text": "You walk beside us " },
+              { "chord": "Cadd9", "text": "and You share the load." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "G/B", "text": "Aliving fountain " },
+              { "chord": "C", "text": "in the desert place," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Am7", "text": "Our shelter and anchor " },
+              { "chord": "Dsus4", "text": "is Your saving " },
+              { "chord": "D", "text": "grace." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-5",
+        "type": "bridge",
+        "label": "Bridge",
+        "cue": "Start softly, crescendo on repeat",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "C", "text": "Steadfast and true, " },
+              { "chord": "G/B", "text": "from age to age the same," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Am7", "text": "Every breath we have " },
+              { "chord": "Em7", "text": "will sing Your praise " },
+              { "chord": "D/F#", "text": "again." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "C", "text": "High above the heavens, " },
+              { "chord": "Em7", "text": "nearer than our breath," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Am7", "text": "You hold our tomorrow " },
+              { "chord": "Dsus4", "text": "in Your faithfulness" },
+              { "chord": "D", "text": "." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-6",
+        "type": "outro",
+        "label": "Outro",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "N.C.", "text": "All glory and honor " },
+              { "chord": "Cadd9", "text": "to Your " },
+              { "chord": "D", "text": "holy " },
+              { "chord": "G", "text": "name." }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "demo-song-02",
+    "slug": "liwanag-ng-pag-asa",
+    "title": "Liwanag ng Pag-asa",
+    "artist": "Harana Worship Demo",
+    "writers": ["Marco Santos", "Hannah Villanueva"],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "D",
+    "tempoBpm": 70,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "demo",
+    "sourceNotes": "Original Filipino fictional demo song created for MVP testing.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "cue": "Gentle piano arpeggios",
+        "lines": [
+          {
+            "isInstrumental": true,
+            "segments": [
+              { "chord": "D", "text": "" },
+              { "chord": "A/C#", "text": "" },
+              { "chord": "Bm7", "text": "" },
+              { "chord": "Gmaj7", "text": "" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Talata 1 (Verse 1)",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "D", "text": "Sa gitna ng dilim " },
+              { "chord": "A/C#", "text": "Ikaw ang tanglaw," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bm7", "text": "Pag-ibig Mong tapat " },
+              { "chord": "Gmaj7", "text": "ang siyang umaapaw." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "D/F#", "text": "Payapa ang puso " },
+              { "chord": "G", "text": "sa Iyong kandungan," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Em7", "text": "Sa bawat hakbang ko " },
+              { "chord": "Asus4", "text": "Ikaw ang sandi" },
+              { "chord": "A", "text": "gan." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Koro (Chorus)",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "D", "text": "Ikaw ang liwanag " },
+              { "chord": "Gmaj7", "text": "ng aming pag-asa," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bm7", "text": "Biyaya Mong lubos " },
+              { "chord": "A", "text": "ay laging kasama." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "D/F#", "text": "Itataas ang ngalan Mo " },
+              { "chord": "G", "text": "sa bawat umaga," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Em7", "text": "Purihin Ka, Panginoon, " },
+              { "chord": "A", "text": "magpakailan" },
+              { "chord": "D", "text": "man." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "bridge",
+        "label": "Tulay (Bridge)",
+        "cue": "Drums build on beat 3",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Gmaj7", "text": "Walang kapantay ang " },
+              { "chord": "A/G", "text": "katapatan Mo," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "F#m7", "text": "Buong buhay ko ay " },
+              { "chord": "Bm7", "text": "iaalay sa Iyo." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Em7", "text": "Sa hirap at ginhawa " },
+              { "chord": "D/F#", "text": "Ikaw ay tapat," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "G", "text": "Papuri at pagsamba " },
+              { "chord": "Asus4", "text": "sa Iyo ay narara" },
+              { "chord": "A", "text": "pat." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-5",
+        "type": "outro",
+        "label": "Outro",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Em7", "text": "Purihin Ka, Panginoon, " },
+              { "chord": "A7", "text": "magpakailan" },
+              { "chord": "D", "text": "man." }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "demo-song-03",
+    "slug": "rock-of-ages-ever-standing",
+    "title": "Rock of Ages, Ever Standing",
+    "artist": "Heritage Hymnody Demo",
+    "writers": ["clara M. Whitmore (Demo Hymn)"],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "hymn",
+      "label": "Traditional Hymn"
+    },
+    "originalKey": "Bb",
+    "tempoBpm": 92,
+    "timeSignature": "3/4",
+    "difficulty": "intermediate",
+    "contentStatus": "demo",
+    "sourceNotes": "Original hymn-style composition written for flat-key transposition testing.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Bb", "text": "Rock of Ages, " },
+              { "chord": "Eb/Bb", "text": "ever standing," },
+              { "chord": "F/A", "text": " firm through every " },
+              { "chord": "Bb", "text": "raging sea," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Gm7", "text": "In the tempest " },
+              { "chord": "Cm7", "text": "Thou art shelter," },
+              { "chord": "F7sus4", "text": " strong watchtower " },
+              { "chord": "F7", "text": "unto me." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Verse 2",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Bb", "text": "Not by might nor " },
+              { "chord": "Bb/D", "text": "earthly wisdom," },
+              { "chord": "Eb", "text": " can our weary " },
+              { "chord": "C7/E", "text": "spirits rest," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bb/F", "text": "Only in Thy " },
+              { "chord": "Gm", "text": "lovingkindness" },
+              { "chord": "Cm7", "text": " are the humble " },
+              { "chord": "F7", "text": "truly " },
+              { "chord": "Bb", "text": "blessed." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Refrain",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Eb", "text": "Fortress sure and " },
+              { "chord": "Bb/D", "text": "fountain living," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Cm7", "text": "Guide us homeward " },
+              { "chord": "F", "text": "day by " },
+              { "chord": "Bb", "text": "day;" }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Gm7", "text": "Till we stand be" },
+              { "chord": "Eb", "text": "fore Thy presence," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bb/F", "text": "Where all shadows " },
+              { "chord": "F7", "text": "pass a" },
+              { "chord": "Bb", "text": "way." }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "demo-song-04",
+    "slug": "joyful-river-of-praise",
+    "title": "Joyful River of Praise",
+    "artist": "City Sanctuary Choir (Demo)",
+    "writers": ["Devon Brooks", "Tasha Jenkins"],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "gospel",
+      "label": "Gospel & Praise"
+    },
+    "originalKey": "Eb",
+    "tempoBpm": 116,
+    "timeSignature": "4/4",
+    "difficulty": "intermediate",
+    "contentStatus": "demo",
+    "sourceNotes": "Original gospel demo chart with extended 7th/9th chords and slash inversions.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "cue": "Upbeat organ & rhythm section",
+        "lines": [
+          {
+            "isInstrumental": true,
+            "segments": [
+              { "chord": "Eb9", "text": "" },
+              { "chord": "Abmaj7", "text": "" },
+              { "chord": "Fm7", "text": "" },
+              { "chord": "Bb7sus4", "text": "" },
+              { "chord": "Bb7", "text": "" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Eb", "text": "Woke up this morning with a " },
+              { "chord": "Ab/Eb", "text": "song in my soul," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Eb/G", "text": "Mercy and goodness have " },
+              { "chord": "Abmaj7", "text": "made my spirit whole." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Fm7", "text": "Troubles may gather, " },
+              { "chord": "Eb/G", "text": "but victory is near," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Ab6", "text": "When the Lord is for us, " },
+              { "chord": "Bb7sus4", "text": "whom shall we " },
+              { "chord": "Bb7", "text": "fear?" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Chorus",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Eb", "text": "Let the joyful " },
+              { "chord": "Abmaj7", "text": "river of praise roll on," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Cm7", "text": "Sing hallelujah " },
+              { "chord": "Fm7", "text": "from the rising " },
+              { "chord": "Bb7", "text": "dawn!" }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Eb/G", "text": "Clap your hands and " },
+              { "chord": "Ab", "text": "magnify the " },
+              { "chord": "Adim7", "text": "King," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Eb/Bb", "text": "For all He has done, " },
+              { "chord": "Bb7", "text": "let the sanctuary " },
+              { "chord": "Eb", "text": "ring!" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-4",
+        "type": "tag",
+        "label": "Vamp / Tag",
+        "cue": "Repeat 4x with choir call-and-response",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Fm7", "text": "He is faithful, " },
+              { "chord": "Eb/G", "text": "yes He is!" }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Abmaj7", "text": "Everlasting joy " },
+              { "chord": "Bb7sus4", "text": "is " },
+              { "chord": "Eb", "text": "His!" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "demo-song-05",
+    "slug": "tapat-ka-panginoon",
+    "title": "Tapat Ka, Panginoon",
+    "artist": "Sinag Music Demo",
+    "writers": ["Paolo Mendoza"],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "A",
+    "tempoBpm": 68,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "demo",
+    "sourceNotes": "Original Filipino worship ballad demo in the key of A.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "verse",
+        "label": "Talata 1 (Verse 1)",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "A", "text": "Lumilipas man ang " },
+              { "chord": "E/G#", "text": "bawat panahon," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "F#m7", "text": "Ang biyaya Mo ay " },
+              { "chord": "Dmaj7", "text": "naroroon." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "A/C#", "text": "Hindi nagbabago " },
+              { "chord": "D", "text": "ang Iyong pangako," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bm7", "text": "Sandigan ng puso " },
+              { "chord": "Esus4", "text": "hanggang sa " },
+              { "chord": "E", "text": "dulo." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "chorus",
+        "label": "Koro (Chorus)",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "A", "text": "Tapat Ka, Panginoon, " },
+              { "chord": "E/G#", "text": "sa aming buhay," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "F#m7", "text": "Pag-ibig Mong wagas " },
+              { "chord": "Dmaj7", "text": "ang siyang gabay." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "A/C#", "text": "Aming iaawit " },
+              { "chord": "D", "text": "ang Iyong kabutihan," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bm7", "text": "Ngayon at kailanman, " },
+              { "chord": "E", "text": "Ikaw ay papuri" },
+              { "chord": "A", "text": "han." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "bridge",
+        "label": "Tulay (Bridge)",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "F#m7", "text": "Sa unos ay payapa, " },
+              { "chord": "Dmaj7", "text": "sa gabi ay tala," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "A/E", "text": "Dakila Ka, O Diyos, " },
+              { "chord": "E", "text": "sa lahat ng nilikha." }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "demo-song-06",
+    "slug": "still-waters-of-peace",
+    "title": "Still Waters of Peace",
+    "artist": "Quiet Harbor Worship (Demo)",
+    "writers": ["Hannah Lin", "Caleb Mercer"],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
+    },
+    "originalKey": "F#m",
+    "tempoBpm": 64,
+    "timeSignature": "6/8",
+    "difficulty": "intermediate",
+    "contentStatus": "demo",
+    "sourceNotes": "Original minor-key contemplative demo song testing F#m and relative major progressions.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "cue": "6/8 fingerpicked acoustic",
+        "lines": [
+          {
+            "isInstrumental": true,
+            "segments": [
+              { "chord": "F#m", "text": "" },
+              { "chord": "Dmaj7", "text": "" },
+              { "chord": "A", "text": "" },
+              { "chord": "E/G#", "text": "" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "F#m", "text": "Lead me beside " },
+              { "chord": "Dmaj7", "text": "the still waters of peace," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "A", "text": "Where anxious thoughts " },
+              { "chord": "E/G#", "text": "and striving cease." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "F#m7", "text": "Restore my soul " },
+              { "chord": "D", "text": "within Your care," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bm7", "text": "In quiet trust " },
+              { "chord": "C#7sus4", "text": "I meet You " },
+              { "chord": "C#7", "text": "there." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Chorus",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Dmaj7", "text": "Shepherd of grace, " },
+              { "chord": "A/C#", "text": "You know my name," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bm7", "text": "Through shadowed val" },
+              { "chord": "F#m7", "text": "leys You remain." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Dmaj7", "text": "My cup runs o" },
+              { "chord": "F#m7", "text": "ver with Your love," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bm7", "text": "Held in the mer" },
+              { "chord": "E", "text": "cy from a" },
+              { "chord": "F#m", "text": "bove." }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "demo-song-07",
+    "slug": "awaiting-the-king",
+    "title": "Awaiting the King",
+    "artist": "Northgate Worship Demo",
+    "writers": ["Jordan Vance"],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "contemporary-worship",
+      "label": "Contemporary Worship"
+    },
+    "originalKey": "E",
+    "tempoBpm": 80,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "demo",
+    "sourceNotes": "Original demo song in E with open-chord worship voicings (B, C#m7, Asus2).",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "E", "text": "With lamps burning bright " },
+              { "chord": "B/D#", "text": "at the break of the day," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "C#m7", "text": "We ready our hearts " },
+              { "chord": "Asus2", "text": "as we watch and we pray." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "E/G#", "text": "The hope of the nations " },
+              { "chord": "Asus2", "text": "is drawing us near," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "F#m7", "text": "Our Sovereign and Savior " },
+              { "chord": "Bsus4", "text": "is welcome " },
+              { "chord": "B", "text": "here." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "chorus",
+        "label": "Chorus",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "E", "text": "Open the gates, " },
+              { "chord": "Asus2", "text": "let the anthem arise," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "C#m7", "text": "Hosanna to Jesus, " },
+              { "chord": "Bsus4", "text": "the Lord of the skies." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "E/G#", "text": "Every knee bowing, " },
+              { "chord": "Asus2", "text": "every tongue sing," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "F#m7", "text": "Forever we worship " },
+              { "chord": "B", "text": "our Risen " },
+              { "chord": "E", "text": "King." }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "demo-song-08",
+    "slug": "awit-ng-pasasalamat",
+    "title": "Awit ng Pasasalamat",
+    "artist": "Bukang-Liwayway Collective (Demo)",
+    "writers": ["Liza Navarro", "Daniel Cruz"],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "filipino-worship",
+      "label": "Filipino Worship"
+    },
+    "originalKey": "C",
+    "tempoBpm": 104,
+    "timeSignature": "4/4",
+    "difficulty": "easy",
+    "contentStatus": "demo",
+    "sourceNotes": "Original upbeat Filipino thanksgiving song in the key of C.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "cue": "Rhythmic strumming",
+        "lines": [
+          {
+            "isInstrumental": true,
+            "segments": [
+              { "chord": "C", "text": "" },
+              { "chord": "G/B", "text": "" },
+              { "chord": "Am7", "text": "" },
+              { "chord": "Fmaj7", "text": "" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Talata 1 (Verse 1)",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "C", "text": "Bawat hininga ay " },
+              { "chord": "G/B", "text": "kaloob Mo," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Am7", "text": "Sigla at lakas " },
+              { "chord": "Fmaj7", "text": "ng abang puso ko." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "C/E", "text": "Sa hapag ng pag-ibig " },
+              { "chord": "F", "text": "kami'y tinipon Mo," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Dm7", "text": "Umaapaw ang galak " },
+              { "chord": "Gsus4", "text": "sa presensya " },
+              { "chord": "G", "text": "Mo." }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Koro (Chorus)",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "C", "text": "Salamat, O Diyos, " },
+              { "chord": "Fmaj7", "text": "sa Iyong kabutihan," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Am7", "text": "Awit ng papuri " },
+              { "chord": "G", "text": "ang aming iaalay." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "C/E", "text": "Mula sa pagsikat " },
+              { "chord": "F", "text": "hanggang sa paglubog," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Dm7", "text": "Dakila ang ngalan Mo, " },
+              { "chord": "G", "text": "aming Pangino" },
+              { "chord": "C", "text": "on!" }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "demo-song-09",
+    "slug": "crown-him-with-grateful-songs",
+    "title": "Crown Him With Grateful Songs",
+    "artist": "Cathedral Brass & Choir Demo",
+    "writers": ["Arthur Pendelton (Demo Hymn)"],
+    "language": {
+      "code": "en",
+      "label": "English"
+    },
+    "category": {
+      "id": "hymn",
+      "label": "Traditional Hymn"
+    },
+    "originalKey": "F",
+    "tempoBpm": 98,
+    "timeSignature": "4/4",
+    "difficulty": "intermediate",
+    "contentStatus": "demo",
+    "sourceNotes": "Original processional hymn demo in F major testing secondary dominants and flat chords.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "verse",
+        "label": "Verse 1",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "F", "text": "Crown Him with grateful " },
+              { "chord": "Dm7", "text": "songs of joy," },
+              { "chord": "Gm7", "text": " the Lord of earth and " },
+              { "chord": "C7", "text": "sky," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "F/A", "text": "Whose wisdom framed the " },
+              { "chord": "Bb", "text": "morning stars" },
+              { "chord": "G7/B", "text": " and set the heavens " },
+              { "chord": "Csus4", "text": "high" },
+              { "chord": "C", "text": "." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Dm", "text": "From shore to shore let " },
+              { "chord": "Am7", "text": "people raise" },
+              { "chord": "Bb", "text": " a chorus strong and " },
+              { "chord": "F/A", "text": "free," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Gm7", "text": "For mercy reigns up" },
+              { "chord": "F/C", "text": "on His throne" },
+              { "chord": "C7", "text": " through all eterni" },
+              { "chord": "F", "text": "ty." }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "demo-song-10",
+    "slug": "halina-at-magpuri",
+    "title": "Halina at Magpuri",
+    "artist": "Sigla Praise Team (Demo)",
+    "writers": ["Rico Bautista"],
+    "language": {
+      "code": "fil",
+      "label": "Filipino"
+    },
+    "category": {
+      "id": "gospel",
+      "label": "Gospel & Praise"
+    },
+    "originalKey": "Am",
+    "tempoBpm": 118,
+    "timeSignature": "4/4",
+    "difficulty": "intermediate",
+    "contentStatus": "demo",
+    "sourceNotes": "Original energetic Filipino praise demo in A minor with m7b5 and dominant turnaround.",
+    "sections": [
+      {
+        "id": "sec-1",
+        "type": "intro",
+        "label": "Intro",
+        "cue": "Full band rhythmic hits",
+        "lines": [
+          {
+            "isInstrumental": true,
+            "segments": [
+              { "chord": "Am7", "text": "" },
+              { "chord": "Dm7", "text": "" },
+              { "chord": "G7", "text": "" },
+              { "chord": "Cmaj7", "text": "" },
+              { "chord": "Bm7b5", "text": "" },
+              { "chord": "E7", "text": "" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-2",
+        "type": "verse",
+        "label": "Talata 1 (Verse 1)",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Am7", "text": "Halina at magpuri " },
+              { "chord": "Dm7", "text": "nang may kagalakan," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "G7", "text": "Ihayag ang dakilang " },
+              { "chord": "Cmaj7", "text": "gawa ng Maykapal." }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Fmaj7", "text": "Pawiin ang lungkot, " },
+              { "chord": "Bm7b5", "text": "itaas ang kamay," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "E7sus4", "text": "Sa Diyos na buhay " },
+              { "chord": "E7", "text": "tayo'y magtagumpay!" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sec-3",
+        "type": "chorus",
+        "label": "Koro (Chorus)",
+        "lines": [
+          {
+            "segments": [
+              { "chord": "Am7", "text": "Sumigaw sa galak, " },
+              { "chord": "Dm7", "text": "umawit nang malakas," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "G", "text": "Pag-ibig ng Panginoon " },
+              { "chord": "Cmaj7", "text": "ay walang wakas!" }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Fmaj7", "text": "Lahat ng nilalang " },
+              { "chord": "Dm7", "text": "ay magsama-sama," }
+            ]
+          },
+          {
+            "segments": [
+              { "chord": "Bm7b5", "text": "Purihin ang Hari " },
+              { "chord": "E7", "text": "ng buong pag-a" },
+              { "chord": "Am", "text": "sa!" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

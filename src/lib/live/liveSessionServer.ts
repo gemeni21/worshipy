@@ -1,0 +1,989 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { getAllSongs, getSongById } from '../catalog/songCatalog.ts';
+import { normalizeSemitones } from '../music/transposition.ts';
+import type {
+  CreateLiveSessionInput,
+  CreateLiveSessionResponse,
+  InstrumentViewMode,
+  JoinLiveSessionInput,
+  JoinLiveSessionResponse,
+  LiveParticipant,
+  LiveSessionSnapshot,
+  LiveStreamEventType,
+  LiveStreamMessage,
+  UpdateSharedStateInput,
+} from '../../types/live.ts';
+
+const DEFAULT_SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const STALE_THRESHOLD_MS = 25 * 1000; // 25 seconds without heartbeat -> reconnecting
+const DISCONNECT_THRESHOLD_MS = 60 * 1000; // 60 seconds -> disconnected
+
+export class LiveSyncError extends Error {
+  statusCode: number;
+  code: string;
+  latestSession?: LiveSessionSnapshot;
+
+  constructor(
+    message: string,
+    statusCode: number,
+    code: string,
+    latestSession?: LiveSessionSnapshot
+  ) {
+    super(message);
+    this.name = 'LiveSyncError';
+    this.statusCode = statusCode;
+    this.code = code;
+    this.latestSession = latestSession;
+  }
+}
+
+interface InternalSessionRecord extends LiveSessionSnapshot {
+  inviteTokenVersion: number;
+}
+
+type StreamSubscriber = (msg: LiveStreamMessage) => void;
+
+interface GlobalLiveStore {
+  sessions: Map<string, InternalSessionRecord>;
+  subscribers: Map<string, Set<StreamSubscriber>>;
+  activeStreamCounts: Map<string, number>; // key: `${sessionId}:${participantId}`
+  initializedFromDisk: boolean;
+}
+
+declare global {
+  var __wmcLiveStore: GlobalLiveStore | undefined;
+}
+
+function getSecretKey(): string {
+  return (
+    process.env.LIVE_SYNC_SECRET ||
+    'wmc-dev-only-hmac-secret-replace-in-production-2026'
+  );
+}
+
+export function isUsingDefaultDevSecret(): boolean {
+  return !process.env.LIVE_SYNC_SECRET;
+}
+
+function getPersistenceFilePath(): string {
+  return path.join(process.cwd(), '.data', 'live-sessions.json');
+}
+
+function getStore(): GlobalLiveStore {
+  if (!globalThis.__wmcLiveStore) {
+    globalThis.__wmcLiveStore = {
+      sessions: new Map(),
+      subscribers: new Map(),
+      activeStreamCounts: new Map(),
+      initializedFromDisk: false,
+    };
+  }
+
+  const store = globalThis.__wmcLiveStore;
+  if (!store.initializedFromDisk) {
+    store.initializedFromDisk = true;
+    try {
+      const filePath = getPersistenceFilePath();
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, 'utf8');
+        const parsed = JSON.parse(raw) as InternalSessionRecord[];
+        if (Array.isArray(parsed)) {
+          for (const rec of parsed) {
+            store.sessions.set(rec.sessionId, rec);
+          }
+        }
+      }
+    } catch {
+      // Ignore disk hydration errors in restricted environments
+    }
+  }
+
+  return store;
+}
+
+function persistStoreToDisk(): void {
+  if (process.env.WMC_DISABLE_DISK_PERSIST === '1') return;
+  try {
+    const store = getStore();
+    const filePath = getPersistenceFilePath();
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const records = Array.from(store.sessions.values());
+    fs.writeFileSync(filePath, JSON.stringify(records, null, 2), 'utf8');
+  } catch {
+    // Non-fatal in read-only filesystems
+  }
+}
+
+function signPayload(payload: object): string {
+  const data = Buffer.from(JSON.stringify(payload), 'utf8').toString(
+    'base64url'
+  );
+  const sig = crypto
+    .createHmac('sha256', getSecretKey())
+    .update(data)
+    .digest('base64url');
+  return `${data}.${sig}`;
+}
+
+function verifySignedPayload<T>(token: string): T | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [data, sig] = parts;
+
+  const expectedSig = crypto
+    .createHmac('sha256', getSecretKey())
+    .update(data)
+    .digest('base64url');
+
+  const sigBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (
+    sigBuf.length !== expectedBuf.length ||
+    !crypto.timingSafeEqual(sigBuf, expectedBuf)
+  ) {
+    return null;
+  }
+
+  try {
+    const json = Buffer.from(data, 'base64url').toString('utf8');
+    return JSON.parse(json) as T;
+  } catch {
+    return null;
+  }
+}
+
+interface ParticipantTokenPayload {
+  kind: 'participant';
+  sessionId: string;
+  participantId: string;
+  issuedAt: number;
+}
+
+interface InviteTokenPayload {
+  kind: 'invite';
+  sessionId: string;
+  joinCode: string;
+  expiresAt: number;
+  version: number;
+}
+
+export function createParticipantToken(
+  sessionId: string,
+  participantId: string
+): string {
+  const payload: ParticipantTokenPayload = {
+    kind: 'participant',
+    sessionId,
+    participantId,
+    issuedAt: Date.now(),
+  };
+  return signPayload(payload);
+}
+
+export function verifyParticipantToken(
+  token: string,
+  expectedSessionId?: string
+): ParticipantTokenPayload | null {
+  const parsed = verifySignedPayload<ParticipantTokenPayload>(token);
+  if (!parsed || parsed.kind !== 'participant') return null;
+  if (expectedSessionId && parsed.sessionId !== expectedSessionId) return null;
+  return parsed;
+}
+
+export function createInviteToken(session: InternalSessionRecord): string {
+  const payload: InviteTokenPayload = {
+    kind: 'invite',
+    sessionId: session.sessionId,
+    joinCode: session.joinCode,
+    expiresAt: new Date(session.expiresAt).getTime(),
+    version: session.inviteTokenVersion,
+  };
+  return signPayload(payload);
+}
+
+export function verifyInviteToken(token: string): InviteTokenPayload | null {
+  const parsed = verifySignedPayload<InviteTokenPayload>(token);
+  if (!parsed || parsed.kind !== 'invite') return null;
+  return parsed;
+}
+
+function generateJoinCode(existingCodes: Set<string>): string {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  for (let attempt = 0; attempt < 25; attempt++) {
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      const idx = crypto.randomInt(0, alphabet.length);
+      code += alphabet[idx];
+    }
+    if (!existingCodes.has(code)) {
+      return code;
+    }
+  }
+  return crypto.randomBytes(3).toString('hex').toUpperCase();
+}
+
+function sanitizeSnapshot(record: InternalSessionRecord): LiveSessionSnapshot {
+  const now = Date.now();
+  const store = getStore();
+
+  const participants: LiveParticipant[] = record.participants.map((p) => {
+    const streamKey = `${record.sessionId}:${p.id}`;
+    const hasActiveStream = (store.activeStreamCounts.get(streamKey) ?? 0) > 0;
+    const elapsed = now - new Date(p.lastSeenAt).getTime();
+
+    let connectionState = p.connectionState;
+    if (p.connectionState !== 'disconnected') {
+      if (hasActiveStream || elapsed <= STALE_THRESHOLD_MS) {
+        connectionState = 'connected';
+      } else if (elapsed <= DISCONNECT_THRESHOLD_MS) {
+        connectionState = 'reconnecting';
+      } else {
+        connectionState = 'disconnected';
+      }
+    }
+
+    return {
+      ...p,
+      connectionState,
+    };
+  });
+
+  return {
+    sessionId: record.sessionId,
+    joinCode: record.joinCode,
+    title: record.title,
+    status: record.status,
+    revision: record.revision,
+    leaderId: record.leaderId,
+    leaderName: record.leaderName,
+    coLeaderIds: [...record.coLeaderIds],
+    createdAt: record.createdAt,
+    expiresAt: record.expiresAt,
+    ...(record.endedAt ? { endedAt: record.endedAt } : {}),
+    sharedState: {
+      ...record.sharedState,
+      setlistSongIds: [...record.sharedState.setlistSongIds],
+    },
+    participants,
+  };
+}
+
+function broadcastSessionEvent(
+  sessionId: string,
+  type: LiveStreamEventType
+): void {
+  const store = getStore();
+  const record = store.sessions.get(sessionId);
+  if (!record) return;
+
+  const subs = store.subscribers.get(sessionId);
+  if (!subs || subs.size === 0) return;
+
+  const snapshot = sanitizeSnapshot(record);
+  const message: LiveStreamMessage = {
+    type,
+    revision: snapshot.revision,
+    timestamp: new Date().toISOString(),
+    session: snapshot,
+  };
+
+  for (const listener of subs) {
+    try {
+      listener(message);
+    } catch {
+      // Ignore closed subscriber errors
+    }
+  }
+}
+
+/**
+ * Starts a new authoritative leader-led Live Sync session.
+ */
+export function createLiveSession(
+  input: CreateLiveSessionInput
+): CreateLiveSessionResponse {
+  const leaderName = (input.leaderName ?? '').trim();
+  if (!leaderName) {
+    throw new LiveSyncError(
+      'Leader display name is required to start a live session.',
+      400,
+      'INVALID_INPUT'
+    );
+  }
+
+  const allSongs = getAllSongs();
+  const initialSong =
+    getSongById(input.initialSongId) ?? allSongs[0];
+  if (!initialSong) {
+    throw new LiveSyncError(
+      'Cannot start session: no valid song found.',
+      400,
+      'SONG_NOT_FOUND'
+    );
+  }
+
+  const store = getStore();
+  const activeCodes = new Set(
+    Array.from(store.sessions.values())
+      .filter((s) => s.status === 'active')
+      .map((s) => s.joinCode)
+  );
+
+  const sessionId = `live-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+  const participantId = `usr-${crypto.randomBytes(5).toString('hex')}`;
+  const joinCode = generateJoinCode(activeCodes);
+
+  const nowIso = new Date().toISOString();
+  const ttl =
+    typeof input.ttlMs === 'number' ? input.ttlMs : DEFAULT_SESSION_TTL_MS;
+  const expiresAtIso = new Date(Date.now() + ttl).toISOString();
+
+  const firstSection = initialSong.sections[0] ?? {
+    id: 'sec-1',
+    label: 'Section 1',
+  };
+
+  const setlistIds =
+    Array.isArray(input.setlistSongIds) && input.setlistSongIds.length > 0
+      ? Array.from(new Set([initialSong.id, ...input.setlistSongIds]))
+      : allSongs.slice(0, 5).map((s) => s.id);
+
+  const record: InternalSessionRecord = {
+    sessionId,
+    joinCode,
+    title: input.title?.trim() || `${leaderName}'s Worship Session`,
+    status: 'active',
+    revision: 1,
+    leaderId: participantId,
+    leaderName,
+    coLeaderIds: [],
+    createdAt: nowIso,
+    expiresAt: expiresAtIso,
+    inviteTokenVersion: 1,
+    sharedState: {
+      songId: initialSong.id,
+      songSlug: initialSong.slug,
+      arrangementId: 'default',
+      officialSemitones: normalizeSemitones(input.initialSemitones ?? 0),
+      enharmonicPreference: input.enharmonicPreference ?? 'auto',
+      activeSectionId: firstSection.id,
+      activeSectionLabel: firstSection.label,
+      activeLineIndex: 0,
+      setlistSongIds: setlistIds,
+      updatedAt: nowIso,
+      updatedBy: participantId,
+    },
+    participants: [
+      {
+        id: participantId,
+        name: leaderName,
+        role: 'leader',
+        instrument: input.instrument ?? 'general',
+        connectionState: 'connected',
+        joinedAt: nowIso,
+        lastSeenAt: nowIso,
+      },
+    ],
+  };
+
+  store.sessions.set(sessionId, record);
+  persistStoreToDisk();
+
+  const participantToken = createParticipantToken(sessionId, participantId);
+  const inviteToken = createInviteToken(record);
+  const snapshot = sanitizeSnapshot(record);
+
+  return {
+    session: snapshot,
+    participantId,
+    participantToken,
+    inviteToken,
+    joinUrl: `/live?code=${encodeURIComponent(joinCode)}&invite=${encodeURIComponent(inviteToken)}`,
+  };
+}
+
+/**
+ * Joins an existing live session via join code or signed invite token.
+ * Rejects invalid codes, expired invitations, or ended sessions.
+ */
+export function joinLiveSession(
+  input: JoinLiveSessionInput
+): JoinLiveSessionResponse {
+  const participantName = (input.participantName ?? '').trim();
+  if (!participantName) {
+    throw new LiveSyncError(
+      'Please enter your display name to join the live session.',
+      400,
+      'INVALID_NAME'
+    );
+  }
+
+  const store = getStore();
+  let targetSession: InternalSessionRecord | undefined;
+
+  if (input.inviteToken) {
+    const verifiedInvite = verifyInviteToken(input.inviteToken);
+    if (!verifiedInvite) {
+      throw new LiveSyncError(
+        'Invalid or tampered invitation link.',
+        401,
+        'INVALID_INVITE_TOKEN'
+      );
+    }
+    if (Date.now() > verifiedInvite.expiresAt) {
+      throw new LiveSyncError(
+        'This session invitation has expired. Ask the worship leader for a fresh link or code.',
+        410,
+        'INVITATION_EXPIRED'
+      );
+    }
+
+    targetSession = store.sessions.get(verifiedInvite.sessionId);
+    if (
+      !targetSession ||
+      targetSession.inviteTokenVersion !== verifiedInvite.version
+    ) {
+      throw new LiveSyncError(
+        'This invitation link has been revoked or replaced by the leader.',
+        410,
+        'INVITATION_REVOKED'
+      );
+    }
+  } else if (input.joinCode) {
+    const cleanCode = input.joinCode.trim().toUpperCase();
+    targetSession = Array.from(store.sessions.values()).find(
+      (s) => s.joinCode.toUpperCase() === cleanCode
+    );
+    if (!targetSession) {
+      throw new LiveSyncError(
+        `No live session found matching join code "${cleanCode}".`,
+        404,
+        'SESSION_NOT_FOUND'
+      );
+    }
+  } else if (input.sessionId) {
+    targetSession = store.sessions.get(input.sessionId);
+    if (!targetSession) {
+      throw new LiveSyncError(
+        'Live session not found.',
+        404,
+        'SESSION_NOT_FOUND'
+      );
+    }
+  } else {
+    throw new LiveSyncError(
+      'Provide a join code or invitation token to join.',
+      400,
+      'MISSING_JOIN_CREDENTIALS'
+    );
+  }
+
+  if (targetSession.status === 'ended') {
+    throw new LiveSyncError(
+      'This live worship session has already ended.',
+      410,
+      'SESSION_ENDED'
+    );
+  }
+
+  if (Date.now() > new Date(targetSession.expiresAt).getTime()) {
+    throw new LiveSyncError(
+      'This live session invitation has expired.',
+      410,
+      'INVITATION_EXPIRED'
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+  const participantId = `usr-${crypto.randomBytes(5).toString('hex')}`;
+  const newParticipant: LiveParticipant = {
+    id: participantId,
+    name: participantName,
+    role: 'member',
+    instrument: input.instrument ?? 'general',
+    connectionState: 'connected',
+    joinedAt: nowIso,
+    lastSeenAt: nowIso,
+  };
+
+  targetSession.participants.push(newParticipant);
+  persistStoreToDisk();
+  broadcastSessionEvent(targetSession.sessionId, 'presence_updated');
+
+  const participantToken = createParticipantToken(
+    targetSession.sessionId,
+    participantId
+  );
+
+  return {
+    session: sanitizeSnapshot(targetSession),
+    participantId,
+    participantToken,
+  };
+}
+
+/**
+ * Retrieves the latest authoritative snapshot for a connected participant (used on initial load and reconnect).
+ */
+export function getLiveSessionSnapshot(
+  sessionId: string,
+  participantToken: string
+): {
+  session: LiveSessionSnapshot;
+  participant: LiveParticipant;
+  inviteToken?: string;
+} {
+  const verified = verifyParticipantToken(participantToken, sessionId);
+  if (!verified) {
+    throw new LiveSyncError(
+      'Unauthorized: valid session membership token required.',
+      401,
+      'UNAUTHORIZED'
+    );
+  }
+
+  const store = getStore();
+  const record = store.sessions.get(sessionId);
+  if (!record) {
+    throw new LiveSyncError(
+      'Live session not found.',
+      404,
+      'SESSION_NOT_FOUND'
+    );
+  }
+
+  const participant = record.participants.find(
+    (p) => p.id === verified.participantId
+  );
+  if (!participant) {
+    throw new LiveSyncError(
+      'You are not a registered participant of this live session.',
+      403,
+      'NOT_IN_SESSION'
+    );
+  }
+
+  // Mark participant seen on snapshot fetch (reconnection recovery)
+  participant.lastSeenAt = new Date().toISOString();
+  participant.connectionState = 'connected';
+  persistStoreToDisk();
+  broadcastSessionEvent(sessionId, 'presence_updated');
+
+  const snapshot = sanitizeSnapshot(record);
+  const updatedParticipant =
+    snapshot.participants.find((p) => p.id === participant.id) ?? participant;
+
+  const isLeaderOrCoLeader =
+    record.leaderId === participant.id ||
+    record.coLeaderIds.includes(participant.id);
+
+  return {
+    session: snapshot,
+    participant: updatedParticipant,
+    ...(isLeaderOrCoLeader ? { inviteToken: createInviteToken(record) } : {}),
+  };
+}
+
+/**
+ * Authoritative state update: strictly restricted to the session Leader or an authorized Co-Leader.
+ * Enforces monotonic revision numbers and prevents stale overwrites.
+ */
+export function updateLiveSessionState(
+  sessionId: string,
+  participantToken: string,
+  input: UpdateSharedStateInput
+): LiveSessionSnapshot {
+  const verified = verifyParticipantToken(participantToken, sessionId);
+  if (!verified) {
+    throw new LiveSyncError(
+      'Unauthorized: invalid or missing participant token.',
+      401,
+      'UNAUTHORIZED'
+    );
+  }
+
+  const store = getStore();
+  const record = store.sessions.get(sessionId);
+  if (!record) {
+    throw new LiveSyncError(
+      'Live session not found.',
+      404,
+      'SESSION_NOT_FOUND'
+    );
+  }
+
+  if (record.status === 'ended') {
+    throw new LiveSyncError(
+      'Cannot update state: this live session has ended.',
+      410,
+      'SESSION_ENDED'
+    );
+  }
+
+  const caller = record.participants.find(
+    (p) => p.id === verified.participantId
+  );
+  const isAuthorizedLeader =
+    caller &&
+    (record.leaderId === caller.id ||
+      record.coLeaderIds.includes(caller.id));
+
+  if (!isAuthorizedLeader) {
+    throw new LiveSyncError(
+      'Forbidden: only the worship leader or an authorized co-leader may modify the official session state.',
+      403,
+      'FORBIDDEN_NOT_LEADER'
+    );
+  }
+
+  // Optimistic concurrency / revision ordering check
+  if (
+    input.expectedRevision !== undefined &&
+    input.expectedRevision < record.revision
+  ) {
+    throw new LiveSyncError(
+      `Outdated revision (${input.expectedRevision} < current ${record.revision}). Rejecting stale update.`,
+      409,
+      'STALE_REVISION',
+      sanitizeSnapshot(record)
+    );
+  }
+
+  const currentState = record.sharedState;
+  let targetSong = getSongById(input.songId ?? currentState.songId);
+  if (!targetSong) {
+    targetSong = getSongById(currentState.songId) ?? getAllSongs()[0];
+  }
+
+  const songChanged =
+    input.songId !== undefined && input.songId !== currentState.songId;
+
+  const nextSemitones =
+    input.officialSemitones !== undefined
+      ? normalizeSemitones(input.officialSemitones)
+      : songChanged
+      ? 0
+      : currentState.officialSemitones;
+
+  const nextSpelling =
+    input.enharmonicPreference !== undefined
+      ? input.enharmonicPreference
+      : currentState.enharmonicPreference;
+
+  let nextSection = targetSong.sections[0] ?? {
+    id: 'sec-1',
+    label: 'Section 1',
+  };
+
+  if (input.activeSectionId) {
+    const matchedSection = targetSong.sections.find(
+      (s) => s.id === input.activeSectionId
+    );
+    if (matchedSection) {
+      nextSection = matchedSection;
+    }
+  } else if (!songChanged) {
+    const existingSection = targetSong.sections.find(
+      (s) => s.id === currentState.activeSectionId
+    );
+    if (existingSection) {
+      nextSection = existingSection;
+    }
+  }
+
+  const nextSetlist =
+    Array.isArray(input.setlistSongIds) && input.setlistSongIds.length > 0
+      ? input.setlistSongIds
+      : currentState.setlistSongIds.includes(targetSong.id)
+      ? currentState.setlistSongIds
+      : [...currentState.setlistSongIds, targetSong.id];
+
+  const nowIso = new Date().toISOString();
+  caller.lastSeenAt = nowIso;
+  caller.connectionState = 'connected';
+
+  record.revision += 1;
+  record.sharedState = {
+    songId: targetSong.id,
+    songSlug: targetSong.slug,
+    arrangementId: 'default',
+    officialSemitones: nextSemitones,
+    enharmonicPreference: nextSpelling,
+    activeSectionId: nextSection.id,
+    activeSectionLabel: nextSection.label,
+    activeLineIndex:
+      typeof input.activeLineIndex === 'number' ? input.activeLineIndex : 0,
+    setlistSongIds: nextSetlist,
+    updatedAt: nowIso,
+    updatedBy: caller.id,
+  };
+
+  persistStoreToDisk();
+  broadcastSessionEvent(sessionId, 'state_updated');
+
+  return sanitizeSnapshot(record);
+}
+
+/**
+ * Transfers primary leadership or toggles co-leader authorization.
+ * Strictly restricted to the current primary Leader.
+ */
+export function transferSessionLeadership(
+  sessionId: string,
+  participantToken: string,
+  targetParticipantId: string,
+  action: 'make-leader' | 'toggle-co-leader' = 'make-leader'
+): LiveSessionSnapshot {
+  const verified = verifyParticipantToken(participantToken, sessionId);
+  if (!verified) {
+    throw new LiveSyncError('Unauthorized token.', 401, 'UNAUTHORIZED');
+  }
+
+  const store = getStore();
+  const record = store.sessions.get(sessionId);
+  if (!record) {
+    throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
+  }
+
+  if (record.status === 'ended') {
+    throw new LiveSyncError('Session has already ended.', 410, 'SESSION_ENDED');
+  }
+
+  if (record.leaderId !== verified.participantId) {
+    throw new LiveSyncError(
+      'Forbidden: only the primary worship leader can transfer leadership or manage co-leaders.',
+      403,
+      'FORBIDDEN_PRIMARY_LEADER_ONLY'
+    );
+  }
+
+  const target = record.participants.find((p) => p.id === targetParticipantId);
+  if (!target) {
+    throw new LiveSyncError(
+      'Target participant is not in this session.',
+      404,
+      'PARTICIPANT_NOT_FOUND'
+    );
+  }
+
+  if (action === 'make-leader') {
+    const previousLeaderId = record.leaderId;
+    record.leaderId = target.id;
+    record.leaderName = target.name;
+    record.coLeaderIds = record.coLeaderIds.filter((id) => id !== target.id);
+    if (!record.coLeaderIds.includes(previousLeaderId)) {
+      record.coLeaderIds.push(previousLeaderId);
+    }
+
+    record.participants = record.participants.map((p) => {
+      if (p.id === target.id) return { ...p, role: 'leader' };
+      if (p.id === previousLeaderId) return { ...p, role: 'co-leader' };
+      return p;
+    });
+  } else {
+    // Toggle co-leader
+    if (target.id === record.leaderId) {
+      return sanitizeSnapshot(record);
+    }
+    const isCoLeader = record.coLeaderIds.includes(target.id);
+    if (isCoLeader) {
+      record.coLeaderIds = record.coLeaderIds.filter((id) => id !== target.id);
+      target.role = 'member';
+    } else {
+      record.coLeaderIds.push(target.id);
+      target.role = 'co-leader';
+    }
+  }
+
+  record.revision += 1;
+  persistStoreToDisk();
+  broadcastSessionEvent(sessionId, 'leadership_transferred');
+
+  return sanitizeSnapshot(record);
+}
+
+/**
+ * Updates a participant's own instrument view mode or presence status without altering the shared musical state.
+ */
+export function updateParticipantPresence(
+  sessionId: string,
+  participantToken: string,
+  updates: {
+    instrument?: InstrumentViewMode;
+    connectionState?: 'connected' | 'reconnecting' | 'disconnected';
+  }
+): LiveSessionSnapshot {
+  const verified = verifyParticipantToken(participantToken, sessionId);
+  if (!verified) {
+    throw new LiveSyncError('Unauthorized token.', 401, 'UNAUTHORIZED');
+  }
+
+  const store = getStore();
+  const record = store.sessions.get(sessionId);
+  if (!record) {
+    throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
+  }
+
+  const participant = record.participants.find(
+    (p) => p.id === verified.participantId
+  );
+  if (!participant) {
+    throw new LiveSyncError(
+      'Participant not found in session.',
+      403,
+      'NOT_IN_SESSION'
+    );
+  }
+
+  participant.lastSeenAt = new Date().toISOString();
+  if (updates.instrument) {
+    participant.instrument = updates.instrument;
+  }
+  if (updates.connectionState) {
+    participant.connectionState = updates.connectionState;
+  } else {
+    participant.connectionState = 'connected';
+  }
+
+  persistStoreToDisk();
+  broadcastSessionEvent(sessionId, 'presence_updated');
+
+  return sanitizeSnapshot(record);
+}
+
+/**
+ * Safely ends the live session. Only the primary leader may end the session.
+ */
+export function endLiveSession(
+  sessionId: string,
+  participantToken: string
+): LiveSessionSnapshot {
+  const verified = verifyParticipantToken(participantToken, sessionId);
+  if (!verified) {
+    throw new LiveSyncError('Unauthorized token.', 401, 'UNAUTHORIZED');
+  }
+
+  const store = getStore();
+  const record = store.sessions.get(sessionId);
+  if (!record) {
+    throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
+  }
+
+  if (record.leaderId !== verified.participantId) {
+    throw new LiveSyncError(
+      'Forbidden: only the worship leader may end the live session.',
+      403,
+      'FORBIDDEN_PRIMARY_LEADER_ONLY'
+    );
+  }
+
+  record.status = 'ended';
+  record.endedAt = new Date().toISOString();
+  record.revision += 1;
+
+  persistStoreToDisk();
+  broadcastSessionEvent(sessionId, 'session_ended');
+
+  return sanitizeSnapshot(record);
+}
+
+/**
+ * Subscribes a connected client to real-time session events (used by the SSE stream route).
+ */
+export function subscribeToLiveSession(
+  sessionId: string,
+  participantToken: string,
+  onEvent: StreamSubscriber
+): {
+  initialSnapshot: LiveSessionSnapshot;
+  unsubscribe: () => void;
+} {
+  const verified = verifyParticipantToken(participantToken, sessionId);
+  if (!verified) {
+    throw new LiveSyncError('Unauthorized stream token.', 401, 'UNAUTHORIZED');
+  }
+
+  const store = getStore();
+  const record = store.sessions.get(sessionId);
+  if (!record) {
+    throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
+  }
+
+  const participant = record.participants.find(
+    (p) => p.id === verified.participantId
+  );
+  if (!participant) {
+    throw new LiveSyncError(
+      'Participant not registered in this session.',
+      403,
+      'NOT_IN_SESSION'
+    );
+  }
+
+  const streamKey = `${sessionId}:${participant.id}`;
+  store.activeStreamCounts.set(
+    streamKey,
+    (store.activeStreamCounts.get(streamKey) ?? 0) + 1
+  );
+
+  participant.lastSeenAt = new Date().toISOString();
+  participant.connectionState = 'connected';
+
+  let sessionSubs = store.subscribers.get(sessionId);
+  if (!sessionSubs) {
+    sessionSubs = new Set();
+    store.subscribers.set(sessionId, sessionSubs);
+  }
+  sessionSubs.add(onEvent);
+
+  broadcastSessionEvent(sessionId, 'presence_updated');
+
+  const unsubscribe = () => {
+    const currentSubs = store.subscribers.get(sessionId);
+    if (currentSubs) {
+      currentSubs.delete(onEvent);
+    }
+
+    const prevCount = store.activeStreamCounts.get(streamKey) ?? 1;
+    const nextCount = Math.max(0, prevCount - 1);
+    if (nextCount === 0) {
+      store.activeStreamCounts.delete(streamKey);
+      const currentRecord = store.sessions.get(sessionId);
+      const currentParticipant = currentRecord?.participants.find(
+        (p) => p.id === participant.id
+      );
+      if (
+        currentParticipant &&
+        currentParticipant.connectionState === 'connected'
+      ) {
+        currentParticipant.connectionState = 'reconnecting';
+        broadcastSessionEvent(sessionId, 'presence_updated');
+      }
+    } else {
+      store.activeStreamCounts.set(streamKey, nextCount);
+    }
+  };
+
+  return {
+    initialSnapshot: sanitizeSnapshot(record),
+    unsubscribe,
+  };
+}
+
+/**
+ * Resets the in-memory session store for isolated automated test runs.
+ */
+export function clearAllLiveSessionsForTest(): void {
+  const store = getStore();
+  store.sessions.clear();
+  store.subscribers.clear();
+  store.activeStreamCounts.clear();
+}
+
