@@ -60,7 +60,7 @@ export default function HomePage() {
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)]">
             <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
             <span>
-              Worship Song Catalog · 20 Famous English & Filipino Songs
+              Worship Song Catalog · 53 Famous Christian Songs & Anthems
               {customSongs.length > 0
                 ? ` + ${customSongs.length} Personal ${
                     customSongs.length === 1 ? 'Song' : 'Songs'
