@@ -7,6 +7,7 @@ import {
   Download,
   Filter,
   FolderHeart,
+  Mic,
   RotateCcw,
   Search,
   Sparkles,
@@ -18,6 +19,7 @@ import {
   searchAndFilterSongs,
 } from '@/lib/catalog/songCatalog';
 import { SongRowCard } from '@/components/songs/SongRowCard';
+import { VoiceSearchModal } from '@/components/search/VoiceSearchModal';
 
 function SongsCatalogInner({
   initialQuery,
@@ -51,6 +53,7 @@ function SongsCatalogInner({
     'all' | 'catalog' | 'custom'
   >(initialSource);
   const [offlineOnly, setOfflineOnly] = useState(initialOfflineOnly);
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
 
   const offlineIds = useMemo(
     () => new Set(offlineEntries.map((e) => e.songId)),
@@ -149,9 +152,23 @@ function SongsCatalogInner({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by title, artist, writer, language, category, or key..."
             aria-label="Search catalog"
-            className="w-full h-11 pl-11 pr-4 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] text-sm sm:text-base placeholder:text-[var(--text-secondary)] focus:bg-[var(--bg-surface)]"
+            className="w-full h-11 pl-11 pr-11 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] text-sm sm:text-base placeholder:text-[var(--text-secondary)] focus:bg-[var(--bg-surface)]"
           />
+          <button
+            type="button"
+            onClick={() => setIsVoiceModalOpen(true)}
+            title="Search songs by voice"
+            aria-label="Voice search songs"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--brand-accent)] hover:bg-[var(--brand-surface)] transition-colors cursor-pointer"
+          >
+            <Mic className="w-4 h-4" aria-hidden="true" />
+          </button>
         </div>
+
+        <VoiceSearchModal
+          isOpen={isVoiceModalOpen}
+          onClose={() => setIsVoiceModalOpen(false)}
+        />
 
         {/* Filter Selectors */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">

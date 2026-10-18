@@ -508,6 +508,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
   if (isPerformanceMode) {
     return (
       <div
+        data-performance-mode="true"
         className={`fixed inset-0 z-50 overflow-y-auto transition-colors ${
           perfDarkSurface
             ? 'bg-slate-950 text-slate-50'

@@ -16,6 +16,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { FloatingVoiceSearchButton } from '@/components/search/FloatingVoiceSearchButton';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
@@ -203,6 +204,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Suspense fallback={<MobileNavLinksContent pathname={null} />}>
         <MobileNavLinksActive />
       </Suspense>
+
+      {/* Global Floating Voice Search Button */}
+      <FloatingVoiceSearchButton />
     </div>
   );
 }
