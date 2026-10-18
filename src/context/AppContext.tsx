@@ -158,6 +158,9 @@ function applyColorSchemeToDocument(theme: ThemePreference) {
       window.matchMedia('(prefers-color-scheme: dark)').matches);
   root.classList.toggle('dark', isDark);
 
+  const currentAccent = (root.getAttribute('data-accent') as AccentColor) || 'teal';
+  applyAccentToDocument(currentAccent);
+
   try {
     if (theme === 'system') {
       window.localStorage.removeItem(STORAGE_KEYS.COLOR_SCHEME);
@@ -171,7 +174,52 @@ function applyColorSchemeToDocument(theme: ThemePreference) {
 
 export function applyAccentToDocument(accent: AccentColor = 'teal') {
   if (typeof document === 'undefined') return;
-  document.documentElement.setAttribute('data-accent', accent);
+  const root = document.documentElement;
+  root.setAttribute('data-accent', accent);
+
+  const isDark =
+    root.classList.contains('dark') ||
+    root.getAttribute('data-theme') === 'dark' ||
+    (root.getAttribute('data-theme') !== 'light' &&
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches);
+
+  const PALETTES: Record<
+    AccentColor,
+    { accent: string; surface: string; chord: string; chordBg: string }
+  > = {
+    teal: {
+      accent: isDark ? '#2dd4bf' : '#0f766e',
+      surface: isDark ? '#134e4a' : '#f0fdfa',
+      chord: isDark ? '#5eead4' : '#0f766e',
+      chordBg: isDark ? 'rgba(20, 184, 166, 0.16)' : '#f0fdfa',
+    },
+    indigo: {
+      accent: isDark ? '#818cf8' : '#4f46e5',
+      surface: isDark ? '#312e81' : '#eef2ff',
+      chord: isDark ? '#a5b4fc' : '#4f46e5',
+      chordBg: isDark ? 'rgba(99, 102, 241, 0.16)' : '#eef2ff',
+    },
+    emerald: {
+      accent: isDark ? '#34d399' : '#059669',
+      surface: isDark ? '#064e3b' : '#ecfdf5',
+      chord: isDark ? '#6ee7b7' : '#059669',
+      chordBg: isDark ? 'rgba(16, 185, 129, 0.16)' : '#ecfdf5',
+    },
+    amber: {
+      accent: isDark ? '#fbbf24' : '#d97706',
+      surface: isDark ? '#78350f' : '#fffbeb',
+      chord: isDark ? '#fcd34d' : '#b45309',
+      chordBg: isDark ? 'rgba(245, 158, 11, 0.16)' : '#fffbeb',
+    },
+  };
+
+  const current = PALETTES[accent] || PALETTES.teal;
+  root.style.setProperty('--brand-accent', current.accent);
+  root.style.setProperty('--brand-surface', current.surface);
+  root.style.setProperty('--chord-color', current.chord);
+  root.style.setProperty('--chord-bg', current.chordBg);
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {

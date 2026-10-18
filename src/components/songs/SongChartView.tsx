@@ -532,8 +532,8 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               <span
                 className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-mono font-bold text-sm ${
                   perfDarkSurface
-                    ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
-                    : 'bg-teal-700 text-white'
+                    ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30'
+                    : 'bg-[var(--brand-accent)] text-white'
                 }`}
               >
                 Key: {displayedKey}
@@ -561,7 +561,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   type="button"
                   onClick={() => handleStepSemitone(-1)}
                   aria-label="Transpose down 1 semitone"
-                  className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-teal-500/20 font-bold cursor-pointer"
+                  className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-[var(--brand-accent)]/20 font-bold cursor-pointer"
                 >
                   <Minus className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -570,7 +570,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   value={normalizedSemitones}
                   onChange={(e) => handleSelectTargetKey(Number(e.target.value))}
                   className={`h-9 px-2 font-mono font-bold text-sm rounded bg-transparent cursor-pointer focus:outline-none ${
-                    perfDarkSurface ? 'text-teal-300' : 'text-teal-800'
+                    perfDarkSurface ? 'text-[var(--brand-accent)]' : 'text-[var(--brand-accent)]'
                   }`}
                 >
                   {keyOptions.map((opt) => (
@@ -590,7 +590,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   type="button"
                   onClick={() => handleStepSemitone(1)}
                   aria-label="Transpose up 1 semitone"
-                  className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-teal-500/20 font-bold cursor-pointer"
+                  className="w-9 h-9 inline-flex items-center justify-center rounded-md hover:bg-[var(--brand-accent)]/20 font-bold cursor-pointer"
                 >
                   <Plus className="w-4 h-4" aria-hidden="true" />
                 </button>
@@ -653,7 +653,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   type="button"
                   onClick={() => setIsAutoScrolling((v) => !v)}
                   aria-pressed={isAutoScrolling}
-                  className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded hover:bg-teal-500/20 cursor-pointer"
+                  className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded hover:bg-[var(--brand-accent)]/20 cursor-pointer"
                 >
                   {isAutoScrolling ? (
                     <>
@@ -706,7 +706,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                     aria-pressed={settings.chartFontSize === sz}
                     className={`px-2 py-1 text-xs font-semibold rounded cursor-pointer ${
                       settings.chartFontSize === sz
-                        ? 'bg-teal-600 text-white'
+                        ? 'bg-[var(--brand-accent)] text-white'
                         : 'opacity-70 hover:opacity-100'
                     }`}
                   >
@@ -795,7 +795,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-2 border-b border-current/10">
-                  <h2 className="font-bold uppercase tracking-wider text-sm sm:text-base text-teal-400">
+                  <h2 className="font-bold uppercase tracking-wider text-sm sm:text-base text-[var(--brand-accent)]">
                     {section.label}
                   </h2>
                   {section.cue && (
@@ -827,8 +827,8 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                                 }
                                 className={`px-2.5 py-1 rounded cursor-pointer transition-colors ${
                                   perfDarkSurface
-                                    ? 'bg-teal-500/15 text-teal-300 hover:bg-teal-500/30'
-                                    : 'bg-teal-50 text-teal-800 hover:bg-teal-100'
+                                    ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:opacity-90'
+                                    : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:opacity-90'
                                 }`}
                                 title={
                                   seg.chord

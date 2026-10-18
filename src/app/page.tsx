@@ -307,7 +307,7 @@ export default function HomePage() {
               <>
                 <Link
                   href="/live"
-                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[var(--brand-accent)] to-teal-500 text-white font-semibold text-xs sm:text-sm shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--brand-accent)] text-white font-semibold text-xs sm:text-sm shadow-md shadow-[var(--brand-accent)]/25 hover:opacity-95 active:scale-95 transition-all cursor-pointer"
                 >
                   <Radio className="w-4 h-4 animate-pulse" aria-hidden="true" />
                   <span>Launch Live Sync</span>

@@ -180,7 +180,7 @@ function VoiceSearchDialog({ onClose }: { onClose: () => void }) {
               aria-label={isListening ? 'Stop listening' : 'Start voice search'}
               className={`relative z-10 w-22 h-22 rounded-full flex items-center justify-center transition-all duration-300 transform active:scale-95 cursor-pointer shadow-xl ${
                 isListening
-                  ? 'bg-gradient-to-br from-teal-500 to-emerald-600 text-white scale-105 shadow-emerald-500/40 ring-4 ring-white/30'
+                  ? 'bg-[var(--brand-accent)] text-white scale-105 shadow-[var(--brand-accent)]/40 ring-4 ring-white/30'
                   : 'bg-[var(--bg-surface)] border-2 border-[var(--brand-accent)]/80 text-[var(--brand-accent)] hover:border-[var(--brand-accent)] hover:scale-105 hover:shadow-lg shadow-black/10'
               }`}
             >
