@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -33,8 +34,13 @@ const COMMON_VOICE_SUGGESTIONS = [
 ];
 
 export function VoiceSearchModal({ isOpen, onClose }: VoiceSearchModalProps) {
-  if (!isOpen) return null;
-  return <VoiceSearchDialog onClose={onClose} />;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isOpen || !mounted) return null;
+  return createPortal(<VoiceSearchDialog onClose={onClose} />, document.body);
 }
 
 function VoiceSearchDialog({ onClose }: { onClose: () => void }) {
