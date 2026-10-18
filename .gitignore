@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local runtime live session store
 /.data
+
+# local SSL certificates
+/certificates
