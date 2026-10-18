@@ -111,7 +111,7 @@ export type ChartFontSize = 'sm' | 'md' | 'lg' | 'xl';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
-export type AccentColor = 'teal' | 'indigo' | 'emerald' | 'amber';
+export type AccentColor = 'lime' | 'teal' | 'indigo' | 'emerald' | 'amber';
 
 export interface UserSettings {
   theme: ThemePreference;

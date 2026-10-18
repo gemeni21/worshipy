@@ -108,6 +108,13 @@ export default function SettingsPage() {
     gradientClass: string;
   }[] = [
     {
+      id: 'lime',
+      label: 'Electric Lime',
+      sublabel: 'Modern crypto dark dashboard neon',
+      swatchHex: '#c6f135',
+      gradientClass: 'from-lime-400 to-emerald-400',
+    },
+    {
       id: 'teal',
       label: 'Deep Teal',
       sublabel: 'Default ocean teal tone',
@@ -267,7 +274,7 @@ export default function SettingsPage() {
       </section>
 
       {/* Theme Accent Color */}
-      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
+      <section className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
         <div>
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Palette className="w-5 h-5 text-[var(--brand-accent)]" aria-hidden="true" />
@@ -281,10 +288,10 @@ export default function SettingsPage() {
         <div
           role="radiogroup"
           aria-label="Theme Accent Color"
-          className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"
         >
           {accentOptions.map(({ id, label, sublabel, gradientClass }) => {
-            const active = (settings.accentColor || 'teal') === id;
+            const active = (settings.accentColor || 'lime') === id;
             return (
               <button
                 key={id}
@@ -292,7 +299,7 @@ export default function SettingsPage() {
                 role="radio"
                 aria-checked={active}
                 onClick={() => updateSettings({ accentColor: id })}
-                className={`text-left rounded-xl border p-4 transition-all duration-150 cursor-pointer flex flex-col justify-between gap-3 relative overflow-hidden ${
+                className={`theme-card text-left rounded-xl border p-4 transition-all duration-150 cursor-pointer flex flex-col justify-between gap-3 relative overflow-hidden ${
                   active
                     ? 'border-[var(--brand-accent)] bg-[var(--brand-surface)] ring-2 ring-[var(--brand-accent)]/20 shadow-xs'
                     : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--border-strong)]'
@@ -303,7 +310,7 @@ export default function SettingsPage() {
                     {active && <Check className="w-4 h-4 text-white" aria-hidden="true" />}
                   </div>
                   {active && (
-                    <span className="text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-[var(--brand-accent)] text-white">
+                    <span className="text-[0.6875rem] font-bold px-2 py-0.5 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-text)]">
                       Active
                     </span>
                   )}

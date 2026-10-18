@@ -146,17 +146,10 @@ export default function HomePage() {
     }
   };
 
-  const ACCENTS: { id: AccentColor; label: string; swatch: string }[] = [
-    { id: 'teal', label: 'Deep Teal', swatch: 'bg-teal-600' },
-    { id: 'indigo', label: 'Royal Indigo', swatch: 'bg-indigo-600' },
-    { id: 'emerald', label: 'Emerald', swatch: 'bg-emerald-600' },
-    { id: 'amber', label: 'Warm Amber', swatch: 'bg-amber-600' },
-  ];
-
   return (
     <div className="space-y-8">
-      {/* Modern Hero Greeting & Accent Quick Switcher */}
-      <section className="relative overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-gradient-to-b from-[var(--bg-surface)] via-[var(--bg-surface)] to-[var(--bg-subtle)]/40 p-6 sm:p-8 space-y-6 shadow-sm">
+      {/* Modern Hero Greeting */}
+      <section className="theme-card relative overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-gradient-to-b from-[var(--bg-surface)] via-[var(--bg-surface)] to-[var(--bg-subtle)]/40 p-6 sm:p-8 space-y-6 shadow-sm">
         {/* Subtle Decorative Ambient Radial Glow */}
         <div
           className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-[var(--brand-accent)]/10 blur-3xl pointer-events-none"
@@ -177,34 +170,22 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* Quick Accent Theme Pill Selector */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 p-2 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-xs shrink-0">
-            <span className="text-xs font-semibold text-[var(--text-secondary)] px-2 flex items-center gap-1.5">
-              <Palette className="w-3.5 h-3.5 text-[var(--brand-accent)]" aria-hidden="true" />
-              <span>Theme:</span>
-            </span>
-            <div className="flex items-center gap-1.5">
-              {ACCENTS.map((acc) => {
-                const active = (settings.accentColor || 'teal') === acc.id;
-                return (
-                  <button
-                    key={acc.id}
-                    type="button"
-                    onClick={() => updateSettings({ accentColor: acc.id })}
-                    title={`Switch accent to ${acc.label}`}
-                    aria-label={`Theme accent ${acc.label}`}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-                      active
-                        ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] ring-1 ring-[var(--brand-accent)]/30 font-bold shadow-xs'
-                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)]'
-                    }`}
-                  >
-                    <span className={`w-2.5 h-2.5 rounded-full ${acc.swatch}`} />
-                    <span className="hidden sm:inline">{acc.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+          {/* Quick Action Badges */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <Link
+              href="/live"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[var(--brand-accent)] text-[var(--brand-accent-text)] text-xs sm:text-sm font-bold shadow-md shadow-[var(--brand-accent)]/25 hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+            >
+              <Radio className="w-4 h-4 animate-pulse" aria-hidden="true" />
+              <span>Live Sync</span>
+            </Link>
+            <Link
+              href="/my-songs"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--brand-accent)] text-xs sm:text-sm font-semibold transition-all cursor-pointer"
+            >
+              <FolderHeart className="w-4 h-4 text-[var(--brand-accent)]" aria-hidden="true" />
+              <span>My Songs</span>
+            </Link>
           </div>
         </div>
 
@@ -254,7 +235,7 @@ export default function HomePage() {
       </section>
 
       {/* "This Sunday's Setlist" Spotlight Card */}
-      <section className="relative overflow-hidden rounded-3xl border border-[var(--brand-accent)]/30 bg-gradient-to-br from-[var(--bg-surface)] via-[var(--bg-surface)] to-[var(--brand-surface)]/50 p-5 sm:p-7 shadow-lg space-y-5">
+      <section className="theme-card relative overflow-hidden rounded-3xl border border-[var(--brand-accent)]/30 bg-gradient-to-br from-[var(--bg-surface)] via-[var(--bg-surface)] to-[var(--brand-surface)]/50 p-5 sm:p-7 shadow-lg space-y-5">
         {/* Subtle decorative glowing corner aura */}
         <div
           className="absolute -bottom-16 -right-16 w-64 h-64 rounded-full bg-[var(--brand-accent)]/15 blur-3xl pointer-events-none"
@@ -282,7 +263,7 @@ export default function HomePage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-[var(--brand-accent)] text-white shadow-xs">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-text)] shadow-xs">
                 <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
                 <span suppressHydrationWarning>{sundayInfo.dateLabel}</span>
               </span>
@@ -307,7 +288,7 @@ export default function HomePage() {
               <>
                 <Link
                   href="/live"
-                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--brand-accent)] text-white font-semibold text-xs sm:text-sm shadow-md shadow-[var(--brand-accent)]/25 hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--brand-accent)] text-[var(--brand-accent-text)] font-semibold text-xs sm:text-sm shadow-md shadow-[var(--brand-accent)]/25 hover:opacity-95 active:scale-95 transition-all cursor-pointer"
                 >
                   <Radio className="w-4 h-4 animate-pulse" aria-hidden="true" />
                   <span>Launch Live Sync</span>
@@ -324,7 +305,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={handleQuickCreateSundaySetlist}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] text-white font-semibold text-xs sm:text-sm shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] text-[var(--brand-accent-text)] font-semibold text-xs sm:text-sm shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
                 <span>1-Click Create Sunday Setlist</span>
@@ -340,7 +321,7 @@ export default function HomePage() {
               <Link
                 key={song.id + idx}
                 href={`/songs/${song.slug}`}
-                className="group flex items-center justify-between p-3 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] shadow-xs transition-all hover:scale-101"
+                className="theme-card group flex items-center justify-between p-3 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] shadow-xs transition-all"
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="w-6 h-6 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] font-mono font-bold text-xs flex items-center justify-center shrink-0">
@@ -377,7 +358,7 @@ export default function HomePage() {
               ].map((song, idx) => (
                 <div
                   key={song.slug}
-                  className="flex items-center justify-between p-3 rounded-2xl bg-[var(--bg-surface)]/70 border border-dashed border-[var(--border-strong)] text-xs text-[var(--text-secondary)]"
+                  className="theme-card flex items-center justify-between p-3 rounded-2xl bg-[var(--bg-surface)]/70 border border-dashed border-[var(--border-strong)] text-xs text-[var(--text-secondary)]"
                 >
                   <div className="flex items-center gap-2.5 truncate">
                     <span className="w-5 h-5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-mono font-bold text-[0.6875rem] flex items-center justify-center shrink-0">
@@ -438,7 +419,7 @@ export default function HomePage() {
               <Link
                 key={cat.id}
                 href={`/songs?category=${encodeURIComponent(cat.id)}`}
-                className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--brand-accent)] p-3.5 transition-all hover:scale-101 flex flex-col justify-between shadow-xs"
+                className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--brand-accent)] p-4 flex flex-col justify-between shadow-xs"
               >
                 <span className="font-semibold text-sm text-[var(--text-primary)]">
                   {cat.label}
@@ -456,7 +437,7 @@ export default function HomePage() {
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Link
           href="/my-songs"
-          className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] transition-colors flex items-center justify-between gap-4"
+          className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] flex items-center justify-between gap-4"
         >
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
@@ -482,7 +463,7 @@ export default function HomePage() {
 
         <Link
           href="/tuner"
-          className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] transition-colors flex items-center justify-between gap-4"
+          className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] flex items-center justify-between gap-4"
         >
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
@@ -505,7 +486,7 @@ export default function HomePage() {
 
         <Link
           href="/live"
-          className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] transition-colors flex items-center justify-between gap-4"
+          className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] flex items-center justify-between gap-4"
         >
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
@@ -528,7 +509,7 @@ export default function HomePage() {
 
         <Link
           href="/setlists"
-          className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] transition-colors flex items-center justify-between gap-4"
+          className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] flex items-center justify-between gap-4"
         >
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
@@ -554,7 +535,7 @@ export default function HomePage() {
 
         <Link
           href="/songs?offline=1"
-          className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] transition-colors flex items-center justify-between gap-4 sm:col-span-2"
+          className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] flex items-center justify-between gap-4 sm:col-span-2"
         >
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">

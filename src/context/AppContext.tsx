@@ -48,7 +48,7 @@ const STORAGE_KEYS = {
 
 const DEFAULT_SETTINGS: UserSettings = {
   theme: 'system',
-  accentColor: 'teal',
+  accentColor: 'lime',
   chartFontSize: 'md',
   enharmonicPreference: 'auto',
 };
@@ -158,7 +158,7 @@ function applyColorSchemeToDocument(theme: ThemePreference) {
       window.matchMedia('(prefers-color-scheme: dark)').matches);
   root.classList.toggle('dark', isDark);
 
-  const currentAccent = (root.getAttribute('data-accent') as AccentColor) || 'teal';
+  const currentAccent = (root.getAttribute('data-accent') as AccentColor) || 'lime';
   applyAccentToDocument(currentAccent);
 
   try {
@@ -172,7 +172,7 @@ function applyColorSchemeToDocument(theme: ThemePreference) {
   }
 }
 
-export function applyAccentToDocument(accent: AccentColor = 'teal') {
+export function applyAccentToDocument(accent: AccentColor = 'lime') {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   root.setAttribute('data-accent', accent);
@@ -187,39 +187,64 @@ export function applyAccentToDocument(accent: AccentColor = 'teal') {
 
   const PALETTES: Record<
     AccentColor,
-    { accent: string; surface: string; chord: string; chordBg: string }
+    {
+      accent: string;
+      surface: string;
+      chord: string;
+      chordBg: string;
+      accentText: string;
+      glow: string;
+    }
   > = {
+    lime: {
+      accent: isDark ? '#c6f135' : '#4d7c0f',
+      surface: isDark ? 'rgba(198, 241, 53, 0.12)' : '#f7fee7',
+      chord: isDark ? '#d9f99d' : '#3f6212',
+      chordBg: isDark ? 'rgba(198, 241, 53, 0.14)' : '#f7fee7',
+      accentText: isDark ? '#090d05' : '#ffffff',
+      glow: isDark ? 'rgba(198, 241, 53, 0.24)' : 'rgba(77, 124, 15, 0.16)',
+    },
     teal: {
       accent: isDark ? '#2dd4bf' : '#0f766e',
       surface: isDark ? '#134e4a' : '#f0fdfa',
       chord: isDark ? '#5eead4' : '#0f766e',
       chordBg: isDark ? 'rgba(20, 184, 166, 0.16)' : '#f0fdfa',
+      accentText: '#ffffff',
+      glow: isDark ? 'rgba(45, 212, 191, 0.24)' : 'rgba(15, 118, 110, 0.16)',
     },
     indigo: {
       accent: isDark ? '#818cf8' : '#4f46e5',
       surface: isDark ? '#312e81' : '#eef2ff',
       chord: isDark ? '#a5b4fc' : '#4f46e5',
       chordBg: isDark ? 'rgba(99, 102, 241, 0.16)' : '#eef2ff',
+      accentText: '#ffffff',
+      glow: isDark ? 'rgba(129, 140, 248, 0.24)' : 'rgba(79, 70, 229, 0.16)',
     },
     emerald: {
       accent: isDark ? '#34d399' : '#059669',
       surface: isDark ? '#064e3b' : '#ecfdf5',
       chord: isDark ? '#6ee7b7' : '#059669',
       chordBg: isDark ? 'rgba(16, 185, 129, 0.16)' : '#ecfdf5',
+      accentText: '#ffffff',
+      glow: isDark ? 'rgba(52, 211, 153, 0.24)' : 'rgba(5, 150, 105, 0.16)',
     },
     amber: {
       accent: isDark ? '#fbbf24' : '#d97706',
       surface: isDark ? '#78350f' : '#fffbeb',
       chord: isDark ? '#fcd34d' : '#b45309',
       chordBg: isDark ? 'rgba(245, 158, 11, 0.16)' : '#fffbeb',
+      accentText: isDark ? '#090d05' : '#ffffff',
+      glow: isDark ? 'rgba(251, 191, 36, 0.24)' : 'rgba(217, 119, 6, 0.16)',
     },
   };
 
-  const current = PALETTES[accent] || PALETTES.teal;
+  const current = PALETTES[accent] || PALETTES.lime;
   root.style.setProperty('--brand-accent', current.accent);
   root.style.setProperty('--brand-surface', current.surface);
   root.style.setProperty('--chord-color', current.chord);
   root.style.setProperty('--chord-bg', current.chordBg);
+  root.style.setProperty('--brand-accent-text', current.accentText);
+  root.style.setProperty('--brand-accent-glow', current.glow);
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -279,7 +304,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setSetlists(Array.isArray(loadedSetlists) ? loadedSetlists : []);
       setSettings(mergedSettings);
       applyColorSchemeToDocument(mergedSettings.theme);
-      applyAccentToDocument(mergedSettings.accentColor || 'teal');
+      applyAccentToDocument(mergedSettings.accentColor || 'lime');
       setIsHydrated(true);
     });
 

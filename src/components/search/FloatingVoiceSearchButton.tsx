@@ -48,7 +48,7 @@ export function FloatingVoiceSearchButton() {
           onClick={() => setIsOpen(true)}
           aria-label="Voice search songs by microphone"
           title="Search songs with voice (say title or artist)"
-          className="group relative flex items-center justify-center w-14 h-14 rounded-full bg-[var(--brand-accent)] text-white shadow-lg shadow-[var(--brand-accent)]/35 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-4 focus:ring-[var(--brand-accent)]/30 border border-white/20"
+          className="group relative flex items-center justify-center w-14 h-14 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-text)] shadow-lg shadow-[var(--brand-accent)]/35 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-4 focus:ring-[var(--brand-accent)]/30 border border-white/20"
         >
           {/* Subtle multi-color iridescent aura on hover */}
           <span

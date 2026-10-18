@@ -533,7 +533,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md font-mono font-bold text-sm ${
                   perfDarkSurface
                     ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30'
-                    : 'bg-[var(--brand-accent)] text-white'
+                    : 'bg-[var(--brand-accent)] text-[var(--brand-accent-text)]'
                 }`}
               >
                 Key: {displayedKey}
@@ -706,7 +706,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                     aria-pressed={settings.chartFontSize === sz}
                     className={`px-2 py-1 text-xs font-semibold rounded cursor-pointer ${
                       settings.chartFontSize === sz
-                        ? 'bg-[var(--brand-accent)] text-white'
+                        ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-text)]'
                         : 'opacity-70 hover:opacity-100'
                     }`}
                   >

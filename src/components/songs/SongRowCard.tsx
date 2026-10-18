@@ -22,7 +22,7 @@ export function SongRowCard({
   const savedOffline = isSongSavedOffline(song.id);
 
   return (
-    <div className="group relative flex items-center justify-between gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3.5 hover:border-[var(--border-strong)] transition-colors">
+    <div className="theme-card group relative flex items-center justify-between gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3.5 hover:border-[var(--brand-accent)] transition-all">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2 mb-1">
           <Link
