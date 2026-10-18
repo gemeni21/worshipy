@@ -278,7 +278,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] z-30"
       >
         <div className="px-5 py-5 border-b border-[var(--border-subtle)] flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-[var(--brand-accent)] text-[var(--bg-surface)] flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0 shadow-sm">
             <Music2 className="w-5 h-5" aria-hidden="true" />
           </div>
           <div>
@@ -311,7 +311,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile Compact Header */}
       <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]">
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-[var(--brand-accent)] text-[var(--bg-surface)] flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shadow-sm">
             <Music2 className="w-4 h-4" aria-hidden="true" />
           </div>
           <span className="font-bold text-sm tracking-tight">

@@ -174,7 +174,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2.5 shrink-0">
             <Link
               href="/live"
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[var(--brand-accent)] text-[var(--brand-accent-text)] text-xs sm:text-sm font-bold shadow-md shadow-[var(--brand-accent)]/25 hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer"
             >
               <Radio className="w-4 h-4 animate-pulse" aria-hidden="true" />
               <span>Live Sync</span>
@@ -207,14 +207,15 @@ export default function HomePage() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by song title, artist, language, or key (e.g. Goodness of God, Way Maker, G, Bb)..."
               aria-label="Search songs by title, artist, language, category, or key"
-              className="w-full h-12 pl-11 pr-4 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] text-sm sm:text-base placeholder:text-[var(--text-secondary)] focus:bg-[var(--bg-surface)] focus:border-[var(--brand-accent)] transition-colors"
+              className="w-full h-12 pl-11 pr-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm sm:text-base placeholder:text-[var(--text-secondary)] focus:bg-[var(--bg-surface)] focus:border-[var(--brand-accent)] transition-colors"
             />
           </div>
           <button
             type="submit"
-            className="h-12 px-6 rounded-xl bg-[var(--brand-accent)] text-white font-semibold text-sm sm:text-base hover:opacity-95 active:scale-98 transition-all cursor-pointer shadow-md shadow-[var(--brand-accent)]/20 shrink-0"
+            className="h-12 px-6 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm sm:text-base transition-all cursor-pointer shadow-sm shrink-0 flex items-center justify-center gap-2"
           >
-            Search Songs
+            <Search className="w-4 h-4 sm:hidden" />
+            <span>Search Songs</span>
           </button>
         </form>
 
@@ -235,7 +236,7 @@ export default function HomePage() {
       </section>
 
       {/* "This Sunday's Setlist" Spotlight Card */}
-      <section className="theme-card relative overflow-hidden rounded-3xl border border-[var(--brand-accent)]/30 bg-gradient-to-br from-[var(--bg-surface)] via-[var(--bg-surface)] to-[var(--brand-surface)]/50 p-5 sm:p-7 shadow-lg space-y-5">
+      <section className="theme-card relative overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-7 shadow-lg space-y-5">
         {/* Subtle decorative glowing corner aura */}
         <div
           className="absolute -bottom-16 -right-16 w-64 h-64 rounded-full bg-[var(--brand-accent)]/15 blur-3xl pointer-events-none"
@@ -263,7 +264,7 @@ export default function HomePage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-text)] shadow-xs">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 shadow-xs">
                 <Calendar className="w-3.5 h-3.5" aria-hidden="true" />
                 <span suppressHydrationWarning>{sundayInfo.dateLabel}</span>
               </span>
@@ -288,7 +289,7 @@ export default function HomePage() {
               <>
                 <Link
                   href="/live"
-                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--brand-accent)] text-[var(--brand-accent-text)] font-semibold text-xs sm:text-sm shadow-md shadow-[var(--brand-accent)]/25 hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
                 >
                   <Radio className="w-4 h-4 animate-pulse" aria-hidden="true" />
                   <span>Launch Live Sync</span>
@@ -305,7 +306,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={handleQuickCreateSundaySetlist}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] text-[var(--brand-accent-text)] font-semibold text-xs sm:text-sm shadow-md hover:opacity-95 active:scale-95 transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/40 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-xs sm:text-sm shadow-sm transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" aria-hidden="true" />
                 <span>1-Click Create Sunday Setlist</span>

@@ -5,28 +5,28 @@
 :root {
   /* Light and dark raw design tokens */
   --bg-canvas-light: #f8fafc;
-  --bg-canvas-dark: #0b0d12;
+  --bg-canvas-dark: #0c0c10;
 
   --bg-surface-light: #ffffff;
-  --bg-surface-dark: #12151b;
+  --bg-surface-dark: #14141a;
 
   --bg-subtle-light: #f1f5f9;
-  --bg-subtle-dark: #181c24;
+  --bg-subtle-dark: #1b1b24;
 
   --text-primary-light: #0f172a;
-  --text-primary-dark: #f8fafc;
+  --text-primary-dark: #ffffff;
 
   --text-secondary-light: #475569;
-  --text-secondary-dark: #94a3b8;
+  --text-secondary-dark: #9c9ea5;
 
   --text-muted-light: #64748b;
-  --text-muted-dark: #64748b;
+  --text-muted-dark: #5e5e64;
 
   --border-subtle-light: #e2e8f0;
-  --border-subtle-dark: rgba(255, 255, 255, 0.08);
+  --border-subtle-dark: #262533;
 
   --border-strong-light: #cbd5e1;
-  --border-strong-dark: rgba(255, 255, 255, 0.16);
+  --border-strong-dark: #38374a;
 
   /* Fallback defaults for browsers without light-dark() support */
   --bg-canvas: var(--bg-canvas-light);
@@ -149,12 +149,12 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]),
   :root:not([data-theme="light"])[data-accent="lime"] {
-    --brand-accent: #c6f135;
-    --brand-surface: rgba(198, 241, 53, 0.12);
-    --chord-color: #d9f99d;
-    --chord-bg: rgba(198, 241, 53, 0.14);
-    --brand-accent-text: #090d05;
-    --brand-accent-glow: rgba(198, 241, 53, 0.24);
+    --brand-accent: #c8fc6c;
+    --brand-surface: rgba(200, 252, 108, 0.10);
+    --chord-color: #c8fc6c;
+    --chord-bg: rgba(200, 252, 108, 0.12);
+    --brand-accent-text: #0e1106;
+    --brand-accent-glow: rgba(200, 252, 108, 0.20);
   }
 
   :root:not([data-theme="light"])[data-accent="teal"] {
@@ -198,12 +198,12 @@
 :root.dark,
 :root[data-theme="dark"][data-accent="lime"],
 :root.dark[data-accent="lime"] {
-  --brand-accent: #c6f135;
-  --brand-surface: rgba(198, 241, 53, 0.12);
-  --chord-color: #d9f99d;
-  --chord-bg: rgba(198, 241, 53, 0.14);
-  --brand-accent-text: #090d05;
-  --brand-accent-glow: rgba(198, 241, 53, 0.24);
+  --brand-accent: #c8fc6c;
+  --brand-surface: rgba(200, 252, 108, 0.10);
+  --chord-color: #c8fc6c;
+  --chord-bg: rgba(200, 252, 108, 0.12);
+  --brand-accent-text: #0e1106;
+  --brand-accent-glow: rgba(200, 252, 108, 0.20);
 }
 
 :root[data-theme="dark"][data-accent="teal"],
@@ -299,6 +299,7 @@
 .theme-card {
   position: relative;
   overflow: hidden;
+  isolation: isolate;
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.28s cubic-bezier(0.16, 1, 0.3, 1);
@@ -311,29 +312,29 @@
   position: absolute;
   bottom: 0;
   right: 0;
-  width: 220px;
-  height: 220px;
+  width: 240px;
+  height: 240px;
   border-bottom-right-radius: inherit;
   pointer-events: none;
   background: radial-gradient(
     circle at 100% 100%,
-    var(--brand-accent-glow, rgba(198, 241, 53, 0.22)) 0%,
-    rgba(198, 241, 53, 0.08) 32%,
-    rgba(198, 241, 53, 0.02) 55%,
+    rgba(200, 252, 108, 0.22) 0%,
+    rgba(200, 252, 108, 0.08) 32%,
+    rgba(200, 252, 108, 0.02) 58%,
     transparent 75%
   );
   opacity: 0;
-  transform: translate(12px, 12px) scale(0.85);
+  transform: translate(14px, 14px) scale(0.85);
   transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
               transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 1;
+  z-index: 0;
 }
 
 .theme-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: rgba(200, 252, 108, 0.32);
   box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.7),
-              0 0 24px -8px var(--brand-accent-glow, rgba(198, 241, 53, 0.18));
+              0 0 24px -6px rgba(200, 252, 108, 0.16);
 }
 
 .theme-card:hover::after {

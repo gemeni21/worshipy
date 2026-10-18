@@ -48,18 +48,18 @@ export function FloatingVoiceSearchButton() {
           onClick={() => setIsOpen(true)}
           aria-label="Voice search songs by microphone"
           title="Search songs with voice (say title or artist)"
-          className="group relative flex items-center justify-center w-14 h-14 rounded-full bg-[var(--brand-accent)] text-[var(--brand-accent-text)] shadow-lg shadow-[var(--brand-accent)]/35 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-4 focus:ring-[var(--brand-accent)]/30 border border-white/20"
+          className="group relative flex items-center justify-center w-14 h-14 rounded-full bg-[#14141a]/95 backdrop-blur-md border border-[var(--brand-accent)]/45 text-[var(--brand-accent)] shadow-xl shadow-black/80 hover:border-[var(--brand-accent)] hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-4 focus:ring-[var(--brand-accent)]/20"
         >
-          {/* Subtle multi-color iridescent aura on hover */}
+          {/* Subtle chartreuse neon aura on hover */}
           <span
-            className="absolute -inset-1 rounded-full bg-gradient-to-tr from-cyan-400 via-emerald-400 to-pink-400 opacity-0 group-hover:opacity-40 transition-opacity blur-md pointer-events-none"
+            className="absolute -inset-1 rounded-full bg-[var(--brand-accent)]/20 opacity-0 group-hover:opacity-100 transition-opacity blur-md pointer-events-none"
             aria-hidden="true"
           />
 
           <Mic className="w-6 h-6 shrink-0 relative z-10 transition-transform group-hover:scale-110" aria-hidden="true" />
 
           {/* Floating Pill Tooltip on hover for desktop */}
-          <span className="hidden md:inline-block pointer-events-none absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-stone-900/90 text-white text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 shadow-lg backdrop-blur-sm">
+          <span className="hidden md:inline-block pointer-events-none absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-[#14141a] border border-[#262533] text-white text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-150 shadow-lg backdrop-blur-sm">
             Voice Search
           </span>
         </button>

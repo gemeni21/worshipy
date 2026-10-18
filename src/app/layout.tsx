@@ -26,8 +26,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0f766e',
-  colorScheme: 'light dark',
+  themeColor: '#0c0c10',
+  colorScheme: 'dark light',
   width: 'device-width',
   initialScale: 1,
 };
@@ -41,10 +41,36 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      data-accent="teal"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      data-theme="dark"
+      data-accent="lime"
+      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){
+              try {
+                var t = localStorage.getItem('worship_companion_color_scheme');
+                if (t === 'light') {
+                  document.documentElement.classList.remove('dark');
+                  document.documentElement.setAttribute('data-theme', 'light');
+                } else {
+                  document.documentElement.classList.add('dark');
+                  document.documentElement.setAttribute('data-theme', 'dark');
+                }
+                var a = localStorage.getItem('worship_companion_settings');
+                if (a) {
+                  var parsed = JSON.parse(a);
+                  if (parsed && parsed.accentColor) {
+                    document.documentElement.setAttribute('data-accent', parsed.accentColor);
+                  }
+                }
+              } catch(e){}
+            })()`,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">
         <AppProvider>
           <AppShell>{children}</AppShell>
         </AppProvider>

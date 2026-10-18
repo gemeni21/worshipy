@@ -47,7 +47,7 @@ const STORAGE_KEYS = {
 } as const;
 
 const DEFAULT_SETTINGS: UserSettings = {
-  theme: 'system',
+  theme: 'dark',
   accentColor: 'lime',
   chartFontSize: 'md',
   enharmonicPreference: 'auto',
@@ -197,12 +197,12 @@ export function applyAccentToDocument(accent: AccentColor = 'lime') {
     }
   > = {
     lime: {
-      accent: isDark ? '#c6f135' : '#4d7c0f',
-      surface: isDark ? 'rgba(198, 241, 53, 0.12)' : '#f7fee7',
-      chord: isDark ? '#d9f99d' : '#3f6212',
-      chordBg: isDark ? 'rgba(198, 241, 53, 0.14)' : '#f7fee7',
-      accentText: isDark ? '#090d05' : '#ffffff',
-      glow: isDark ? 'rgba(198, 241, 53, 0.24)' : 'rgba(77, 124, 15, 0.16)',
+      accent: isDark ? '#c8fc6c' : '#4d7c0f',
+      surface: isDark ? 'rgba(200, 252, 108, 0.10)' : '#f7fee7',
+      chord: isDark ? '#c8fc6c' : '#3f6212',
+      chordBg: isDark ? 'rgba(200, 252, 108, 0.12)' : '#f7fee7',
+      accentText: isDark ? '#0e1106' : '#ffffff',
+      glow: isDark ? 'rgba(200, 252, 108, 0.20)' : 'rgba(77, 124, 15, 0.16)',
     },
     teal: {
       accent: isDark ? '#2dd4bf' : '#0f766e',
