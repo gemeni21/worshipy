@@ -128,12 +128,12 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
     setError(null);
   }, [abortListening]);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback(async () => {
     if (typeof window === 'undefined') return;
 
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRec) {
-      setError('Speech recognition is not supported in this browser.');
+      setError('Voice recognition is not supported in this browser. You can type in the search box below.');
       return;
     }
 
@@ -143,6 +143,22 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
         recognitionRef.current.abort();
       } catch {
         // Ignore
+      }
+    }
+
+    // Request audio stream permission via getUserMedia first if available,
+    // which prompts the user with the browser's native permission modal if not already granted.
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Immediately release tracks so speech recognition can access the audio device cleanly
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (err: unknown) {
+        const errorName = (err as { name?: string })?.name;
+        if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
+          setError('Microphone access was denied. Please allow microphone permissions or use the search box below.');
+          return;
+        }
       }
     }
 
@@ -186,16 +202,16 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
       recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
         setIsListening(false);
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setError('Microphone access was denied. Please allow microphone permissions in your browser address bar.');
+          setError('Microphone access was denied. Please allow microphone permissions in your browser or type your search below.');
         } else if (event.error === 'no-speech') {
-          setError('No voice detected. Please tap the mic and speak clearly.');
+          setError('No voice detected. Tap the microphone to try speaking again.');
         } else if (event.error === 'network') {
-          setError('Network issue detected with speech recognition service.');
+          setError('Network issue detected with speech recognition service. You can type your search below.');
         } else if (event.error === 'aborted') {
           // Intentional user cancellation, don't show error
           setError(null);
         } else {
-          setError(`Speech recognition error: ${event.error}`);
+          setError(`Speech recognition note: ${event.error}. You can search by typing below.`);
         }
       };
 
@@ -207,7 +223,7 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
     } catch (err: unknown) {
       setIsListening(false);
       const msg = err instanceof Error ? err.message : String(err);
-      setError(`Could not activate speech recognition: ${msg}`);
+      setError(`Could not activate microphone: ${msg}. You can search by typing below.`);
     }
   }, []);
 

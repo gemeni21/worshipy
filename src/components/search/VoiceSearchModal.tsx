@@ -7,7 +7,6 @@ import {
   AlertCircle,
   ArrowRight,
   Mic,
-  MicOff,
   RotateCcw,
   Volume2,
   X,
@@ -56,15 +55,23 @@ function VoiceSearchDialog({ onClose }: { onClose: () => void }) {
   // Active query is either live transcript or manual query override
   const activeQuery = manualQuery || transcript;
 
-  // Auto-start listening on mount if supported, stop on unmount
+  // Stop listening on unmount
   useEffect(() => {
-    if (isSupported) {
-      startListening();
-    }
     return () => {
       stopListening();
     };
-  }, [isSupported, startListening, stopListening]);
+  }, [stopListening]);
+
+  // Escape key closes modal
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   // Real-time matched songs from the entire catalog and personal songs
   const matchedSongs = useMemo(() => {
@@ -88,10 +95,11 @@ function VoiceSearchDialog({ onClose }: { onClose: () => void }) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="voice-search-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 cursor-pointer"
     >
       <div
-        className="w-full max-w-lg rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        className="w-full max-w-lg rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] cursor-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
@@ -146,20 +154,16 @@ function VoiceSearchDialog({ onClose }: { onClose: () => void }) {
               className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all transform active:scale-95 cursor-pointer shadow-lg ${
                 isListening
                   ? 'bg-[var(--brand-accent)] text-[var(--bg-surface)] scale-105 shadow-[var(--brand-accent)]/40'
-                  : 'bg-[var(--bg-surface)] border-2 border-[var(--brand-accent)] text-[var(--brand-accent)] hover:bg-[var(--brand-surface)]'
+                  : 'bg-[var(--bg-surface)] border-2 border-[var(--brand-accent)] text-[var(--brand-accent)] hover:bg-[var(--brand-surface)] hover:scale-105'
               }`}
             >
-              {isListening ? (
-                <Mic className="w-9 h-9 animate-pulse" aria-hidden="true" />
-              ) : (
-                <MicOff className="w-9 h-9 opacity-80" aria-hidden="true" />
-              )}
+              <Mic className={`w-9 h-9 ${isListening ? 'animate-pulse' : ''}`} aria-hidden="true" />
             </button>
           </div>
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--brand-accent)]">
-              {isListening ? 'Listening...' : activeQuery ? 'Speech Captured' : 'Ready'}
+              {isListening ? 'Listening... Speak now' : activeQuery ? 'Speech Captured' : 'Tap to Speak'}
             </div>
 
             {/* Spoken Text Display */}
@@ -171,8 +175,8 @@ function VoiceSearchDialog({ onClose }: { onClose: () => void }) {
               ) : (
                 <p className="text-sm text-[var(--text-secondary)] italic max-w-xs mx-auto">
                   {isSupported
-                    ? 'Speak clearly into your microphone...'
-                    : 'Web Speech is not supported in this browser. You can type below.'}
+                    ? 'Tap the microphone to speak, or search by typing below...'
+                    : 'Voice recognition is not available in this browser. You can search by typing below:'}
                 </p>
               )}
             </div>
@@ -182,14 +186,28 @@ function VoiceSearchDialog({ onClose }: { onClose: () => void }) {
           {error && (
             <div
               role="alert"
-              className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2 text-left"
+              className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2.5 text-left"
             >
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
-              <span>{error}</span>
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+              <div className="flex-1 space-y-1">
+                <p>{error}</p>
+                {isSupported && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      reset();
+                      startListening();
+                    }}
+                    className="font-bold underline hover:no-underline cursor-pointer text-amber-800 dark:text-amber-200"
+                  >
+                    Retry Microphone
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
-          {/* Quick manual text edit if the user wants to tweak the transcript */}
+          {/* Quick manual text edit so the user can always search by typing */}
           <div className="flex items-center gap-2 max-w-sm mx-auto">
             <div className="relative flex-1">
               <input
@@ -199,7 +217,7 @@ function VoiceSearchDialog({ onClose }: { onClose: () => void }) {
                   stopListening();
                   setManualQuery(e.target.value);
                 }}
-                placeholder="Or edit search text..."
+                placeholder="Type song title, artist, or lyric..."
                 className="w-full h-9 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs text-[var(--text-primary)]"
               />
             </div>

@@ -29,8 +29,8 @@ export function FloatingVoiceSearchButton() {
     return () => observer.disconnect();
   }, [pathname]);
 
-  // If performance mode is active, hide floating mic to keep stage reading pristine
-  if (isPerformanceModeActive) {
+  // If performance mode is active or on tuner page (which uses mic), hide floating mic
+  if (isPerformanceModeActive || pathname === '/tuner') {
     return null;
   }
 
@@ -42,7 +42,7 @@ export function FloatingVoiceSearchButton() {
           onClick={() => setIsOpen(true)}
           aria-label="Voice search songs by microphone"
           title="Search songs with voice (say title or artist)"
-          className="group relative flex items-center justify-center w-13 h-13 sm:w-14 sm:h-14 rounded-full bg-[var(--brand-accent)] text-[var(--bg-surface)] shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-4 focus:ring-[var(--brand-accent)]/30"
+          className="group relative flex items-center justify-center w-14 h-14 rounded-full bg-[var(--brand-accent)] text-[var(--bg-surface)] shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer focus:outline-none focus:ring-4 focus:ring-[var(--brand-accent)]/30"
         >
           {/* Subtle outer glow ring */}
           <span
