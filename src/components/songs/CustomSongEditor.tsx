@@ -904,7 +904,7 @@ export function CustomSongEditor({
           <button
             type="submit"
             disabled={isSaving}
-            className="h-10 px-5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] text-sm font-semibold inline-flex items-center gap-2 hover:opacity-95 transition-opacity disabled:opacity-50 cursor-pointer"
+            className="h-10 px-5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-sm font-bold inline-flex items-center gap-2 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
           >
             <Save className="w-4 h-4" aria-hidden="true" />
             <span>
@@ -997,9 +997,9 @@ export function CustomSongEditor({
           role="tab"
           aria-selected={mobileTab === 'edit'}
           onClick={() => setMobileTab('edit')}
-          className={`h-10 rounded-lg text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 cursor-pointer ${
+          className={`h-10 rounded-lg text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors ${
             mobileTab === 'edit'
-              ? 'bg-[var(--brand-accent)] text-[var(--bg-surface)]'
+              ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 shadow-xs'
               : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
         >
@@ -1011,9 +1011,9 @@ export function CustomSongEditor({
           role="tab"
           aria-selected={mobileTab === 'preview'}
           onClick={() => setMobileTab('preview')}
-          className={`h-10 rounded-lg text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 cursor-pointer ${
+          className={`h-10 rounded-lg text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 cursor-pointer transition-colors ${
             mobileTab === 'preview'
-              ? 'bg-[var(--brand-accent)] text-[var(--bg-surface)]'
+              ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 shadow-xs'
               : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
           }`}
         >
@@ -1907,7 +1907,7 @@ export function CustomSongEditor({
             <button
               type="submit"
               disabled={isSaving}
-              className="h-11 px-6 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] text-sm font-semibold inline-flex items-center gap-2 hover:opacity-95 transition-opacity disabled:opacity-50 cursor-pointer"
+              className="h-11 px-6 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-sm font-bold inline-flex items-center gap-2 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
             >
               <Check className="w-4 h-4" aria-hidden="true" />
               <span>

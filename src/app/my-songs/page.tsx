@@ -448,7 +448,7 @@ export default function MySongsPage() {
               />
               <label
                 htmlFor="chordpro-file-input"
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] text-xs sm:text-sm font-semibold cursor-pointer hover:opacity-95"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs sm:text-sm font-bold cursor-pointer shadow-sm transition-all"
               >
                 <Upload className="w-4 h-4" aria-hidden="true" />
                 <span>Choose Local ChordPro File</span>
@@ -706,7 +706,7 @@ export default function MySongsPage() {
                     type="button"
                     disabled={isSavingImport}
                     onClick={() => handleDirectSaveImportedSong(undefined)}
-                    className="h-10 px-5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] text-xs sm:text-sm font-semibold inline-flex items-center gap-1.5 hover:opacity-95 disabled:opacity-50 cursor-pointer"
+                    className="h-10 px-5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs sm:text-sm font-bold inline-flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50 cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                     <span>
@@ -784,7 +784,7 @@ export default function MySongsPage() {
                 setEditingSongId(null);
                 setMode('create');
               }}
-              className="h-11 px-5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] text-xs sm:text-sm font-semibold inline-flex items-center gap-2 hover:opacity-95 transition-opacity cursor-pointer"
+              className="h-11 px-5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs sm:text-sm font-bold inline-flex items-center gap-2 shadow-sm transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" aria-hidden="true" />
               <span>Create Song</span>
@@ -870,8 +870,8 @@ export default function MySongsPage() {
 
       {/* Personal Songs List or Empty State */}
       {customSongs.length === 0 ? (
-        <section className="rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-8 sm:p-10 text-center space-y-4">
-          <div className="w-12 h-12 rounded-2xl bg-[var(--brand-surface)] text-[var(--brand-accent)] flex items-center justify-center mx-auto">
+        <section className="theme-card rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-8 sm:p-10 text-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center mx-auto">
             <FilePlus2 className="w-6 h-6" aria-hidden="true" />
           </div>
           <div className="space-y-1.5 max-w-md mx-auto">
@@ -889,7 +889,7 @@ export default function MySongsPage() {
             <button
               type="button"
               onClick={() => setMode('create')}
-              className="h-11 px-5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] text-sm font-semibold inline-flex items-center gap-2 hover:opacity-95 cursor-pointer"
+              className="h-11 px-5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-sm font-bold inline-flex items-center gap-2 shadow-sm transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" aria-hidden="true" />
               <span>Create Your First Song</span>

@@ -111,7 +111,7 @@ export default function SettingsPage() {
       id: 'lime',
       label: 'Electric Lime',
       sublabel: 'Modern crypto dark dashboard neon',
-      swatchHex: '#c6f135',
+      swatchHex: '#c8fc6c',
       gradientClass: 'from-lime-400 to-emerald-400',
     },
     {
@@ -219,7 +219,7 @@ export default function SettingsPage() {
       )}
 
       {/* Theme Appearance */}
-      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
+      <section className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
         <div>
           <h2 className="text-lg font-bold">Appearance Theme</h2>
           <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
@@ -326,7 +326,7 @@ export default function SettingsPage() {
       </section>
 
       {/* Chart Text Size & Enharmonic Spelling */}
-      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-6">
+      <section className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-6">
         <div className="space-y-3">
           <div>
             <h2 className="text-lg font-bold">Default Chart Text Size</h2>
@@ -396,7 +396,7 @@ export default function SettingsPage() {
       </section>
 
       {/* Offline Storage Manager & Bulk Download */}
-      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
+      <section className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="space-y-1">
             <h2 className="text-lg font-bold inline-flex items-center gap-2">
@@ -442,7 +442,7 @@ export default function SettingsPage() {
             type="button"
             disabled={isDownloadingCatalog}
             onClick={handleDownloadAllCatalog}
-            className="px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] font-semibold text-xs sm:text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-sm"
+            className="px-4 py-2.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-semibold text-xs sm:text-sm inline-flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-sm transition-colors"
           >
             {isDownloadingCatalog ? (
               <>
@@ -485,7 +485,7 @@ export default function SettingsPage() {
       </section>
 
       {/* Offline Testing Simulator */}
-      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-3">
+      <section className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1">
             <h2 className="text-base font-bold inline-flex items-center gap-2">
@@ -518,7 +518,7 @@ export default function SettingsPage() {
       </section>
 
       {/* Device Storage Explanation & Destructive Reset Controls */}
-      <section className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-5">
+      <section className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-5">
         <div className="space-y-2">
           <h2 className="text-lg font-bold inline-flex items-center gap-2">
             <HardDrive

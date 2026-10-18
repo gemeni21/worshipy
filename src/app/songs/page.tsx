@@ -324,7 +324,7 @@ function SongsCatalogInner({
             <button
               type="button"
               onClick={handleClearFilters}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] text-sm font-semibold cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-sm font-semibold cursor-pointer transition-colors"
             >
               <RotateCcw className="w-4 h-4" aria-hidden="true" />
               <span>Reset All Filters</span>

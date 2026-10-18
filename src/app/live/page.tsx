@@ -735,7 +735,7 @@ function LiveSyncWorkspace({
           {/* Card 1: Join a Live Session (Member) */}
           <section
             aria-label="Join an active live session"
-            className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 space-y-5"
+            className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 space-y-5 shadow-xs"
           >
             <div className="space-y-1">
               <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand-accent)]">
@@ -829,7 +829,7 @@ function LiveSyncWorkspace({
                   !memberNameInput.trim() ||
                   (!joinCodeInput.trim() && !joinInviteTokenInput.trim())
                 }
-                className="w-full h-12 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] font-semibold text-sm sm:text-base hover:opacity-95 disabled:opacity-40 transition-opacity cursor-pointer"
+                className="w-full h-12 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm sm:text-base shadow-sm transition-all disabled:opacity-40 cursor-pointer"
               >
                 {isSubmitting ? 'Joining Session...' : 'Join Live Session'}
               </button>
@@ -839,7 +839,7 @@ function LiveSyncWorkspace({
           {/* Card 2: Start a Live Session (Leader) */}
           <section
             aria-label="Start a new leader-led live session"
-            className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 space-y-5"
+            className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 space-y-5 shadow-xs"
           >
             <div className="space-y-1">
               <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand-accent)]">
@@ -959,9 +959,9 @@ function LiveSyncWorkspace({
               <button
                 type="submit"
                 disabled={isSubmitting || !leaderName.trim()}
-                className="w-full h-12 rounded-xl bg-[var(--text-primary)] text-[var(--bg-surface)] font-semibold text-sm sm:text-base hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer inline-flex items-center justify-center gap-2"
+                className="w-full h-12 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm sm:text-base shadow-sm transition-all disabled:opacity-40 cursor-pointer inline-flex items-center justify-center gap-2"
               >
-                <Radio className="w-4 h-4" aria-hidden="true" />
+                <Radio className="w-4 h-4 animate-pulse" aria-hidden="true" />
                 <span>
                   {isSubmitting
                     ? 'Starting Live Session...'
@@ -994,7 +994,7 @@ function LiveSyncWorkspace({
           <button
             type="button"
             onClick={handleLeaveLocalSession}
-            className="px-5 py-2.5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] font-semibold text-sm cursor-pointer"
+            className="px-5 py-2.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-semibold text-sm cursor-pointer transition-colors"
           >
             Start or Join Another Session
           </button>
@@ -1310,7 +1310,7 @@ function LiveSyncWorkspace({
                 aria-pressed={viewMode === 'follow'}
                 className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
                   viewMode === 'follow'
-                    ? 'bg-[var(--brand-accent)] text-[var(--bg-surface)]'
+                    ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 shadow-xs'
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
@@ -1334,7 +1334,7 @@ function LiveSyncWorkspace({
               <button
                 type="button"
                 onClick={handleReturnToLeader}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] text-xs font-bold shadow-xs hover:opacity-95 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold shadow-xs cursor-pointer transition-colors"
               >
                 <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
                 <span>
@@ -1556,7 +1556,7 @@ function LiveSyncWorkspace({
                     aria-pressed={isActive}
                     className={`px-3 py-1.5 rounded-lg font-semibold shrink-0 transition-colors cursor-pointer ${
                       isActive
-                        ? 'bg-[var(--brand-accent)] text-[var(--bg-surface)]'
+                        ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 shadow-xs'
                         : 'bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                   >
@@ -1592,7 +1592,7 @@ function LiveSyncWorkspace({
                   aria-pressed={selectedCapoFret === 0}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
                     selectedCapoFret === 0
-                      ? 'bg-[var(--brand-accent)] text-[var(--bg-surface)] border-[var(--brand-accent)]'
+                      ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 shadow-xs'
                       : 'bg-[var(--bg-surface)] border-[var(--border-subtle)]'
                   }`}
                 >
@@ -1608,7 +1608,7 @@ function LiveSyncWorkspace({
                       aria-pressed={selectedCapoFret === sug.capoFret}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer ${
                         selectedCapoFret === sug.capoFret
-                          ? 'bg-[var(--brand-accent)] text-[var(--bg-surface)] border-[var(--brand-accent)]'
+                          ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 shadow-xs'
                           : 'bg-[var(--bg-surface)] border-[var(--border-subtle)]'
                       }`}
                     >
@@ -1855,7 +1855,7 @@ function LiveSyncWorkspace({
                         </div>
                       </div>
                       {isOfficialCurrent && (
-                        <span className="text-[0.6875rem] font-bold px-2 py-0.5 rounded bg-[var(--brand-accent)] text-[var(--bg-surface)] shrink-0">
+                        <span className="text-[0.6875rem] font-bold px-2 py-0.5 rounded bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 shrink-0">
                           Live
                         </span>
                       )}
@@ -1889,7 +1889,7 @@ function LiveSyncWorkspace({
                   <button
                     type="button"
                     onClick={handleAddSongToLiveQueue}
-                    className="px-3 h-9 rounded-lg bg-[var(--brand-accent)] text-[var(--bg-surface)] text-xs font-semibold cursor-pointer shrink-0"
+                    className="px-3 h-9 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-semibold cursor-pointer shrink-0 transition-colors"
                   >
                     Add
                   </button>
@@ -1901,7 +1901,7 @@ function LiveSyncWorkspace({
           {/* Connected Participants & Leadership Transfer */}
           <section
             aria-label="Connected Team Members"
-            className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 space-y-4"
+            className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 space-y-4"
           >
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold inline-flex items-center gap-2">

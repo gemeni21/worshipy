@@ -205,7 +205,7 @@ export default function SetlistsPage() {
           <button
             type="submit"
             disabled={!newSetlistName.trim()}
-            className="h-11 px-5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] font-semibold text-sm inline-flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer shrink-0"
+            className="h-11 px-5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm inline-flex items-center justify-center gap-2 disabled:opacity-40 shadow-sm transition-all cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" aria-hidden="true" />
             <span>Create Setlist</span>
@@ -237,7 +237,7 @@ export default function SetlistsPage() {
               <section
                 key={setlist.id}
                 aria-label={`Setlist ${setlist.name}`}
-                className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 space-y-4"
+                className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 space-y-4 shadow-xs"
               >
                 {/* Setlist Header */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-subtle)]">
@@ -253,7 +253,7 @@ export default function SetlistsPage() {
                       <button
                         type="button"
                         onClick={() => handleSaveRename(setlist.id)}
-                        className="px-3 h-9 rounded-lg bg-[var(--brand-accent)] text-[var(--bg-surface)] text-xs font-semibold cursor-pointer"
+                        className="px-3 h-9 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold cursor-pointer transition-all"
                       >
                         Save
                       </button>
@@ -571,8 +571,8 @@ export default function SetlistsPage() {
           })}
         </div>
       ) : (
-        <div className="rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-8 text-center space-y-3">
-          <div className="w-12 h-12 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] flex items-center justify-center mx-auto">
+        <div className="theme-card rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-8 text-center space-y-3">
+          <div className="w-12 h-12 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center mx-auto">
             <ListMusic className="w-6 h-6" aria-hidden="true" />
           </div>
           <h2 className="text-lg font-bold">No Personal Setlists Yet</h2>

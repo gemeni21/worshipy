@@ -169,6 +169,12 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           });
         }
       }
+      const rawPerf = params.get('perf');
+      if (rawPerf === 'true' || rawPerf === '1') {
+        queueMicrotask(() => {
+          setIsPerformanceMode(true);
+        });
+      }
     } catch {
       // ignore
     }
@@ -348,13 +354,13 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
         <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/songs?offline=1"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--brand-accent)] text-[var(--bg-surface)] font-semibold text-sm"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm shadow-sm transition-all"
           >
             View Saved Offline Songs
           </Link>
           <Link
             href="/"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm font-medium"
           >
             Back to Home
           </Link>
@@ -381,7 +387,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/songs"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--brand-accent)] text-[var(--bg-surface)] text-sm font-semibold"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-sm font-bold shadow-sm transition-all"
           >
             <ArrowLeft className="w-4 h-4" aria-hidden="true" />
             Browse Song Catalog
@@ -511,7 +517,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
         data-performance-mode="true"
         className={`fixed inset-0 z-50 overflow-y-auto transition-colors ${
           perfDarkSurface
-            ? 'bg-slate-950 text-slate-50'
+            ? 'bg-[var(--bg-canvas)] text-[var(--text-primary)]'
             : 'bg-stone-50 text-slate-950'
         }`}
       >
@@ -519,7 +525,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
         <header
           className={`sticky top-0 z-20 border-b px-4 py-2.5 backdrop-blur-md ${
             perfDarkSurface
-              ? 'bg-slate-950/95 border-slate-800'
+              ? 'bg-[var(--bg-surface)]/95 border-[var(--border-subtle)]'
               : 'bg-stone-50/95 border-stone-200'
           }`}
         >
@@ -553,7 +559,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 aria-label="Quick Transpose Controls"
                 className={`inline-flex items-center rounded-lg border p-0.5 ${
                   perfDarkSurface
-                    ? 'border-slate-800 bg-slate-900'
+                    ? 'border-[var(--border-subtle)] bg-[var(--bg-subtle)]'
                     : 'border-stone-300 bg-white'
                 }`}
               >
@@ -569,15 +575,13 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   aria-label="Select target key in performance mode"
                   value={normalizedSemitones}
                   onChange={(e) => handleSelectTargetKey(Number(e.target.value))}
-                  className={`h-9 px-2 font-mono font-bold text-sm rounded bg-transparent cursor-pointer focus:outline-none ${
-                    perfDarkSurface ? 'text-[var(--brand-accent)]' : 'text-[var(--brand-accent)]'
-                  }`}
+                  className="h-9 px-2 font-mono font-bold text-sm rounded bg-transparent text-[var(--brand-accent)] cursor-pointer focus:outline-none"
                 >
                   {keyOptions.map((opt) => (
                     <option
                       key={opt.semitonesFromOriginal}
                       value={opt.semitonesFromOriginal}
-                      className="bg-slate-900 text-white"
+                      className="bg-[#14141a] text-white"
                     >
                       {opt.key}
                       {opt.semitonesFromOriginal === 0
@@ -599,7 +603,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                     type="button"
                     onClick={handleResetKey}
                     title={`Reset to original key (${activeSourceSong.originalKey})`}
-                    className="px-2 h-9 text-xs font-semibold text-amber-400 hover:underline cursor-pointer"
+                    className="px-2 h-9 text-xs font-semibold text-[var(--brand-accent)] hover:underline cursor-pointer"
                   >
                     Reset
                   </button>
@@ -612,7 +616,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 aria-label="Section Navigation"
                 className={`inline-flex items-center rounded-lg border p-0.5 ${
                   perfDarkSurface
-                    ? 'border-slate-800 bg-slate-900'
+                    ? 'border-[var(--border-subtle)] bg-[var(--bg-subtle)]'
                     : 'border-stone-300 bg-white'
                 }`}
               >
@@ -645,7 +649,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               <div
                 className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 ${
                   perfDarkSurface
-                    ? 'border-slate-800 bg-slate-900'
+                    ? 'border-[var(--border-subtle)] bg-[var(--bg-subtle)]'
                     : 'border-stone-300 bg-white'
                 }`}
               >
@@ -680,7 +684,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                     <option
                       key={spd}
                       value={spd}
-                      className="bg-slate-900 text-white"
+                      className="bg-[#14141a] text-white"
                     >
                       {spd}x
                     </option>
@@ -694,7 +698,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 aria-label="Performance Font Size"
                 className={`hidden sm:inline-flex items-center rounded-lg border p-0.5 ${
                   perfDarkSurface
-                    ? 'border-slate-800 bg-slate-900'
+                    ? 'border-[var(--border-subtle)] bg-[var(--bg-subtle)]'
                     : 'border-stone-300 bg-white'
                 }`}
               >
@@ -706,7 +710,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                     aria-pressed={settings.chartFontSize === sz}
                     className={`px-2 py-1 text-xs font-semibold rounded cursor-pointer ${
                       settings.chartFontSize === sz
-                        ? 'bg-[var(--brand-accent)] text-[var(--brand-accent-text)]'
+                        ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold ring-1 ring-[var(--brand-accent)]/30'
                         : 'opacity-70 hover:opacity-100'
                     }`}
                   >
@@ -726,7 +730,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 }
                 className={`w-10 h-10 inline-flex items-center justify-center rounded-lg border cursor-pointer ${
                   perfDarkSurface
-                    ? 'border-slate-800 bg-slate-900 text-amber-300'
+                    ? 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--brand-accent)]'
                     : 'border-stone-300 bg-white text-slate-800'
                 }`}
               >
@@ -788,9 +792,9 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   sectionRefs.current[secIndex] = el;
                 }}
                 onClick={() => setActiveSectionIndex(secIndex)}
-                className={`rounded-xl p-4 sm:p-6 border transition-colors ${
+                className={`theme-card rounded-2xl p-4 sm:p-6 border transition-all ${
                   perfDarkSurface
-                    ? 'bg-slate-900/70 border-slate-800'
+                    ? 'bg-[var(--bg-surface)] border-[var(--border-subtle)]'
                     : 'bg-white border-stone-200'
                 }`}
               >
@@ -825,11 +829,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                                 onClick={() =>
                                   seg.chord && setInspectedChord(seg.chord)
                                 }
-                                className={`px-2.5 py-1 rounded cursor-pointer transition-colors ${
-                                  perfDarkSurface
-                                    ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:opacity-90'
-                                    : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:opacity-90'
-                                }`}
+                                className="px-2.5 py-1 rounded-lg bg-[var(--chord-bg)] text-[var(--chord-color)] border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] cursor-pointer transition-colors"
                                 title={
                                   seg.chord
                                     ? `Inspect ${seg.chord} chord diagram`
@@ -866,8 +866,8 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                                     className="chart-chord-row chart-chord-btn text-left"
                                     style={{
                                       color: perfDarkSurface
-                                        ? '#5eead4'
-                                        : '#0f766e',
+                                        ? 'var(--chord-color)'
+                                        : '#3f6212',
                                     }}
                                     title={`Inspect ${seg.chord} chord diagram & fingering`}
                                   >
@@ -882,15 +882,15 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                                   className="chart-lyric-row"
                                   style={{
                                     color: perfDarkSurface
-                                    ? '#f8fafc'
-                                    : '#0f172a',
-                                }}
-                              >
-                                {seg.text || '\u00A0'}
+                                      ? 'var(--text-primary)'
+                                      : '#0f172a',
+                                  }}
+                                >
+                                  {seg.text || '\u00A0'}
+                                </span>
                               </span>
-                            </span>
-                          );
-                        })}
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -985,7 +985,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
       </div>
 
       {/* Song Header Card */}
-      <header className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
+      <header className="theme-card rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-7 space-y-4 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -1051,7 +1051,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
             <button
               type="button"
               onClick={() => setIsPerformanceMode(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] font-semibold text-sm hover:opacity-95 transition-opacity cursor-pointer min-h-[2.75rem]"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm shadow-sm transition-all cursor-pointer min-h-[2.75rem]"
             >
               <Maximize2 className="w-4 h-4" aria-hidden="true" />
               <span>Performance Mode</span>
@@ -1102,9 +1102,9 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               href={`/live?startSong=${encodeURIComponent(
                 activeSourceSong.id
               )}&semitones=${normalizedSemitones}`}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] font-semibold text-sm hover:opacity-95 transition-opacity min-h-[2.75rem]"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[var(--brand-accent)]/35 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm shadow-sm transition-all min-h-[2.75rem]"
             >
-              <Radio className="w-4 h-4" aria-hidden="true" />
+              <Radio className="w-4 h-4 animate-pulse" aria-hidden="true" />
               <span>Start Live Sync</span>
             </Link>
 
@@ -1207,7 +1207,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                       <button
                         type="submit"
                         disabled={!newSetlistName.trim()}
-                        className="px-3 py-1.5 rounded-lg bg-[var(--brand-accent)] text-[var(--bg-surface)] text-xs font-semibold disabled:opacity-40 cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold disabled:opacity-40 cursor-pointer shadow-sm"
                       >
                         Create
                       </button>
@@ -1291,7 +1291,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
       {/* Compact Transposition & Chart Controls Toolbar */}
       <section
         aria-label="Chord Transposition and Chart Controls"
-        className="sticky top-[3.5rem] md:top-2 z-20 rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-surface)]/95 backdrop-blur-md p-3 sm:p-4 shadow-sm space-y-3"
+        className="theme-card sticky top-[3.5rem] md:top-2 z-20 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)]/95 backdrop-blur-md p-3 sm:p-4 shadow-sm space-y-3"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           {/* Semitone Stepper + Current Key Display + Destination Key Selector */}
@@ -1533,7 +1533,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
             ref={(el) => {
               sectionRefs.current[secIndex] = el;
             }}
-            className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 scroll-mt-40"
+            className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 scroll-mt-40 shadow-xs"
           >
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-2.5 border-b border-[var(--border-subtle)]">
               <h2 className="text-sm sm:text-base font-bold uppercase tracking-wider text-[var(--brand-accent)]">

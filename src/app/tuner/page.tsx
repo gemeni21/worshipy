@@ -151,7 +151,7 @@ export default function TunerPage() {
               onClick={startListening}
               disabled={isRequesting}
               data-testid="tuner-start-button"
-              className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-[var(--brand-accent)] text-[var(--bg-surface)] font-bold text-sm sm:text-base shadow-sm hover:opacity-95 disabled:opacity-50 transition-opacity cursor-pointer min-h-[3.25rem]"
+              className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-2xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm sm:text-base shadow-sm transition-all cursor-pointer min-h-[3.25rem]"
             >
               <Mic className="w-5 h-5" aria-hidden="true" />
               <span>
@@ -232,7 +232,7 @@ export default function TunerPage() {
                   data-testid={`mode-${id}`}
                   className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors cursor-pointer min-h-[2.75rem] ${
                     active
-                      ? 'bg-[var(--brand-accent)] text-[var(--bg-surface)] shadow-xs'
+                      ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold ring-1 ring-[var(--brand-accent)]/30 shadow-xs'
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >

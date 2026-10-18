@@ -191,7 +191,7 @@ export default function FavoritesPage() {
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-8 text-center space-y-3">
+          <div className="theme-card rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--bg-surface)] p-8 text-center space-y-3">
             <h3 className="text-base font-semibold">No Favorite Songs Yet</h3>
             <p className="text-sm text-[var(--text-secondary)] mx-auto max-w-md">
               Tap the heart icon on any song in the catalog or chord chart view
@@ -199,7 +199,7 @@ export default function FavoritesPage() {
             </p>
             <Link
               href="/songs"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--brand-accent)] text-[var(--bg-surface)] text-sm font-semibold"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-sm font-bold shadow-sm transition-all"
             >
               Browse Song Catalog
             </Link>
