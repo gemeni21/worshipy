@@ -4,7 +4,6 @@ import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   AlertTriangle,
   Check,
-  Columns,
   Download,
   HardDrive,
   Loader2,
@@ -16,7 +15,6 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import type {
-  ChartColumnsPreference,
   ChartFontSize,
   EnharmonicPreference,
   ThemePreference,
@@ -130,23 +128,6 @@ export default function SettingsPage() {
       id: 'flat',
       label: 'Prefer Flats (♭)',
       desc: 'Spells accidentals with flats (Db, Eb, Gb, Ab, Bb)',
-    },
-  ];
-
-  const columnOptions: {
-    id: ChartColumnsPreference;
-    label: string;
-    desc: string;
-  }[] = [
-    {
-      id: '1',
-      label: 'Single Column (Standard)',
-      desc: 'Traditional scrolling layout, great for phones and portrait reading',
-    },
-    {
-      id: '2',
-      label: 'Two Columns (Side-by-Side)',
-      desc: 'Splits song sections side-by-side to fit tablets, iPads, and desktop displays',
     },
   ];
 
@@ -299,41 +280,6 @@ export default function SettingsPage() {
                   onClick={() =>
                     updateSettings({ enharmonicPreference: opt.id })
                   }
-                  className={`text-left rounded-xl border p-3.5 transition-colors cursor-pointer ${
-                    active
-                      ? 'border-[var(--brand-accent)] bg-[var(--brand-surface)]'
-                      : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--border-strong)]'
-                  }`}
-                >
-                  <div className="font-semibold text-sm">{opt.label}</div>
-                  <div className="text-xs text-[var(--text-secondary)] mt-0.5">
-                    {opt.desc}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="pt-4 border-t border-[var(--border-subtle)] space-y-3">
-          <div>
-            <h2 className="text-lg font-bold inline-flex items-center gap-2">
-              <Columns className="w-4 h-4 text-[var(--brand-accent)]" aria-hidden="true" />
-              <span>Default Chart Columns</span>
-            </h2>
-            <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
-              Choose whether chord charts open in a single continuous scroll or a 2-column side-by-side layout.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {columnOptions.map((opt) => {
-              const active = (settings.chartColumns ?? '1') === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => updateSettings({ chartColumns: opt.id })}
                   className={`text-left rounded-xl border p-3.5 transition-colors cursor-pointer ${
                     active
                       ? 'border-[var(--brand-accent)] bg-[var(--brand-surface)]'

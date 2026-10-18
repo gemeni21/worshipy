@@ -49,7 +49,6 @@ const DEFAULT_SETTINGS: UserSettings = {
   theme: 'system',
   chartFontSize: 'md',
   enharmonicPreference: 'auto',
-  chartColumns: '1',
 };
 
 interface AppContextValue {

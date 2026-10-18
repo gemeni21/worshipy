@@ -205,21 +205,6 @@ p {
   min-height: 1.55em;
 }
 
-/* 2-Column Responsive Layout for Tablet & Wide Desktops */
-@media (min-width: 768px) {
-  .chart-columns-2 {
-    columns: 2;
-    column-gap: 1.5rem;
-  }
-
-  .chart-columns-2 > section {
-    break-inside: avoid;
-    display: inline-block;
-    width: 100%;
-    margin-bottom: 1.5rem;
-  }
-}
-
 /* Dedicated Print / Sheet Music Export Styles */
 @media print {
   body {

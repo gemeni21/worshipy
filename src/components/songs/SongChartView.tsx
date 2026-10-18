@@ -7,7 +7,6 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Columns,
   Download,
   Edit3,
   FileCode2,
@@ -125,11 +124,8 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
   const [perfDarkSurface, setPerfDarkSurface] = useState(true);
   const [activeSectionIndex, setActiveSectionIndex] = useState(0);
 
-  // Chord Inspector & Column Layout State
+  // Chord Inspector & Capo State
   const [inspectedChord, setInspectedChord] = useState<string | null>(null);
-  const [columnMode, setColumnMode] = useState<'1' | '2'>(
-    settings.chartColumns ?? '1'
-  );
   const [selectedCapo, setSelectedCapo] = useState<number>(0);
   const [capoDisplayMode, setCapoDisplayMode] = useState<
     'concert' | 'capo' | 'both'
@@ -740,30 +736,6 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 )}
               </button>
 
-              {/* Column Layout Toggle in Performance Mode */}
-              <button
-                type="button"
-                onClick={() => {
-                  const next = columnMode === '1' ? '2' : '1';
-                  setColumnMode(next);
-                  updateSettings({ chartColumns: next });
-                }}
-                title={
-                  columnMode === '2'
-                    ? 'Switch to 1-column view'
-                    : 'Switch to 2-column view'
-                }
-                className={`w-10 h-10 inline-flex items-center justify-center rounded-lg border text-xs cursor-pointer ${
-                  columnMode === '2'
-                    ? 'border-teal-500 bg-teal-500/20 text-teal-300 font-bold'
-                    : perfDarkSurface
-                    ? 'border-slate-800 bg-slate-900 text-slate-300'
-                    : 'border-stone-300 bg-white text-slate-700'
-                }`}
-              >
-                <Columns className="w-4 h-4" aria-hidden="true" />
-              </button>
-
               {/* Exit Performance Mode */}
               <button
                 type="button"
@@ -807,11 +779,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
             </div>
           </div>
 
-          <div
-            className={`${fontSizeConfig.performance} ${
-              columnMode === '2' ? 'chart-columns-2 space-y-0' : 'space-y-8'
-            }`}
-          >
+          <div className={`${fontSizeConfig.performance} space-y-8`}>
             {displaySong.sections.map((section, secIndex) => (
               <section
                 key={section.id}
@@ -1100,29 +1068,6 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 <span>Edit Song</span>
               </Link>
             )}
-
-            {/* 2-Column Responsive Layout Toggle */}
-            <button
-              type="button"
-              onClick={() => {
-                const next = columnMode === '1' ? '2' : '1';
-                setColumnMode(next);
-                updateSettings({ chartColumns: next });
-              }}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-sm font-medium transition-colors cursor-pointer min-h-[2.75rem] ${
-                columnMode === '2'
-                  ? 'border-[var(--brand-accent)] bg-[var(--brand-surface)] text-[var(--brand-accent)] font-semibold'
-                  : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--brand-accent)]'
-              }`}
-              title={
-                columnMode === '2'
-                  ? 'Switch to 1-column view'
-                  : 'Switch to 2-column view (best for tablets and wide screens)'
-              }
-            >
-              <Columns className="w-4 h-4" aria-hidden="true" />
-              <span>{columnMode === '2' ? '2 Columns' : '1 Column'}</span>
-            </button>
 
             {/* Print or Save as PDF */}
             <button
@@ -1579,9 +1524,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
       {/* Main Song Chord Chart Sections */}
       <article
         aria-label="Song Chord Chart"
-        className={`${fontSizeConfig.normal} ${
-          columnMode === '2' ? 'chart-columns-2 space-y-0' : 'space-y-6'
-        }`}
+        className={`${fontSizeConfig.normal} space-y-6`}
       >
         {displaySong.sections.map((section, secIndex) => (
           <section
