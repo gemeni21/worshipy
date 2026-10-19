@@ -298,16 +298,16 @@
 
 @keyframes subtle-corner-pulse {
   0% {
-    filter: drop-shadow(0 0 10px var(--brand-accent-glow)) brightness(0.96);
-    transform: translate(0, 0) scale(calc(0.95 + var(--corner-proximity, 0.4) * 0.12));
+    opacity: 0.4;
+    transform: scale(0.96);
   }
   50% {
-    filter: drop-shadow(0 0 26px var(--brand-accent-glow)) brightness(1.22);
-    transform: translate(0, 0) scale(calc(1.05 + var(--corner-proximity, 0.4) * 0.18));
+    opacity: 0.7;
+    transform: scale(1.02);
   }
   100% {
-    filter: drop-shadow(0 0 10px var(--brand-accent-glow)) brightness(0.96);
-    transform: translate(0, 0) scale(calc(0.95 + var(--corner-proximity, 0.4) * 0.12));
+    opacity: 0.4;
+    transform: scale(0.96);
   }
 }
 
@@ -324,7 +324,7 @@
               border-color 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Layer 1: Dynamic spotlight that moves according to mouse position */
+/* Layer 1: Very subtle, sheer cursor sheen tracking mouse without loud coloration */
 .theme-card::before {
   content: '';
   position: absolute;
@@ -332,35 +332,34 @@
   border-radius: inherit;
   pointer-events: none;
   background: radial-gradient(
-    380px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    color-mix(in srgb, var(--brand-accent) calc(14% + var(--corner-proximity, 0.4) * 16%), transparent) 0%,
-    color-mix(in srgb, var(--brand-accent) 6%, transparent) 38%,
-    transparent 72%
+    220px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    rgba(255, 255, 255, 0.05) 0%,
+    color-mix(in srgb, var(--brand-accent) 3.5%, transparent) 40%,
+    transparent 70%
   );
   opacity: 0;
   transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 0;
 }
 
-/* Layer 2: Radiant bottom-right ambient corner aura with interactive pulse & proximity intensification */
+/* Layer 2: Subtle ambient corner gradient in the very right bottom side */
 .theme-card::after {
   content: '';
   position: absolute;
   bottom: 0;
   right: 0;
-  width: calc(240px + var(--corner-proximity, 0.4) * 140px);
-  height: calc(240px + var(--corner-proximity, 0.4) * 140px);
+  width: calc(130px + var(--corner-proximity, 0.4) * 50px);
+  height: calc(130px + var(--corner-proximity, 0.4) * 50px);
   border-bottom-right-radius: inherit;
   pointer-events: none;
   background: radial-gradient(
     circle at 100% 100%,
-    color-mix(in srgb, var(--brand-accent) calc(32% + var(--corner-proximity, 0.4) * 44%), transparent) 0%,
-    color-mix(in srgb, var(--brand-accent) calc(18% + var(--corner-proximity, 0.4) * 24%), transparent) 28%,
-    color-mix(in srgb, var(--brand-accent) calc(8% + var(--corner-proximity, 0.4) * 10%), transparent) 55%,
-    transparent 78%
+    color-mix(in srgb, var(--brand-accent) calc(10% + var(--corner-proximity, 0.4) * 12%), transparent) 0%,
+    color-mix(in srgb, var(--brand-accent) calc(4% + var(--corner-proximity, 0.4) * 6%), transparent) 40%,
+    transparent 72%
   );
   opacity: 0;
-  transform: translate(14px, 14px) scale(0.85);
+  transform: translate(8px, 8px) scale(0.9);
   transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
               transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
               width 0.2s ease-out,
@@ -371,9 +370,9 @@
 /* Static hover fallback (e.g. before JS hydration or keyboard focus) */
 .theme-card:hover {
   --tilt-lift: -2px;
-  border-color: color-mix(in srgb, var(--brand-accent) 30%, var(--border-subtle));
-  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.72),
-              0 0 24px -6px var(--brand-accent-glow);
+  border-color: color-mix(in srgb, var(--brand-accent) 18%, var(--border-subtle));
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.65),
+              0 0 12px -2px color-mix(in srgb, var(--brand-accent) 8%, transparent);
 }
 
 .theme-card:hover::before {
@@ -381,7 +380,7 @@
 }
 
 .theme-card:hover::after {
-  opacity: 1;
+  opacity: 0.6;
   transform: translate(0, 0) scale(1);
   animation: subtle-corner-pulse 3.6s ease-in-out infinite alternate;
 }
@@ -393,9 +392,9 @@
   transition: transform 0.08s ease-out,
               box-shadow 0.22s ease-out,
               border-color 0.2s ease-out;
-  border-color: color-mix(in srgb, var(--brand-accent) calc(20% + var(--corner-proximity, 0.4) * 38%), var(--border-subtle));
-  box-shadow: 0 20px 42px -12px rgba(0, 0, 0, 0.78),
-              0 0 calc(18px + var(--corner-proximity, 0.4) * 36px) var(--brand-accent-glow);
+  border-color: color-mix(in srgb, var(--brand-accent) calc(14% + var(--corner-proximity, 0.4) * 16%), var(--border-subtle));
+  box-shadow: 0 14px 34px -8px rgba(0, 0, 0, 0.7),
+              0 0 calc(8px + var(--corner-proximity, 0.4) * 12px) color-mix(in srgb, var(--brand-accent) 12%, transparent);
 }
 
 .theme-card[data-card-hovered="true"]::before {
@@ -403,7 +402,7 @@
 }
 
 .theme-card[data-card-hovered="true"]::after {
-  opacity: calc(0.45 + var(--corner-proximity, 0.4) * 0.55);
+  opacity: calc(0.35 + var(--corner-proximity, 0.4) * 0.45);
   transform: translate(0, 0) scale(1);
   animation: subtle-corner-pulse 3.6s ease-in-out infinite alternate;
 }
