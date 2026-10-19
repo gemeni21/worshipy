@@ -51,8 +51,8 @@ export function ThemeCardTiltEffect() {
       const rx = rect.width > 0 ? x / rect.width : 0.5;
       const ry = rect.height > 0 ? y / rect.height : 0.5;
 
-      // Subtle 3D Tilt calculation (max ±4.5 degrees)
-      const maxTilt = 4.5;
+      // Ultra-subtle 3D Tilt calculation (max ±2.0 degrees for an understated, refined luxury feel)
+      const maxTilt = 2.0;
       const tiltX = (0.5 - ry) * (maxTilt * 2); // Tilt forward when near top, backward when near bottom
       const tiltY = (rx - 0.5) * (maxTilt * 2); // Tilt right when near right, left when near left
 

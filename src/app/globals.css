@@ -316,8 +316,8 @@
   overflow: hidden;
   isolation: isolate;
   transform-style: preserve-3d;
-  perspective: 1000px;
-  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(var(--tilt-lift, 0px));
+  perspective: 1200px;
+  transform: perspective(1200px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(var(--tilt-lift, 0px));
   will-change: transform, box-shadow;
   transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.38s cubic-bezier(0.16, 1, 0.3, 1),
@@ -370,7 +370,7 @@
 
 /* Static hover fallback (e.g. before JS hydration or keyboard focus) */
 .theme-card:hover {
-  --tilt-lift: -3px;
+  --tilt-lift: -2px;
   border-color: color-mix(in srgb, var(--brand-accent) 30%, var(--border-subtle));
   box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.72),
               0 0 24px -6px var(--brand-accent-glow);
@@ -388,7 +388,7 @@
 
 /* Dynamic hovered state driven by real-time pointer movement */
 .theme-card[data-card-hovered="true"] {
-  --tilt-lift: -3px;
+  --tilt-lift: -2px;
   /* During active cursor movement, keep transform transition instantaneous for 120 FPS fluid response */
   transition: transform 0.08s ease-out,
               box-shadow 0.22s ease-out,
@@ -409,7 +409,7 @@
 }
 
 .theme-card:active {
-  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(-1px) scale(0.995);
+  transform: perspective(1200px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(-1px) scale(0.995);
 }
 
 @media (prefers-reduced-motion: reduce) {
