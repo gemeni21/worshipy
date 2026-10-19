@@ -293,57 +293,134 @@
 }
 
 /* ========================================================================== */
-/* MODERN INTERACTIVE CARDS & HOVER ANIMATION                                 */
+/* LUXURY 3D TILT CARDS & DYNAMIC CORNER GLOW                                */
 /* ========================================================================== */
+
+@keyframes subtle-corner-pulse {
+  0% {
+    filter: drop-shadow(0 0 10px var(--brand-accent-glow)) brightness(0.96);
+    transform: translate(0, 0) scale(calc(0.95 + var(--corner-proximity, 0.4) * 0.12));
+  }
+  50% {
+    filter: drop-shadow(0 0 26px var(--brand-accent-glow)) brightness(1.22);
+    transform: translate(0, 0) scale(calc(1.05 + var(--corner-proximity, 0.4) * 0.18));
+  }
+  100% {
+    filter: drop-shadow(0 0 10px var(--brand-accent-glow)) brightness(0.96);
+    transform: translate(0, 0) scale(calc(0.95 + var(--corner-proximity, 0.4) * 0.12));
+  }
+}
 
 .theme-card {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-              box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-              border-color 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-style: preserve-3d;
+  perspective: 1000px;
+  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(var(--tilt-lift, 0px));
   will-change: transform, box-shadow;
+  transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Subtle radiant gradient in the very right bottom side of the card */
+/* Layer 1: Dynamic spotlight that moves according to mouse position */
+.theme-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    380px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    color-mix(in srgb, var(--brand-accent) calc(14% + var(--corner-proximity, 0.4) * 16%), transparent) 0%,
+    color-mix(in srgb, var(--brand-accent) 6%, transparent) 38%,
+    transparent 72%
+  );
+  opacity: 0;
+  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 0;
+}
+
+/* Layer 2: Radiant bottom-right ambient corner aura with interactive pulse & proximity intensification */
 .theme-card::after {
   content: '';
   position: absolute;
   bottom: 0;
   right: 0;
-  width: 240px;
-  height: 240px;
+  width: calc(240px + var(--corner-proximity, 0.4) * 140px);
+  height: calc(240px + var(--corner-proximity, 0.4) * 140px);
   border-bottom-right-radius: inherit;
   pointer-events: none;
   background: radial-gradient(
     circle at 100% 100%,
-    rgba(200, 252, 108, 0.22) 0%,
-    rgba(200, 252, 108, 0.08) 32%,
-    rgba(200, 252, 108, 0.02) 58%,
-    transparent 75%
+    color-mix(in srgb, var(--brand-accent) calc(32% + var(--corner-proximity, 0.4) * 44%), transparent) 0%,
+    color-mix(in srgb, var(--brand-accent) calc(18% + var(--corner-proximity, 0.4) * 24%), transparent) 28%,
+    color-mix(in srgb, var(--brand-accent) calc(8% + var(--corner-proximity, 0.4) * 10%), transparent) 55%,
+    transparent 78%
   );
   opacity: 0;
   transform: translate(14px, 14px) scale(0.85);
   transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-              transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+              transform 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              width 0.2s ease-out,
+              height 0.2s ease-out;
   z-index: 0;
 }
 
+/* Static hover fallback (e.g. before JS hydration or keyboard focus) */
 .theme-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(200, 252, 108, 0.32);
-  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.7),
-              0 0 24px -6px rgba(200, 252, 108, 0.16);
+  --tilt-lift: -3px;
+  border-color: color-mix(in srgb, var(--brand-accent) 30%, var(--border-subtle));
+  box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.72),
+              0 0 24px -6px var(--brand-accent-glow);
+}
+
+.theme-card:hover::before {
+  opacity: 1;
 }
 
 .theme-card:hover::after {
   opacity: 1;
   transform: translate(0, 0) scale(1);
+  animation: subtle-corner-pulse 3.6s ease-in-out infinite alternate;
+}
+
+/* Dynamic hovered state driven by real-time pointer movement */
+.theme-card[data-card-hovered="true"] {
+  --tilt-lift: -3px;
+  /* During active cursor movement, keep transform transition instantaneous for 120 FPS fluid response */
+  transition: transform 0.08s ease-out,
+              box-shadow 0.22s ease-out,
+              border-color 0.2s ease-out;
+  border-color: color-mix(in srgb, var(--brand-accent) calc(20% + var(--corner-proximity, 0.4) * 38%), var(--border-subtle));
+  box-shadow: 0 20px 42px -12px rgba(0, 0, 0, 0.78),
+              0 0 calc(18px + var(--corner-proximity, 0.4) * 36px) var(--brand-accent-glow);
+}
+
+.theme-card[data-card-hovered="true"]::before {
+  opacity: 1;
+}
+
+.theme-card[data-card-hovered="true"]::after {
+  opacity: calc(0.45 + var(--corner-proximity, 0.4) * 0.55);
+  transform: translate(0, 0) scale(1);
+  animation: subtle-corner-pulse 3.6s ease-in-out infinite alternate;
 }
 
 .theme-card:active {
-  transform: translateY(-1px) scale(0.995);
+  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(-1px) scale(0.995);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-card {
+    transform: none !important;
+    transition: none !important;
+  }
+  .theme-card:hover::after,
+  .theme-card[data-card-hovered="true"]::after {
+    animation: none !important;
+  }
 }
 
 body {

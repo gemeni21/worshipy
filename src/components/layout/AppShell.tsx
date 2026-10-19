@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { FloatingVoiceSearchButton } from '@/components/search/FloatingVoiceSearchButton';
+import { ThemeCardTiltEffect } from '@/components/theme/ThemeCardTiltEffect';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
@@ -364,6 +365,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Global Floating Voice Search Button */}
       <FloatingVoiceSearchButton />
+
+      {/* Global 3D Card Tilt & Interactive Mouse Glow Controller */}
+      <ThemeCardTiltEffect />
     </div>
   );
 }
