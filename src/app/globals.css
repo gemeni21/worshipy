@@ -316,8 +316,8 @@
   overflow: hidden;
   isolation: isolate;
   transform-style: preserve-3d;
-  perspective: 1200px;
-  transform: perspective(1200px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(var(--tilt-lift, 0px));
+  perspective: 1500px;
+  transform: perspective(1500px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(var(--tilt-lift, 0px));
   will-change: transform, box-shadow;
   transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1),
               box-shadow 0.38s cubic-bezier(0.16, 1, 0.3, 1),
@@ -373,9 +373,9 @@
 
 /* Static hover fallback (e.g. before JS hydration or keyboard focus) */
 .theme-card:hover {
-  --tilt-lift: -2px;
+  --tilt-lift: -1px;
   border-color: color-mix(in srgb, var(--brand-accent) 18%, var(--border-subtle));
-  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.65),
+  box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.65),
               0 0 12px -2px color-mix(in srgb, var(--brand-accent) 8%, transparent);
 }
 
@@ -393,13 +393,13 @@
 
 /* Dynamic hovered state driven by real-time pointer movement */
 .theme-card[data-card-hovered="true"] {
-  --tilt-lift: -2px;
+  --tilt-lift: -1px;
   /* During active cursor movement, keep transform transition instantaneous for 120 FPS fluid response */
   transition: transform 0.08s ease-out,
               box-shadow 0.22s ease-out,
               border-color 0.2s ease-out;
   border-color: color-mix(in srgb, var(--brand-accent) calc(14% + var(--corner-proximity, 0.4) * 16%), var(--border-subtle));
-  box-shadow: 0 14px 34px -8px rgba(0, 0, 0, 0.7),
+  box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.7),
               0 0 calc(8px + var(--corner-proximity, 0.4) * 12px) color-mix(in srgb, var(--brand-accent) 12%, transparent);
 }
 
@@ -416,7 +416,7 @@
 }
 
 .theme-card:active {
-  transform: perspective(1200px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(-1px) scale(0.995);
+  transform: perspective(1500px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) translateY(0px) scale(0.995);
 }
 
 @media (prefers-reduced-motion: reduce) {
