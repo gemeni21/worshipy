@@ -2,47 +2,15 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SetlistItem } from '@/types/song';
 
-// Reusable physics & slot math corresponding to SetlistDragReorderList
-const ROW_HEIGHT = 72;
-const ROW_GAP = 8;
-const STEP = ROW_HEIGHT + ROW_GAP; // 80px
-
-function computeTargetSlot(
-  translateY: number,
-  totalItems: number,
-  step = STEP
-): number {
-  if (totalItems <= 0) return 0;
-  const maxSlot = totalItems - 1;
-  const rawSlot = Math.round(translateY / step);
-  return Math.max(0, Math.min(maxSlot, rawSlot));
-}
-
-function clampTranslateY(
-  rawY: number,
-  totalItems: number,
-  step = STEP
-): number {
-  if (totalItems <= 1) return 0;
-  const maxY = (totalItems - 1) * step;
-  return Math.max(0, Math.min(rawY, maxY));
-}
-
-function reorderArray<T>(items: T[], fromIndex: number, toIndex: number): T[] {
-  if (
-    fromIndex < 0 ||
-    fromIndex >= items.length ||
-    toIndex < 0 ||
-    toIndex >= items.length ||
-    fromIndex === toIndex
-  ) {
-    return [...items];
-  }
-  const copy = [...items];
-  const [moved] = copy.splice(fromIndex, 1);
-  copy.splice(toIndex, 0, moved);
-  return copy;
-}
+import {
+  ROW_HEIGHT,
+  ROW_GAP,
+  STEP,
+  computeTargetSlot,
+  clampTranslateY,
+  reorderArray,
+  getVisualSlot,
+} from '../slotMath.ts';
 
 describe('Setlist Fluid Drag-to-Reorder Physics & State Logic', () => {
   const seedItems: SetlistItem[] = [
@@ -147,5 +115,38 @@ describe('Setlist Fluid Drag-to-Reorder Physics & State Logic', () => {
     assert.match(easing, /^linear\([0-9\.\s%,]+\)$/);
     assert.ok(easing.startsWith('linear(0,'));
     assert.ok(easing.endsWith('1 100%)'));
+  });
+
+  it('8. computes non-destructive visual slots for multi-level dragging from top to bottom', () => {
+    // Drag item 0 all the way to slot 3 (bottom)
+    const slotsDown = [0, 1, 2, 3].map((idx) => getVisualSlot(idx, 0, 3));
+    // Item 0 is at slot 3. Items 1, 2, 3 shift up by 1 -> slots 0, 1, 2!
+    assert.deepEqual(slotsDown, [3, 0, 1, 2]);
+
+    // Drag item 3 all the way to slot 0 (top)
+    const slotsUp = [0, 1, 2, 3].map((idx) => getVisualSlot(idx, 3, 0));
+    // Item 3 is at slot 0. Items 0, 1, 2 shift down by 1 -> slots 1, 2, 3!
+    assert.deepEqual(slotsUp, [1, 2, 3, 0]);
+
+    // Drag item 1 to slot 2 (intermediate)
+    const slotsMid = [0, 1, 2, 3].map((idx) => getVisualSlot(idx, 1, 2));
+    assert.deepEqual(slotsMid, [0, 2, 1, 3]);
+  });
+
+  it('9. verifies visual slots exactly match final spliced array for any continuous path', () => {
+    const items = ['A', 'B', 'C', 'D', 'E'];
+
+    for (let source = 0; source < items.length; source++) {
+      for (let target = 0; target < items.length; target++) {
+        const visualSlots = items.map((_, idx) => getVisualSlot(idx, source, target));
+        const spliced = reorderArray(items, source, target);
+
+        // Every item should appear at the exact position given by its visualSlot
+        items.forEach((item, originalIdx) => {
+          const expectedSlot = visualSlots[originalIdx];
+          assert.equal(spliced[expectedSlot], item);
+        });
+      }
+    }
   });
 });

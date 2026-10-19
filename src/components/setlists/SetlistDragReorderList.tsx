@@ -1,12 +1,19 @@
 'use client';
 
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Check, GripVertical, Trash2 } from 'lucide-react';
 import {
   formatSignedSemitones,
   transposeKey,
 } from '@/lib/music/transposition';
+import {
+  getVisualSlot,
+  reorderArray,
+  ROW_HEIGHT,
+  ROW_GAP,
+  STEP,
+} from '@/lib/setlists/slotMath';
 import type { SetlistItem, SongRecord } from '@/types/song';
 
 interface SetlistDragReorderListProps {
@@ -19,23 +26,22 @@ interface SetlistDragReorderListProps {
   isSongSavedOffline: (songId: string) => boolean;
 }
 
+interface ManagedItem {
+  key: string;
+  raw: SetlistItem;
+}
+
 interface DragState {
-  activeKey: string;
-  initialSlot: number;
-  grabOffset: number;
-  currentY: number;
+  sourceSlot: number;
+  targetSlot: number;
   isKeyboard: boolean;
 }
 
-const ROW_HEIGHT = 72; // px
-const ROW_GAP = 8; // px
-const STEP = ROW_HEIGHT + ROW_GAP; // 80px
-
-// Stable unique identifier for setlist item
-function getItemKey(item: SetlistItem, fallbackIdx: number): string {
-  return item.addedAt
-    ? `${item.songId}__${item.addedAt}`
-    : `${item.songId}__${fallbackIdx}`;
+// Synchronizes managed items with immutable, permanent keys across renders
+let keyCounter = 0;
+function createManagedKey(item: SetlistItem, idx: number): string {
+  const base = item.addedAt ? `${item.songId}_${item.addedAt}` : `${item.songId}_${idx}`;
+  return `wmc_drag_${base}_${++keyCounter}`;
 }
 
 export function SetlistDragReorderList({
@@ -50,187 +56,254 @@ export function SetlistDragReorderList({
   const listId = useId();
   const listRef = useRef<HTMLOListElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
-  const dragPointerIdRef = useRef<number | null>(null);
 
-  // Local state holding the current ordered items
-  const [currentOrder, setCurrentOrder] = useState<SetlistItem[]>(items);
+  // Store managed items with immutable keys so elements are never unmounted during drag
+  const [managedItems, setManagedItems] = useState<ManagedItem[]>(() =>
+    items.map((item, idx) => ({
+      key: createManagedKey(item, idx),
+      raw: item,
+    }))
+  );
+
+  // Active drag state
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [liveAnnouncement, setLiveAnnouncement] = useState<string>('');
 
-  // Backup of order before a keyboard or pointer drag session begins
-  const preDragOrderRef = useRef<SetlistItem[]>(items);
+  // Active pointer drag tracking ref
+  const activeDragRef = useRef<{
+    pointerId: number;
+    handleEl: HTMLElement;
+    sourceSlot: number;
+    grabOffset: number;
+    rowEl: HTMLElement;
+    containerTop: number;
+    currentY: number;
+    latestTarget: number;
+  } | null>(null);
 
-  // Keep local items synchronized with props when not actively dragging
+  // Sync managed items with incoming items prop when not actively dragging
   useEffect(() => {
-    if (!dragState) {
-      setCurrentOrder(items);
-      preDragOrderRef.current = items;
-    }
+    if (dragState) return;
+    setManagedItems((prev) => {
+      // Re-use existing keys for matching items to prevent DOM re-creation
+      const usedKeys = new Set<string>();
+      return items.map((item, idx) => {
+        const existing = prev.find(
+          (p) =>
+            p.raw.songId === item.songId &&
+            p.raw.addedAt === item.addedAt &&
+            !usedKeys.has(p.key)
+        );
+        if (existing) {
+          usedKeys.add(existing.key);
+          return { key: existing.key, raw: item };
+        }
+        const newKey = createManagedKey(item, idx);
+        usedKeys.add(newKey);
+        return { key: newKey, raw: item };
+      });
+    });
   }, [items, dragState]);
 
-  // Handle pointer down on drag grip handle
+  // Finalize drop and commit order
+  const finalizeDrop = useCallback(
+    (sourceSlot: number, finalTarget: number) => {
+      const activeManaged = managedItems[sourceSlot];
+      const song = activeManaged ? getSongByIdOrSlug(activeManaged.raw.songId) : null;
+      const songTitle = song?.title ?? 'Song';
+
+      setLiveAnnouncement(
+        `Dropped ${songTitle} at position ${finalTarget + 1} of ${managedItems.length}.`
+      );
+
+      // Reorder managed items synchronously so visual state never flickers or snaps back
+      const reordered = reorderArray(managedItems, sourceSlot, finalTarget);
+      setManagedItems(reordered);
+      setDragState(null);
+
+      // Restore transition and target position on the dropped row element
+      if (activeManaged) {
+        const rowEl = rowRefs.current.get(activeManaged.key);
+        if (rowEl) {
+          rowEl.dataset.dragging = 'false';
+          rowEl.dataset.keyboardLifted = 'false';
+          rowEl.style.zIndex = '';
+          rowEl.style.transition = '';
+          rowEl.style.transform = `translateY(${finalTarget * STEP}px) scale(1)`;
+        }
+      }
+
+      if (sourceSlot !== finalTarget) {
+        const newItems = reordered.map((m) => m.raw);
+        onReorder(newItems);
+      }
+    },
+    [getSongByIdOrSlug, managedItems, onReorder]
+  );
+
+  // Handle pointer down on drag handle: 120Hz smooth tracking across entire list
   const handlePointerDown = (
     e: React.PointerEvent<HTMLButtonElement>,
-    key: string,
-    slot: number
+    managedIndex: number
   ) => {
-    // Only respond to primary mouse button or touch/pen
+    // Only primary mouse button or touch/pen
     if (e.button !== 0) return;
 
-    const rowEl = rowRefs.current.get(key);
+    const managedItem = managedItems[managedIndex];
+    if (!managedItem) return;
+
+    const rowEl = rowRefs.current.get(managedItem.key);
     const containerEl = listRef.current;
     if (!rowEl || !containerEl) return;
 
-    // Capture pointer
+    const handleEl = e.currentTarget;
     try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-      dragPointerIdRef.current = e.pointerId;
+      handleEl.setPointerCapture(e.pointerId);
     } catch {
       // ignore
     }
 
     const rowRect = rowEl.getBoundingClientRect();
+    const containerRect = containerEl.getBoundingClientRect();
     const grabOffset = e.clientY - rowRect.top;
-    const initialTranslateY = slot * STEP;
+    const initialTranslateY = managedIndex * STEP;
 
-    preDragOrderRef.current = currentOrder;
+    activeDragRef.current = {
+      pointerId: e.pointerId,
+      handleEl,
+      sourceSlot: managedIndex,
+      grabOffset,
+      rowEl,
+      containerTop: containerRect.top,
+      currentY: initialTranslateY,
+      latestTarget: managedIndex,
+    };
+
+    // Remove transition on dragged row for instantaneous, zero-latency cursor tracking
+    rowEl.style.transition = 'none';
+    rowEl.style.zIndex = '50';
+    rowEl.style.transform = `translateY(${initialTranslateY}px) scale(1.04)`;
 
     setDragState({
-      activeKey: key,
-      initialSlot: slot,
-      grabOffset,
-      currentY: initialTranslateY,
+      sourceSlot: managedIndex,
+      targetSlot: managedIndex,
       isKeyboard: false,
     });
 
-    const item = currentOrder[slot];
-    const song = item ? getSongByIdOrSlug(item.songId) : null;
-    const songName = song?.title ?? 'Song';
-
+    const song = getSongByIdOrSlug(managedItem.raw.songId);
     setLiveAnnouncement(
-      `Picked up ${songName}, position ${slot + 1} of ${
-        currentOrder.length
-      }. Drag up or down to reorder.`
-    );
-  };
-
-  // Handle pointer move during drag
-  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!dragState || dragState.isKeyboard) return;
-    if (!listRef.current) return;
-
-    const containerRect = listRef.current.getBoundingClientRect();
-    const pointerYInContainer = e.clientY - containerRect.top;
-    const rawY = pointerYInContainer - dragState.grabOffset;
-
-    const maxTranslateY = Math.max(0, (currentOrder.length - 1) * STEP);
-    const clampedY = Math.max(0, Math.min(rawY, maxTranslateY));
-
-    // Compute target slot with Math.round(y / step)
-    const targetSlot = Math.max(
-      0,
-      Math.min(currentOrder.length - 1, Math.round(clampedY / STEP))
+      `Picked up ${song?.title ?? 'Song'}, position ${managedIndex + 1} of ${
+        managedItems.length
+      }. Drag to any position.`
     );
 
-    const currentSlot = currentOrder.findIndex(
-      (item, idx) => getItemKey(item, idx) === dragState.activeKey
-    );
+    // Window level listeners: allows dragging anywhere from top to bottom across any number of levels
+    const onWindowPointerMove = (ev: PointerEvent) => {
+      const drag = activeDragRef.current;
+      if (!drag || ev.pointerId !== drag.pointerId) return;
 
-    if (targetSlot !== currentSlot && currentSlot !== -1) {
-      // Splice row to that slot in the order array and re-place every other row
-      const newOrder = [...currentOrder];
-      const [moved] = newOrder.splice(currentSlot, 1);
-      newOrder.splice(targetSlot, 0, moved);
+      const containerTop = listRef.current
+        ? listRef.current.getBoundingClientRect().top
+        : drag.containerTop;
 
-      setCurrentOrder(newOrder);
+      const pointerYInContainer = ev.clientY - containerTop;
+      const rawY = pointerYInContainer - drag.grabOffset;
+      const maxY = Math.max(0, (managedItems.length - 1) * STEP);
+      const clampedY = Math.max(0, Math.min(rawY, maxY));
 
-      const song = getSongByIdOrSlug(moved.songId);
-      const songName = song?.title ?? 'Song';
-      setLiveAnnouncement(
-        `${songName}, position ${targetSlot + 1} of ${newOrder.length}`
-      );
-    }
+      drag.currentY = clampedY;
 
-    setDragState((prev) =>
-      prev ? { ...prev, currentY: clampedY } : null
-    );
-  };
-
-  // Handle pointer up or lost capture
-  const handlePointerEnd = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (!dragState || dragState.isKeyboard) return;
-
-    try {
-      if (
-        dragPointerIdRef.current !== null &&
-        e.currentTarget.hasPointerCapture(dragPointerIdRef.current)
-      ) {
-        e.currentTarget.releasePointerCapture(dragPointerIdRef.current);
+      // Direct GPU transform update on the dragged row element (120 FPS buttery smooth)
+      if (drag.rowEl) {
+        drag.rowEl.style.transform = `translateY(${clampedY}px) scale(1.04)`;
       }
-    } catch {
-      // ignore
-    }
-    dragPointerIdRef.current = null;
 
-    const finalSlot = currentOrder.findIndex(
-      (item, idx) => getItemKey(item, idx) === dragState.activeKey
-    );
-    const movedItem = currentOrder[finalSlot];
-    const song = movedItem ? getSongByIdOrSlug(movedItem.songId) : null;
-    const songName = song?.title ?? 'Song';
+      // Compute new target slot using Math.round(y / step)
+      const newTarget = Math.max(
+        0,
+        Math.min(managedItems.length - 1, Math.round(clampedY / STEP))
+      );
 
-    setLiveAnnouncement(
-      `Dropped ${songName} at position ${finalSlot + 1} of ${
-        currentOrder.length
-      }.`
-    );
+      if (newTarget !== drag.latestTarget) {
+        drag.latestTarget = newTarget;
+        setDragState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            targetSlot: newTarget,
+          };
+        });
 
-    setDragState(null);
+        const currentSong = getSongByIdOrSlug(managedItem.raw.songId);
+        setLiveAnnouncement(
+          `${currentSong?.title ?? 'Song'}, position ${newTarget + 1} of ${
+            managedItems.length
+          }`
+        );
+      }
+    };
 
-    // Commit changes to parent & AppContext
-    onReorder(currentOrder);
+    const onWindowPointerUp = (ev: PointerEvent) => {
+      const drag = activeDragRef.current;
+      if (!drag || ev.pointerId !== drag.pointerId) return;
+
+      cleanup();
+
+      const finalTarget = drag.latestTarget;
+      finalizeDrop(drag.sourceSlot, finalTarget);
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onWindowPointerMove);
+      window.removeEventListener('pointerup', onWindowPointerUp);
+      window.removeEventListener('pointercancel', onWindowPointerUp);
+      if (activeDragRef.current?.handleEl) {
+        try {
+          if (activeDragRef.current.handleEl.hasPointerCapture(e.pointerId)) {
+            activeDragRef.current.handleEl.releasePointerCapture(e.pointerId);
+          }
+        } catch {
+          // ignore
+        }
+      }
+      activeDragRef.current = null;
+    };
+
+    window.addEventListener('pointermove', onWindowPointerMove, { passive: true });
+    window.addEventListener('pointerup', onWindowPointerUp);
+    window.addEventListener('pointercancel', onWindowPointerUp);
   };
 
-  // Handle keyboard reorder (Space to pick up, Up/Down to move, Space to drop, Esc to cancel)
+  // Keyboard navigation (Space to pick up, Up/Down to move, Space to drop, Esc to cancel)
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLButtonElement>,
-    key: string,
     slot: number
   ) => {
     const isCurrentActive =
-      dragState !== null && dragState.activeKey === key && dragState.isKeyboard;
+      dragState !== null &&
+      dragState.sourceSlot === slot &&
+      dragState.isKeyboard;
 
     if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
       if (!isCurrentActive) {
         // Pick up
-        preDragOrderRef.current = currentOrder;
         setDragState({
-          activeKey: key,
-          initialSlot: slot,
-          grabOffset: 0,
-          currentY: slot * STEP,
+          sourceSlot: slot,
+          targetSlot: slot,
           isKeyboard: true,
         });
 
-        const song = getSongByIdOrSlug(currentOrder[slot]?.songId);
+        const song = getSongByIdOrSlug(managedItems[slot]?.raw.songId);
         const songName = song?.title ?? 'Song';
         setLiveAnnouncement(
           `Picked up ${songName}, position ${slot + 1} of ${
-            currentOrder.length
+            managedItems.length
           }. Use arrow keys to move, Space to drop, Escape to cancel.`
         );
       } else {
         // Drop
-        const song = getSongByIdOrSlug(currentOrder[slot]?.songId);
-        const songName = song?.title ?? 'Song';
-        setLiveAnnouncement(
-          `Dropped ${songName} at position ${slot + 1} of ${
-            currentOrder.length
-          }.`
-        );
-        setDragState(null);
-        onReorder(currentOrder);
+        finalizeDrop(dragState.sourceSlot, dragState.targetSlot);
       }
       return;
     }
@@ -238,21 +311,14 @@ export function SetlistDragReorderList({
     if (isCurrentActive) {
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (slot > 0) {
-          const targetSlot = slot - 1;
-          const newOrder = [...currentOrder];
-          const [moved] = newOrder.splice(slot, 1);
-          newOrder.splice(targetSlot, 0, moved);
+        if (dragState.targetSlot > 0) {
+          const newTarget = dragState.targetSlot - 1;
+          setDragState({ ...dragState, targetSlot: newTarget });
 
-          setCurrentOrder(newOrder);
-          setDragState((prev) =>
-            prev ? { ...prev, currentY: targetSlot * STEP } : null
-          );
-
-          const song = getSongByIdOrSlug(moved.songId);
+          const song = getSongByIdOrSlug(managedItems[dragState.sourceSlot]?.raw.songId);
           const songName = song?.title ?? 'Song';
           setLiveAnnouncement(
-            `${songName}, position ${targetSlot + 1} of ${newOrder.length}`
+            `${songName}, position ${newTarget + 1} of ${managedItems.length}`
           );
         }
         return;
@@ -260,21 +326,14 @@ export function SetlistDragReorderList({
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        if (slot < currentOrder.length - 1) {
-          const targetSlot = slot + 1;
-          const newOrder = [...currentOrder];
-          const [moved] = newOrder.splice(slot, 1);
-          newOrder.splice(targetSlot, 0, moved);
+        if (dragState.targetSlot < managedItems.length - 1) {
+          const newTarget = dragState.targetSlot + 1;
+          setDragState({ ...dragState, targetSlot: newTarget });
 
-          setCurrentOrder(newOrder);
-          setDragState((prev) =>
-            prev ? { ...prev, currentY: targetSlot * STEP } : null
-          );
-
-          const song = getSongByIdOrSlug(moved.songId);
+          const song = getSongByIdOrSlug(managedItems[dragState.sourceSlot]?.raw.songId);
           const songName = song?.title ?? 'Song';
           setLiveAnnouncement(
-            `${songName}, position ${targetSlot + 1} of ${newOrder.length}`
+            `${songName}, position ${newTarget + 1} of ${managedItems.length}`
           );
         }
         return;
@@ -282,23 +341,22 @@ export function SetlistDragReorderList({
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        // Cancel and revert to previous order
-        const song = getSongByIdOrSlug(currentOrder[slot]?.songId);
+        // Cancel and revert
+        const song = getSongByIdOrSlug(managedItems[dragState.sourceSlot]?.raw.songId);
         const songName = song?.title ?? 'Song';
         setLiveAnnouncement(
           `Reordering cancelled. ${songName} returned to position ${
-            dragState.initialSlot + 1
-          } of ${currentOrder.length}.`
+            dragState.sourceSlot + 1
+          } of ${managedItems.length}.`
         );
-        setCurrentOrder(preDragOrderRef.current);
-        setDragState(null);
+        finalizeDrop(dragState.sourceSlot, dragState.sourceSlot);
         return;
       }
     }
   };
 
   const containerHeight =
-    currentOrder.length > 0 ? currentOrder.length * STEP - ROW_GAP : 0;
+    managedItems.length > 0 ? managedItems.length * STEP - ROW_GAP : 0;
 
   return (
     <div className="space-y-2">
@@ -315,8 +373,8 @@ export function SetlistDragReorderList({
       {/* Screen reader instructions */}
       <p id={`sr-instructions-${listId}`} className="sr-only">
         Setlist songs reorder list. Use the grab handle on each card to drag and
-        drop, or press Space to pick up, Up and Down arrows to move, and Space to
-        drop into position.
+        drop freely to any position from top to bottom, or press Space to pick up,
+        Up and Down arrows to move, and Space to drop.
       </p>
 
       {/* Relative container with fixed row height positioning */}
@@ -327,45 +385,53 @@ export function SetlistDragReorderList({
         className="drag-reorder-container relative w-full"
         style={{ height: `${containerHeight}px` }}
       >
-        {currentOrder.map((item, slot) => {
-          const key = getItemKey(item, slot);
+        {managedItems.map((managed, idx) => {
+          const item = managed.raw;
           const song = getSongByIdOrSlug(item.songId);
-          const isDragging =
+          const isBeingDragged =
             dragState !== null &&
-            dragState.activeKey === key &&
+            dragState.sourceSlot === idx &&
             !dragState.isKeyboard;
           const isKeyboardLifted =
             dragState !== null &&
-            dragState.activeKey === key &&
+            dragState.sourceSlot === idx &&
             dragState.isKeyboard;
-          const isLifted = isDragging || isKeyboardLifted;
+          const isLifted = isBeingDragged || isKeyboardLifted;
 
-          // Compute row translation: follow pointer when actively dragging, else slot * step
-          const translateY = isDragging ? dragState.currentY : slot * STEP;
+          // Compute visual slot based on current sourceSlot and targetSlot
+          const visualSlot =
+            dragState !== null
+              ? getVisualSlot(idx, dragState.sourceSlot, dragState.targetSlot)
+              : idx;
+
+          // TranslateY calculation:
+          // If actively dragged by pointer, the element's DOM style is updated directly by onWindowPointerMove.
+          // In React render fallback or keyboard lift, position at visualSlot * STEP.
+          const defaultTranslateY = visualSlot * STEP;
 
           if (!song) {
             return (
               <li
-                key={key}
+                key={managed.key}
                 ref={(el) => {
-                  if (el) rowRefs.current.set(key, el);
-                  else rowRefs.current.delete(key);
+                  if (el) rowRefs.current.set(managed.key, el);
+                  else rowRefs.current.delete(managed.key);
                 }}
-                data-dragging={isDragging ? 'true' : 'false'}
+                data-dragging={isBeingDragged ? 'true' : 'false'}
                 data-keyboard-lifted={isKeyboardLifted ? 'true' : 'false'}
                 className="drag-reorder-card absolute inset-x-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-4 py-2.5 flex items-center justify-between text-xs text-[var(--text-secondary)]"
                 style={{
                   height: `${ROW_HEIGHT}px`,
-                  transform: `translateY(${translateY}px) ${
+                  transform: `translateY(${defaultTranslateY}px) ${
                     isLifted ? 'scale(1.04)' : 'scale(1)'
                   }`,
-                  zIndex: isLifted ? 40 : 1,
+                  zIndex: isLifted ? 50 : 1,
                 }}
               >
                 <span>Unavailable song record ({item.songId})</span>
                 <button
                   type="button"
-                  onClick={() => onRemove(slot)}
+                  onClick={() => onRemove(visualSlot)}
                   className="text-rose-500 underline cursor-pointer hover:text-rose-400"
                 >
                   Remove
@@ -386,29 +452,32 @@ export function SetlistDragReorderList({
 
           return (
             <li
-              key={key}
+              key={managed.key}
               ref={(el) => {
-                if (el) rowRefs.current.set(key, el);
-                else rowRefs.current.delete(key);
+                if (el) rowRefs.current.set(managed.key, el);
+                else rowRefs.current.delete(managed.key);
               }}
-              data-dragging={isDragging ? 'true' : 'false'}
+              data-dragging={isBeingDragged ? 'true' : 'false'}
               data-keyboard-lifted={isKeyboardLifted ? 'true' : 'false'}
-              className={`drag-reorder-card absolute inset-x-0 rounded-xl border transition-colors flex items-center justify-between gap-3 px-3.5 py-2.5 box-border select-none ${
+              className={`drag-reorder-card absolute inset-x-0 rounded-xl border flex items-center justify-between gap-3 px-3.5 py-2.5 box-border select-none ${
                 isLifted
-                  ? 'border-[var(--brand-accent)]/55 bg-[#181822] shadow-[0_20px_25px_-5px_rgba(0,0,0,0.65),0_8px_10px_-6px_rgba(0,0,0,0.65),0_0_0_1.5px_rgba(200,252,108,0.45)]'
+                  ? 'border-[var(--brand-accent)]/80 bg-[var(--bg-card)] shadow-[0_20px_25px_-5px_rgba(0,0,0,0.7),0_10px_10px_-5px_rgba(0,0,0,0.5)] ring-2 ring-[var(--brand-accent)]/40'
                   : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--border-strong)]'
               }`}
               style={{
                 height: `${ROW_HEIGHT}px`,
-                transform: `translateY(${translateY}px) ${
-                  isLifted ? 'scale(1.04)' : 'scale(1)'
-                }`,
-                zIndex: isLifted ? 40 : 1,
+                // Don't overwrite active pointer drag transform during live pointer movements
+                transform: isBeingDragged
+                  ? undefined
+                  : `translateY(${defaultTranslateY}px) ${
+                      isLifted ? 'scale(1.04)' : 'scale(1)'
+                    }`,
+                zIndex: isLifted ? 50 : 1,
               }}
             >
-              {/* Left Cluster: Drag Handle + Slot Number + Song Details */}
+              {/* Left Cluster: Dedicated Drag Handle + Dynamic Slot Badge + Song Details */}
               <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
-                {/* Dedicated Drag & Keyboard Reorder Grip Handle */}
+                {/* Dedicated Drag & Keyboard Grip Handle */}
                 <button
                   type="button"
                   role="button"
@@ -416,18 +485,14 @@ export function SetlistDragReorderList({
                   aria-pressed={isLifted}
                   aria-roledescription="sortable song item"
                   aria-label={`Reorder ${song.title}. Position ${
-                    slot + 1
+                    visualSlot + 1
                   } of ${
-                    currentOrder.length
+                    managedItems.length
                   }. Press Space to pick up, Up and Down arrow keys to move, Space to drop.`}
                   title="Drag or press Space to reorder"
-                  onPointerDown={(e) => handlePointerDown(e, key, slot)}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={handlePointerEnd}
-                  onPointerCancel={handlePointerEnd}
-                  onLostPointerCapture={handlePointerEnd}
-                  onKeyDown={(e) => handleKeyDown(e, key, slot)}
-                  className={`drag-handle group w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[#14141a] ${
+                  onPointerDown={(e) => handlePointerDown(e, idx)}
+                  onKeyDown={(e) => handleKeyDown(e, idx)}
+                  className={`drag-handle group w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-canvas)] ${
                     isLifted
                       ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)]'
                       : 'text-[var(--text-secondary)] hover:text-[var(--brand-accent)] hover:bg-[var(--brand-surface)]/70'
@@ -440,7 +505,7 @@ export function SetlistDragReorderList({
                   />
                 </button>
 
-                {/* Slot Number Badge */}
+                {/* Slot Number Badge - dynamically reflects current visual position */}
                 <span
                   className={`w-6 h-6 rounded-full font-mono text-xs font-bold flex items-center justify-center shrink-0 transition-colors ${
                     isLifted
@@ -449,7 +514,7 @@ export function SetlistDragReorderList({
                   }`}
                   aria-hidden="true"
                 >
-                  {slot + 1}
+                  {visualSlot + 1}
                 </span>
 
                 {/* Song Title & Musical Metadata */}
@@ -490,10 +555,10 @@ export function SetlistDragReorderList({
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
-                  onClick={() => onRemove(slot)}
+                  onClick={() => onRemove(idx)}
                   aria-label={`Remove ${song.title} from ${setlistName}`}
                   title={`Remove ${song.title} from setlist`}
-                  className="w-9 h-9 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-rose-500 hover:border-rose-500/40 inline-flex items-center justify-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#14141a]"
+                  className="w-9 h-9 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-rose-500 hover:border-rose-500/40 inline-flex items-center justify-center cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-canvas)]"
                 >
                   <Trash2 className="w-4 h-4" aria-hidden="true" />
                 </button>

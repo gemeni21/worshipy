@@ -560,21 +560,18 @@ p {
   will-change: transform, box-shadow;
   transition: transform 587ms var(--drag-spring-glide),
               box-shadow 200ms ease,
-              border-color 200ms ease,
-              scale 200ms ease;
+              border-color 200ms ease;
 }
 
 .drag-reorder-card[data-dragging="true"] {
   transition: none !important;
-  z-index: 40 !important;
-  scale: 1.04;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6), 0 0 0 1.5px rgba(200, 252, 108, 0.45);
+  z-index: 50 !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 10px 10px -5px rgba(0, 0, 0, 0.5), 0 0 0 1.5px var(--brand-accent);
 }
 
 .drag-reorder-card[data-keyboard-lifted="true"] {
-  z-index: 40 !important;
-  scale: 1.04;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6), 0 0 0 1.5px rgba(200, 252, 108, 0.45);
+  z-index: 50 !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 10px 10px -5px rgba(0, 0, 0, 0.5), 0 0 0 1.5px var(--brand-accent);
 }
 
 .drag-handle {
@@ -593,10 +590,6 @@ p {
   .drag-reorder-card {
     transition: none !important;
     animation: none !important;
-  }
-  .drag-reorder-card[data-dragging="true"],
-  .drag-reorder-card[data-keyboard-lifted="true"] {
-    scale: 1 !important;
   }
 }
 
