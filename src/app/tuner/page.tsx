@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   AlertCircle,
   ArrowDown,
@@ -12,13 +12,21 @@ import {
   Mic,
   MicOff,
   Music,
+  Play,
   ShieldCheck,
   Sliders,
   Square,
   Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { useMicrophoneTuner } from '@/hooks/useMicrophoneTuner';
-import type { TunerInstrumentMode } from '@/lib/tuner/tunerEngine';
+import type { TunerInstrumentMode, TuningStringPreset } from '@/lib/tuner/tunerEngine';
+import {
+  playPluckedTone,
+  playContinuousReferenceTone,
+  playGuitarChord,
+  type SoundPlaybackController,
+} from '@/lib/audio/soundEngine';
 
 function formatSignedCents(cents: number): string {
   if (Object.is(cents, -0) || cents === 0) return '0.0¢';
@@ -47,6 +55,59 @@ export default function TunerPage() {
     startListening,
     stopListening,
   } = useMicrophoneTuner();
+
+  // Audio tone playback states
+  const [soundOnTap, setSoundOnTap] = useState(true);
+  const [playingToneId, setPlayingToneId] = useState<string | null>(null);
+  const [isContinuousTonePlaying, setIsContinuousTonePlaying] = useState(false);
+  const soundControllerRef = useRef<SoundPlaybackController | null>(null);
+
+  // Clean up any playing sound on unmount or tab switch
+  useEffect(() => {
+    return () => {
+      soundControllerRef.current?.stop();
+    };
+  }, []);
+
+  const stopActiveSound = () => {
+    soundControllerRef.current?.stop();
+    soundControllerRef.current = null;
+    setPlayingToneId(null);
+    setIsContinuousTonePlaying(false);
+  };
+
+  const handlePlayStringTone = (preset: TuningStringPreset) => {
+    stopActiveSound();
+    setPlayingToneId(preset.id);
+    const instrument = instrumentMode === 'bass' ? 'bass' : 'guitar';
+    const ctrl = playPluckedTone(preset.frequencyHz, 2.5, instrument);
+    soundControllerRef.current = ctrl;
+    setTimeout(() => {
+      setPlayingToneId((prev) => (prev === preset.id ? null : prev));
+    }, 2500);
+  };
+
+  const handleToggleContinuousPitchPipe = (freq: number, id: string = 'continuous') => {
+    if (isContinuousTonePlaying && playingToneId === id) {
+      stopActiveSound();
+    } else {
+      stopActiveSound();
+      setPlayingToneId(id);
+      setIsContinuousTonePlaying(true);
+      const ctrl = playContinuousReferenceTone(freq);
+      soundControllerRef.current = ctrl;
+    }
+  };
+
+  const handlePlayTestChord = (chordName: string) => {
+    stopActiveSound();
+    setPlayingToneId(`chord-${chordName}`);
+    const ctrl = playGuitarChord(chordName);
+    soundControllerRef.current = ctrl;
+    setTimeout(() => {
+      setPlayingToneId((prev) => (prev === `chord-${chordName}` ? null : prev));
+    }, 2800);
+  };
 
   const isListening = lifecycleState === 'listening';
   const isRequesting = lifecycleState === 'requesting-permission';
@@ -293,15 +354,34 @@ export default function TunerPage() {
         {/* String Selector Row (shown for Guitar and Bass modes in low-to-high order) */}
         {instrumentMode !== 'chromatic' && (
           <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
                 {instrumentMode === 'guitar'
                   ? 'Standard 6-String Guitar Tuning (Low to High)'
                   : 'Standard 4-String Bass Tuning (Low to High)'}
               </span>
-              <span className="text-xs text-[var(--text-secondary)]">
-                Tap a string to lock target reference
-              </span>
+              <div className="flex items-center gap-2 text-xs">
+                {/* Sound on tap toggle */}
+                <button
+                  type="button"
+                  onClick={() => setSoundOnTap(!soundOnTap)}
+                  data-testid="tuner-sound-on-tap-toggle"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium border transition-colors cursor-pointer ${
+                    soundOnTap
+                      ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border-[var(--brand-accent)]/30 font-semibold'
+                      : 'bg-[var(--bg-subtle)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+                  }`}
+                  aria-pressed={soundOnTap}
+                  title="Play reference tone when tapping string"
+                >
+                  {soundOnTap ? (
+                    <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
+                  ) : (
+                    <VolumeX className="w-3.5 h-3.5" aria-hidden="true" />
+                  )}
+                  <span>Sound on tap: {soundOnTap ? 'ON' : 'OFF'}</span>
+                </button>
+              </div>
             </div>
 
             <div
@@ -318,22 +398,44 @@ export default function TunerPage() {
                 const isDetectedMatch =
                   isListening &&
                   detectedNote?.noteWithOctave === preset.noteWithOctave;
+                const isTonePlaying = playingToneId === preset.id;
                 return (
                   <button
                     key={preset.id}
                     type="button"
-                    onClick={() => setSelectedStringId(preset.id)}
+                    onClick={() => {
+                      setSelectedStringId(preset.id);
+                      if (soundOnTap) {
+                        handlePlayStringTone(preset);
+                      }
+                    }}
                     aria-pressed={isSelected}
                     data-testid={`string-select-${preset.noteWithOctave}`}
-                    className={`rounded-xl border p-3 text-center transition-all cursor-pointer min-h-[4.25rem] flex flex-col items-center justify-center gap-0.5 ${
+                    className={`rounded-xl border p-3 text-center transition-all cursor-pointer min-h-[4.25rem] flex flex-col items-center justify-center gap-0.5 relative group ${
                       isSelected
                         ? 'border-2 border-[var(--brand-accent)] bg-[var(--brand-surface)] text-[var(--brand-accent)] shadow-xs'
                         : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--border-strong)]'
-                    }`}
+                    } ${isTonePlaying ? 'ring-2 ring-[var(--brand-accent)] ring-offset-2 ring-offset-[var(--bg-surface)]' : ''}`}
                   >
-                    <span className="text-[0.6875rem] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
-                      String {preset.stringNumber}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[0.6875rem] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                        String {preset.stringNumber}
+                      </span>
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedStringId(preset.id);
+                          handlePlayStringTone(preset);
+                        }}
+                        className={`p-0.5 rounded-md hover:bg-[var(--brand-accent)]/20 ${
+                          isTonePlaying ? 'text-[var(--brand-accent)] animate-bounce' : 'text-[var(--text-secondary)] group-hover:text-[var(--brand-accent)]'
+                        }`}
+                        title={`Hear String ${preset.stringNumber} (${preset.noteWithOctave}) sound`}
+                        data-testid={`string-sound-btn-${preset.noteWithOctave}`}
+                      >
+                        <Volume2 className="w-3 h-3" aria-hidden="true" />
+                      </span>
+                    </div>
                     <span className="font-mono font-bold text-lg sm:text-xl leading-tight">
                       {preset.noteWithOctave}
                     </span>
@@ -622,8 +724,196 @@ export default function TunerPage() {
               </span>
             </div>
           </div>
+
+          {/* Reference Audio Player for Selected String */}
+          <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <span className="text-xs font-semibold text-[var(--text-primary)] block">
+                Hear Reference Sound ({selectedString.noteWithOctave})
+              </span>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Pluck this string to hear its target pitch, or turn on the continuous pitch pipe while tuning by ear.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handlePlayStringTone(selectedString)}
+                data-testid="play-string-pluck-btn"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-xs ${
+                  playingToneId === selectedString.id && !isContinuousTonePlaying
+                    ? 'bg-[var(--brand-accent)] text-[#0c0c10] animate-pulse ring-2 ring-[var(--brand-accent)]/40'
+                    : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
+                }`}
+              >
+                <Volume2 className="w-4 h-4" aria-hidden="true" />
+                <span>
+                  {playingToneId === selectedString.id && !isContinuousTonePlaying
+                    ? 'Playing Tone...'
+                    : `Pluck String ${selectedString.stringNumber} (${selectedString.noteWithOctave})`}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleToggleContinuousPitchPipe(selectedString.frequencyHz, selectedString.id)
+                }
+                data-testid="toggle-continuous-tone-btn"
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-xs ${
+                  isContinuousTonePlaying && playingToneId === selectedString.id
+                    ? 'bg-rose-600 text-white animate-pulse'
+                    : 'bg-[var(--bg-subtle)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--brand-accent)]'
+                }`}
+              >
+                {isContinuousTonePlaying && playingToneId === selectedString.id ? (
+                  <>
+                    <VolumeX className="w-4 h-4" aria-hidden="true" />
+                    <span>Stop Continuous Tone</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4" aria-hidden="true" />
+                    <span>Continuous Pitch Pipe</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </section>
       )}
+
+      {/* Chromatic Mode Concert Pitch Reference & Pitch Pipe */}
+      {instrumentMode === 'chromatic' && (
+        <section
+          aria-label="Chromatic Pitch Pipe and Reference Audio"
+          data-testid="chromatic-reference-tone-section"
+          className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base sm:text-lg font-bold">
+                Concert Pitch Reference (A4 = {referenceA4Hz} Hz)
+              </h2>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Listen to the standard tuning pitch to tune by ear, or leave the pitch pipe ringing.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() =>
+                handlePlayStringTone({
+                  id: 'chromatic-A4',
+                  stringNumber: 1,
+                  label: 'Concert A4',
+                  noteName: 'A',
+                  octave: 4,
+                  noteWithOctave: 'A4',
+                  midiNote: 69,
+                  frequencyHz: referenceA4Hz,
+                })
+              }
+              data-testid="chromatic-play-a4-btn"
+              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-xs ${
+                playingToneId === 'chromatic-A4' && !isContinuousTonePlaying
+                  ? 'bg-[var(--brand-accent)] text-[#0c0c10] animate-pulse ring-2 ring-[var(--brand-accent)]/40'
+                  : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
+              }`}
+            >
+              <Volume2 className="w-4 h-4" aria-hidden="true" />
+              <span>Pluck Concert A4 ({referenceA4Hz} Hz)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleToggleContinuousPitchPipe(referenceA4Hz, 'chromatic-A4-continuous')
+              }
+              data-testid="chromatic-toggle-pitch-pipe-btn"
+              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-xs ${
+                isContinuousTonePlaying && playingToneId === 'chromatic-A4-continuous'
+                  ? 'bg-rose-600 text-white animate-pulse'
+                  : 'bg-[var(--bg-subtle)] text-[var(--text-primary)] border border-[var(--border-subtle)] hover:border-[var(--brand-accent)]'
+              }`}
+            >
+              {isContinuousTonePlaying && playingToneId === 'chromatic-A4-continuous' ? (
+                <>
+                  <VolumeX className="w-4 h-4" aria-hidden="true" />
+                  <span>Stop Pitch Pipe</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" aria-hidden="true" />
+                  <span>Continuous 440 Hz Pitch Pipe</span>
+                </>
+              )}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Tuning Test Chords (Hear the Right Sound When You Tap a Chord!) */}
+      <section
+        aria-label="Tuning Test Chords"
+        data-testid="tuner-test-chords-section"
+        className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-3"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-0.5">
+            <h2 className="text-base sm:text-lg font-bold inline-flex items-center gap-2">
+              <Guitar className="w-4 h-4 text-[var(--brand-accent)]" aria-hidden="true" />
+              <span>Test Chords in Tune</span>
+            </h2>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Tap any chord to hear how it sounds in tune on an acoustic guitar. Play along to test your tuning and intonation.
+            </p>
+          </div>
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[var(--brand-surface)] text-[var(--brand-accent)]">
+            Acoustic Voicings
+          </span>
+        </div>
+
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 pt-1">
+          {['G', 'C', 'D', 'Em', 'A', 'E'].map((chordName) => {
+            const isPlayingThisChord = playingToneId === `chord-${chordName}`;
+            return (
+              <button
+                key={chordName}
+                type="button"
+                onClick={() => handlePlayTestChord(chordName)}
+                data-testid={`test-chord-btn-${chordName}`}
+                className={`rounded-xl border p-3 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer min-h-[4rem] shadow-xs ${
+                  isPlayingThisChord
+                    ? 'border-2 border-[var(--brand-accent)] bg-[var(--brand-surface)] text-[var(--brand-accent)] ring-2 ring-[var(--brand-accent)]/30 font-bold'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--brand-accent)] hover:bg-[var(--brand-surface)] hover:text-[var(--brand-accent)]'
+                }`}
+                title={`Hear ${chordName} chord sound in tune`}
+              >
+                <div className="flex items-center gap-1">
+                  <Volume2
+                    className={`w-3.5 h-3.5 ${
+                      isPlayingThisChord
+                        ? 'text-[var(--brand-accent)] animate-bounce'
+                        : 'text-[var(--text-secondary)]'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span className="font-mono font-extrabold text-lg sm:text-xl">
+                    {chordName}
+                  </span>
+                </div>
+                <span className="text-[0.625rem] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                  {isPlayingThisChord ? 'Strumming...' : 'Tap to Hear'}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Instructions & Microphone Privacy Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

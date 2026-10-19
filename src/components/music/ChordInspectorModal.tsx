@@ -1,13 +1,18 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import { Guitar, Piano, Music, X } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Guitar, Piano, Music, X, Volume2, VolumeX } from 'lucide-react';
 import {
   getGuitarChordDiagram,
   getPianoKeysForChord,
   GuitarChordDiagram,
 } from '@/lib/music/chordDiagrams';
 import { getBassGuidanceForChord } from '@/lib/music/instrumentGuidance';
+import {
+  playGuitarChord,
+  playPianoChord,
+  type SoundPlaybackController,
+} from '@/lib/audio/soundEngine';
 
 interface ChordInspectorModalProps {
   chord: string | null;
@@ -20,15 +25,46 @@ export function ChordInspectorModal({
   onClose,
   keyContext,
 }: ChordInspectorModalProps) {
+  const [activeSound, setActiveSound] = useState<'guitar' | 'piano' | null>(null);
+  const soundControllerRef = useRef<SoundPlaybackController | null>(null);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      soundControllerRef.current?.stop();
+    };
   }, [onClose]);
 
   if (!chord || chord === 'N.C.') return null;
+
+  const handlePlayGuitar = () => {
+    soundControllerRef.current?.stop();
+    setActiveSound('guitar');
+    const ctrl = playGuitarChord(chord);
+    soundControllerRef.current = ctrl;
+    setTimeout(() => {
+      setActiveSound((prev) => (prev === 'guitar' ? null : prev));
+    }, 2500);
+  };
+
+  const handlePlayPiano = () => {
+    soundControllerRef.current?.stop();
+    setActiveSound('piano');
+    const ctrl = playPianoChord(chord, keyContext);
+    soundControllerRef.current = ctrl;
+    setTimeout(() => {
+      setActiveSound((prev) => (prev === 'piano' ? null : prev));
+    }, 2500);
+  };
+
+  const handleStopSound = () => {
+    soundControllerRef.current?.stop();
+    setActiveSound(null);
+  };
 
   const guitar = getGuitarChordDiagram(chord);
   const piano = getPianoKeysForChord(chord, keyContext);
@@ -41,13 +77,16 @@ export function ChordInspectorModal({
       aria-label={`Chord Inspector: ${chord}`}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) {
+          handleStopSound();
+          onClose();
+        }
       }}
     >
       <div className="relative w-full max-w-lg rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <span className="font-mono text-2xl sm:text-3xl font-extrabold text-[var(--chord-color)]">
               {chord}
             </span>
@@ -56,10 +95,33 @@ export function ChordInspectorModal({
                 Slash Inversion
               </span>
             )}
+
+            {/* Quick Strum Audio Trigger */}
+            <button
+              type="button"
+              onClick={activeSound ? handleStopSound : handlePlayGuitar}
+              aria-label={activeSound ? 'Stop chord audio' : `Hear ${chord} chord sound`}
+              data-testid="chord-hear-sound-btn"
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                activeSound === 'guitar'
+                  ? 'bg-[var(--brand-accent)] text-[#0c0c10] animate-pulse ring-2 ring-[var(--brand-accent)]/40'
+                  : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
+              }`}
+            >
+              {activeSound === 'guitar' ? (
+                <VolumeX className="w-3.5 h-3.5" aria-hidden="true" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
+              <span>{activeSound === 'guitar' ? 'Playing...' : 'Hear Chord'}</span>
+            </button>
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              handleStopSound();
+              onClose();
+            }}
             aria-label="Close chord inspector"
             className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] cursor-pointer"
           >
@@ -112,6 +174,19 @@ export function ChordInspectorModal({
                 Standard movable shape
               </div>
             )}
+
+            <button
+              type="button"
+              onClick={handlePlayGuitar}
+              className={`w-full py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                activeSound === 'guitar'
+                  ? 'bg-[var(--brand-accent)] text-[#0c0c10] font-bold'
+                  : 'bg-[var(--bg-surface)] hover:bg-[var(--brand-surface)] text-[var(--text-primary)] hover:text-[var(--brand-accent)] border border-[var(--border-subtle)]'
+              }`}
+            >
+              <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>{activeSound === 'guitar' ? 'Strumming Guitar...' : 'Strum Guitar Voicing'}</span>
+            </button>
           </div>
 
           {/* Keyboard Voicing Card */}
@@ -127,6 +202,19 @@ export function ChordInspectorModal({
             </div>
 
             <PianoKeyboardSVG keys={piano.keys} />
+
+            <button
+              type="button"
+              onClick={handlePlayPiano}
+              className={`w-full py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                activeSound === 'piano'
+                  ? 'bg-[var(--brand-accent)] text-[#0c0c10] font-bold'
+                  : 'bg-[var(--bg-surface)] hover:bg-[var(--brand-surface)] text-[var(--text-primary)] hover:text-[var(--brand-accent)] border border-[var(--border-subtle)]'
+              }`}
+            >
+              <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>{activeSound === 'piano' ? 'Playing Piano...' : 'Play Piano Voicing'}</span>
+            </button>
 
             <p className="text-[0.6875rem] text-center text-[var(--text-secondary)]">
               Left hand holds bass note ({piano.leftHandBass || 'root'}); right hand plays chord tones.
