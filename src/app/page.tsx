@@ -149,13 +149,7 @@ export default function HomePage() {
   return (
     <div className="space-y-8">
       {/* Modern Hero Greeting */}
-      <section className="theme-card relative overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-gradient-to-b from-[var(--bg-surface)] via-[var(--bg-surface)] to-[var(--bg-subtle)]/40 p-6 sm:p-8 space-y-6 shadow-sm">
-        {/* Subtle Decorative Ambient Radial Glow */}
-        <div
-          className="absolute -top-24 -right-24 w-80 h-80 rounded-full bg-[var(--brand-accent)]/10 blur-3xl pointer-events-none"
-          aria-hidden="true"
-        />
-
+      <section className="theme-card relative overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 sm:p-8 space-y-6 shadow-sm">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 text-xs font-semibold px-3 py-1 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/20 shadow-xs">
@@ -237,12 +231,6 @@ export default function HomePage() {
 
       {/* "This Sunday's Setlist" Spotlight Card */}
       <section className="theme-card relative overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-7 shadow-lg space-y-5">
-        {/* Subtle decorative glowing corner aura */}
-        <div
-          className="absolute -bottom-16 -right-16 w-64 h-64 rounded-full bg-[var(--brand-accent)]/15 blur-3xl pointer-events-none"
-          aria-hidden="true"
-        />
-
         {/* Toast confirmation when starter setlist created */}
         {createdStarterToast && (
           <div
