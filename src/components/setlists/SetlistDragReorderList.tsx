@@ -72,13 +72,15 @@ export function SetlistDragReorderList({
   // Active pointer drag tracking ref
   const activeDragRef = useRef<{
     pointerId: number;
-    handleEl: HTMLElement;
     sourceSlot: number;
     grabOffset: number;
     rowEl: HTMLElement;
     containerTop: number;
     currentY: number;
     latestTarget: number;
+    startX: number;
+    startY: number;
+    isDragging: boolean;
   } | null>(null);
 
   // Sync managed items with incoming items prop when not actively dragging
@@ -141,13 +143,19 @@ export function SetlistDragReorderList({
     [getSongByIdOrSlug, managedItems, onReorder]
   );
 
-  // Handle pointer down on drag handle: 120Hz smooth tracking across entire list
+  // Handle pointer down anywhere on the song card: allows dragging by grabbing any area
   const handlePointerDown = (
-    e: React.PointerEvent<HTMLButtonElement>,
+    e: React.PointerEvent<HTMLElement>,
     managedIndex: number
   ) => {
-    // Only primary mouse button or touch/pen
+    // Only primary mouse button (0) or touch/pen
     if (e.button !== 0) return;
+
+    // Check if clicked element or ancestor is marked as no-drag (e.g. Delete button)
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('[data-no-drag="true"]')) {
+      return;
+    }
 
     const managedItem = managedItems[managedIndex];
     if (!managedItem) return;
@@ -156,13 +164,6 @@ export function SetlistDragReorderList({
     const containerEl = listRef.current;
     if (!rowEl || !containerEl) return;
 
-    const handleEl = e.currentTarget;
-    try {
-      handleEl.setPointerCapture(e.pointerId);
-    } catch {
-      // ignore
-    }
-
     const rowRect = rowEl.getBoundingClientRect();
     const containerRect = containerEl.getBoundingClientRect();
     const grabOffset = e.clientY - rowRect.top;
@@ -170,37 +171,53 @@ export function SetlistDragReorderList({
 
     activeDragRef.current = {
       pointerId: e.pointerId,
-      handleEl,
       sourceSlot: managedIndex,
       grabOffset,
       rowEl,
       containerTop: containerRect.top,
       currentY: initialTranslateY,
       latestTarget: managedIndex,
+      startX: e.clientX,
+      startY: e.clientY,
+      isDragging: false,
     };
-
-    // Remove transition on dragged row for instantaneous, zero-latency cursor tracking
-    rowEl.style.transition = 'none';
-    rowEl.style.zIndex = '50';
-    rowEl.style.transform = `translateY(${initialTranslateY}px) scale(1.04)`;
-
-    setDragState({
-      sourceSlot: managedIndex,
-      targetSlot: managedIndex,
-      isKeyboard: false,
-    });
-
-    const song = getSongByIdOrSlug(managedItem.raw.songId);
-    setLiveAnnouncement(
-      `Picked up ${song?.title ?? 'Song'}, position ${managedIndex + 1} of ${
-        managedItems.length
-      }. Drag to any position.`
-    );
 
     // Window level listeners: allows dragging anywhere from top to bottom across any number of levels
     const onWindowPointerMove = (ev: PointerEvent) => {
       const drag = activeDragRef.current;
       if (!drag || ev.pointerId !== drag.pointerId) return;
+
+      // Small movement threshold (3px) so clicking links/text does not immediately lock into drag
+      if (!drag.isDragging) {
+        const moveDist = Math.hypot(ev.clientX - drag.startX, ev.clientY - drag.startY);
+        if (moveDist < 3) return;
+
+        drag.isDragging = true;
+        try {
+          drag.rowEl.setPointerCapture(drag.pointerId);
+        } catch {
+          // ignore
+        }
+
+        // Lift row: apply scale 1.04, deep elevation shadow and theme glow
+        drag.rowEl.dataset.dragging = 'true';
+        drag.rowEl.style.transition = 'none';
+        drag.rowEl.style.zIndex = '50';
+        drag.rowEl.style.transform = `translateY(${drag.currentY}px) scale(1.04)`;
+
+        setDragState({
+          sourceSlot: drag.sourceSlot,
+          targetSlot: drag.sourceSlot,
+          isKeyboard: false,
+        });
+
+        const song = getSongByIdOrSlug(managedItem.raw.songId);
+        setLiveAnnouncement(
+          `Picked up ${song?.title ?? 'Song'}, position ${drag.sourceSlot + 1} of ${
+            managedItems.length
+          }. Drag to any position.`
+        );
+      }
 
       const containerTop = listRef.current
         ? listRef.current.getBoundingClientRect().top
@@ -247,20 +264,36 @@ export function SetlistDragReorderList({
       const drag = activeDragRef.current;
       if (!drag || ev.pointerId !== drag.pointerId) return;
 
+      const wasDragging = drag.isDragging;
+      const sourceSlot = drag.sourceSlot;
+      const finalTarget = drag.latestTarget;
+
       cleanup();
 
-      const finalTarget = drag.latestTarget;
-      finalizeDrop(drag.sourceSlot, finalTarget);
+      if (wasDragging) {
+        // Prevent click navigation on any link or button that was under the pointer during drag
+        const suppressClick = (clickEvent: MouseEvent) => {
+          clickEvent.stopPropagation();
+          clickEvent.preventDefault();
+          window.removeEventListener('click', suppressClick, true);
+        };
+        window.addEventListener('click', suppressClick, true);
+        setTimeout(() => {
+          window.removeEventListener('click', suppressClick, true);
+        }, 100);
+
+        finalizeDrop(sourceSlot, finalTarget);
+      }
     };
 
     const cleanup = () => {
       window.removeEventListener('pointermove', onWindowPointerMove);
       window.removeEventListener('pointerup', onWindowPointerUp);
       window.removeEventListener('pointercancel', onWindowPointerUp);
-      if (activeDragRef.current?.handleEl) {
+      if (activeDragRef.current?.rowEl) {
         try {
-          if (activeDragRef.current.handleEl.hasPointerCapture(e.pointerId)) {
-            activeDragRef.current.handleEl.releasePointerCapture(e.pointerId);
+          if (activeDragRef.current.rowEl.hasPointerCapture(e.pointerId)) {
+            activeDragRef.current.rowEl.releasePointerCapture(e.pointerId);
           }
         } catch {
           // ignore
@@ -419,19 +452,24 @@ export function SetlistDragReorderList({
                 }}
                 data-dragging={isBeingDragged ? 'true' : 'false'}
                 data-keyboard-lifted={isKeyboardLifted ? 'true' : 'false'}
+                onPointerDown={(e) => handlePointerDown(e, idx)}
                 className="drag-reorder-card absolute inset-x-0 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-4 py-2.5 flex items-center justify-between text-xs text-[var(--text-secondary)]"
                 style={{
                   height: `${ROW_HEIGHT}px`,
-                  transform: `translateY(${defaultTranslateY}px) ${
-                    isLifted ? 'scale(1.04)' : 'scale(1)'
-                  }`,
+                  transform: isBeingDragged
+                    ? undefined
+                    : `translateY(${defaultTranslateY}px) ${
+                        isLifted ? 'scale(1.04)' : 'scale(1)'
+                      }`,
                   zIndex: isLifted ? 50 : 1,
                 }}
               >
                 <span>Unavailable song record ({item.songId})</span>
                 <button
                   type="button"
-                  onClick={() => onRemove(visualSlot)}
+                  data-no-drag="true"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => onRemove(idx)}
                   className="text-rose-500 underline cursor-pointer hover:text-rose-400"
                 >
                   Remove
@@ -459,6 +497,7 @@ export function SetlistDragReorderList({
               }}
               data-dragging={isBeingDragged ? 'true' : 'false'}
               data-keyboard-lifted={isKeyboardLifted ? 'true' : 'false'}
+              onPointerDown={(e) => handlePointerDown(e, idx)}
               className={`drag-reorder-card absolute inset-x-0 rounded-xl border flex items-center justify-between gap-3 px-3.5 py-2.5 box-border select-none ${
                 isLifted
                   ? 'border-[var(--brand-accent)]/80 bg-[var(--bg-card)] shadow-[0_20px_25px_-5px_rgba(0,0,0,0.7),0_10px_10px_-5px_rgba(0,0,0,0.5)] ring-2 ring-[var(--brand-accent)]/40'
@@ -490,7 +529,6 @@ export function SetlistDragReorderList({
                     managedItems.length
                   }. Press Space to pick up, Up and Down arrow keys to move, Space to drop.`}
                   title="Drag or press Space to reorder"
-                  onPointerDown={(e) => handlePointerDown(e, idx)}
                   onKeyDown={(e) => handleKeyDown(e, idx)}
                   className={`drag-handle group w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-canvas)] ${
                     isLifted
@@ -522,6 +560,7 @@ export function SetlistDragReorderList({
                   <div className="flex items-center gap-2">
                     <Link
                       href={songHref}
+                      draggable={false}
                       className="font-semibold text-sm sm:text-base text-[var(--text-primary)] hover:text-[var(--brand-accent)] truncate block transition-colors"
                       tabIndex={0}
                     >
@@ -555,6 +594,8 @@ export function SetlistDragReorderList({
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
+                  data-no-drag="true"
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => onRemove(idx)}
                   aria-label={`Remove ${song.title} from ${setlistName}`}
                   title={`Remove ${song.title} from setlist`}

@@ -561,6 +561,15 @@ p {
   transition: transform 587ms var(--drag-spring-glide),
               box-shadow 200ms ease,
               border-color 200ms ease;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.drag-reorder-card:active,
+.drag-reorder-card[data-dragging="true"] {
+  cursor: grabbing;
 }
 
 .drag-reorder-card[data-dragging="true"] {
