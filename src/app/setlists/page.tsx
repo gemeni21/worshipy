@@ -3,8 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  ArrowDown,
-  ArrowUp,
   Check,
   Download,
   Edit3,
@@ -21,6 +19,7 @@ import {
   formatSignedSemitones,
   transposeKey,
 } from '@/lib/music/transposition';
+import { SetlistDragReorderList } from '@/components/setlists/SetlistDragReorderList';
 import type { SongRecord } from '@/types/song';
 
 export default function SetlistsPage() {
@@ -34,6 +33,7 @@ export default function SetlistsPage() {
     addSongToSetlist,
     removeSongFromSetlist,
     moveSongInSetlist,
+    updateSetlistItems,
     isSongSavedOffline,
     saveBatchSongsOffline,
   } = useApp();
@@ -394,132 +394,21 @@ export default function SetlistsPage() {
                   </div>
                 </div>
 
-                {/* Setlist Song Items */}
+                {/* Setlist Song Items with Drag-to-Reorder */}
                 {setlist.items.length > 0 ? (
-                  <ol className="space-y-2">
-                    {setlist.items.map((item, idx) => {
-                      const song = getSongByIdOrSlug(item.songId);
-                      if (!song) {
-                        return (
-                          <li
-                            key={`${item.songId}-${idx}`}
-                            className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-4 py-2.5 text-xs text-[var(--text-secondary)]"
-                          >
-                            <span>
-                              Unavailable song record ({item.songId})
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                removeSongFromSetlist(setlist.id, idx)
-                              }
-                              className="text-rose-500 underline cursor-pointer"
-                            >
-                              Remove
-                            </button>
-                          </li>
-                        );
-                      }
-
-                      const preferredSemis = item.preferredSemitones ?? 0;
-                      const preferredKey =
-                        preferredSemis !== 0
-                          ? transposeKey(
-                              song.originalKey,
-                              preferredSemis,
-                              'auto'
-                            )
-                          : null;
-                      const songHref =
-                        preferredSemis !== 0
-                          ? `/songs/${song.slug}?semitones=${preferredSemis}`
-                          : `/songs/${song.slug}`;
-
-                      return (
-                        <li
-                          key={`${song.id}-${idx}`}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-3.5 py-2.5"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span className="w-6 h-6 rounded-full bg-[var(--bg-surface)] text-[var(--text-secondary)] font-mono text-xs font-bold flex items-center justify-center shrink-0">
-                              {idx + 1}
-                            </span>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <Link
-                                  href={songHref}
-                                  className="font-semibold text-sm sm:text-base text-[var(--text-primary)] hover:text-[var(--brand-accent)] truncate block"
-                                >
-                                  {song.title}
-                                </Link>
-                                {isSongSavedOffline(song.id) && (
-                                  <span
-                                    title="Saved for offline use"
-                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0"
-                                  >
-                                    <Check className="w-2.5 h-2.5" aria-hidden="true" />
-                                    <span>Offline</span>
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center gap-2">
-                                <span>Original Key: {song.originalKey}</span>
-                                {preferredKey && (
-                                  <span className="font-mono font-semibold px-1.5 py-0.5 rounded bg-[var(--brand-surface)] text-[var(--brand-accent)]">
-                                    Setlist Key: {preferredKey} (
-                                    {formatSignedSemitones(preferredSemis)})
-                                  </span>
-                                )}
-                                <span>· {song.language.label}</span>
-                                {song.tempoBpm && (
-                                  <span>· {song.tempoBpm} BPM</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Reorder & Remove Controls */}
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              disabled={idx === 0}
-                              onClick={() =>
-                                moveSongInSetlist(setlist.id, idx, 'up')
-                              }
-                              aria-label={`Move ${song.title} up in ${setlist.name}`}
-                              className="w-9 h-9 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] inline-flex items-center justify-center disabled:opacity-35 cursor-pointer"
-                            >
-                              <ArrowUp className="w-4 h-4" aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={idx === setlist.items.length - 1}
-                              onClick={() =>
-                                moveSongInSetlist(setlist.id, idx, 'down')
-                              }
-                              aria-label={`Move ${song.title} down in ${setlist.name}`}
-                              className="w-9 h-9 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] inline-flex items-center justify-center disabled:opacity-35 cursor-pointer"
-                            >
-                              <ArrowDown
-                                className="w-4 h-4"
-                                aria-hidden="true"
-                              />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                removeSongFromSetlist(setlist.id, idx)
-                              }
-                              aria-label={`Remove ${song.title} from ${setlist.name}`}
-                              className="w-9 h-9 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-rose-500 inline-flex items-center justify-center cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" aria-hidden="true" />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
+                  <SetlistDragReorderList
+                    setlistId={setlist.id}
+                    setlistName={setlist.name}
+                    items={setlist.items}
+                    onReorder={(newItems) =>
+                      updateSetlistItems(setlist.id, newItems)
+                    }
+                    onRemove={(index) =>
+                      removeSongFromSetlist(setlist.id, index)
+                    }
+                    getSongByIdOrSlug={getSongByIdOrSlug}
+                    isSongSavedOffline={isSongSavedOffline}
+                  />
                 ) : (
                   <p className="text-xs sm:text-sm text-[var(--text-secondary)] italic py-2">
                     This setlist has no songs yet. Add a song below or from any

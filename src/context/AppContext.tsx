@@ -33,6 +33,7 @@ import type {
   AccentColor,
   OfflineSongEntry,
   PersonalSetlist,
+  SetlistItem,
   SongRecord,
   ThemePreference,
   UserSettings,
@@ -88,6 +89,7 @@ interface AppContextValue {
     fromIndex: number,
     direction: 'up' | 'down'
   ) => void;
+  updateSetlistItems: (setlistId: string, items: SetlistItem[]) => void;
   offlineEntries: OfflineSongEntry[];
   isSongSavedOffline: (songId: string) => boolean;
   getOfflineSongRecord: (slugOrId: string) => SongRecord | undefined;
@@ -567,6 +569,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateSetlistItems = useCallback(
+    (setlistId: string, items: SetlistItem[]) => {
+      setSetlists((prev) => {
+        const next = prev.map((setlist) => {
+          if (setlist.id !== setlistId) return setlist;
+          return {
+            ...setlist,
+            updatedAt: new Date().toISOString(),
+            items,
+          };
+        });
+        safeWriteJson(STORAGE_KEYS.SETLISTS, next);
+        return next;
+      });
+    },
+    []
+  );
+
   const isSongSavedOffline = useCallback(
     (songId: string) =>
       offlineEntries.some((entry) => entry.songId === songId),
@@ -844,6 +864,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addSongToSetlist,
       removeSongFromSetlist,
       moveSongInSetlist,
+      updateSetlistItems,
       offlineEntries,
       isSongSavedOffline,
       getOfflineSongRecord,
@@ -882,6 +903,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       addSongToSetlist,
       removeSongFromSetlist,
       moveSongInSetlist,
+      updateSetlistItems,
       offlineEntries,
       isSongSavedOffline,
       getOfflineSongRecord,

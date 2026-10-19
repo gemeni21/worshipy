@@ -534,4 +534,70 @@ p {
 .animate-wave-6 { animation: soundwave-bar-6 0.95s ease-in-out infinite 0.4s; }
 .animate-wave-7 { animation: soundwave-bar-7 1.15s ease-in-out infinite 0.2s; }
 
+/* ========================================================================== */
+/* FLUID DRAG-TO-REORDER CARDS (Modern Physics Spring Glide)                  */
+/* ========================================================================== */
+
+:root {
+  --drag-spring-glide: linear(
+    0, 0.094 5.6%, 0.274 11.1%, 0.455 16.7%, 0.608 22.2%, 0.726 27.8%,
+    0.812 33.3%, 0.873 38.9%, 0.916 44.4%, 0.944 50%, 0.964 55.6%,
+    0.976 61.1%, 0.985 66.7%, 0.99 72.2%, 0.994 77.8%, 0.996 83.3%,
+    0.998 88.9%, 1 100%
+  );
+}
+
+.drag-reorder-container {
+  position: relative;
+  width: 100%;
+}
+
+.drag-reorder-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  will-change: transform, box-shadow;
+  transition: transform 587ms var(--drag-spring-glide),
+              box-shadow 200ms ease,
+              border-color 200ms ease,
+              scale 200ms ease;
+}
+
+.drag-reorder-card[data-dragging="true"] {
+  transition: none !important;
+  z-index: 40 !important;
+  scale: 1.04;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6), 0 0 0 1.5px rgba(200, 252, 108, 0.45);
+}
+
+.drag-reorder-card[data-keyboard-lifted="true"] {
+  z-index: 40 !important;
+  scale: 1.04;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6), 0 0 0 1.5px rgba(200, 252, 108, 0.45);
+}
+
+.drag-handle {
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.drag-handle:active,
+.drag-handle[data-active="true"] {
+  cursor: grabbing;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drag-reorder-card {
+    transition: none !important;
+    animation: none !important;
+  }
+  .drag-reorder-card[data-dragging="true"],
+  .drag-reorder-card[data-keyboard-lifted="true"] {
+    scale: 1 !important;
+  }
+}
+
 
