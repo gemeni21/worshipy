@@ -15,6 +15,7 @@ import {
   Heart,
   ListPlus,
   Maximize2,
+  Mic,
   Minimize2,
   Minus,
   Pause,
@@ -33,6 +34,7 @@ import {
 import { useApp } from '@/context/AppContext';
 import { downloadSongAsChordPro } from '@/lib/chordpro/chordProDownload';
 import { ChordInspectorModal } from '@/components/music/ChordInspectorModal';
+import { PracticeDock } from '@/components/practice/PracticeDock';
 import {
   getGuitarCapoSuggestions,
   getCapoRelativeChord,
@@ -899,6 +901,17 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               </section>
             ))}
           </div>
+
+          {/* Floating Practice Audio Recording & Review Dock */}
+          {displaySong && (
+            <PracticeDock
+              songSlug={displaySong.slug}
+              songTitle={displaySong.title}
+              songArtist={displaySong.artist}
+              currentKey={displayedKey}
+              currentCapo={selectedCapo}
+            />
+          )}
         </div>
       </div>
     );
@@ -908,7 +921,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
   // NORMAL SONG DETAIL / CHORD CHART VIEW
   // ============================================================================
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 pb-28">
       {/* Top Breadcrumb */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
@@ -1047,6 +1060,25 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
 
           {/* Primary Actions Row */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Record Practice Take Action */}
+            <button
+              type="button"
+              onClick={() => {
+                const recBtn = document.querySelector('[data-practice-record-btn]') as HTMLButtonElement | null;
+                if (recBtn) {
+                  recBtn.click();
+                } else {
+                  const takesBtn = document.querySelector('[data-practice-takes-btn]') as HTMLButtonElement | null;
+                  if (takesBtn) takesBtn.click();
+                }
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-rose-500/35 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-400 font-bold text-sm shadow-sm transition-all cursor-pointer min-h-[2.75rem]"
+              title="Record audio practice take for this song"
+            >
+              <Mic className="w-4 h-4" aria-hidden="true" />
+              <span>Record Practice Take</span>
+            </button>
+
             {/* Enter Performance Mode */}
             <button
               type="button"
@@ -1659,6 +1691,17 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           chord={inspectedChord}
           onClose={() => setInspectedChord(null)}
           keyContext={displayedKey}
+        />
+      )}
+
+      {/* Floating Practice Audio Recording & Review Dock */}
+      {displaySong && (
+        <PracticeDock
+          songSlug={displaySong.slug}
+          songTitle={displaySong.title}
+          songArtist={displaySong.artist}
+          currentKey={displayedKey}
+          currentCapo={selectedCapo}
         />
       )}
     </div>

@@ -11,6 +11,7 @@ import {
   Heart,
   Home,
   ListMusic,
+  Mic,
   MoreHorizontal,
   Music2,
   Radio,
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/songs', label: 'Songs', icon: BookOpen },
   { href: '/my-songs', label: 'My Songs', icon: FolderHeart },
+  { href: '/practice', label: 'Practice Takes', icon: Mic },
   { href: '/tuner', label: 'Tuner', icon: Gauge },
   { href: '/live', label: 'Live Sync', icon: Radio },
   { href: '/favorites', label: 'Favorites', icon: Heart },
@@ -97,6 +99,13 @@ function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
   ] as const;
 
   const MORE_ITEMS = [
+    {
+      href: '/practice',
+      label: 'Practice Takes',
+      sublabel: 'Audio recordings & review',
+      icon: Mic,
+      active: isActive('/practice'),
+    },
     {
       href: '/my-songs',
       label: 'My Songs & Editor',

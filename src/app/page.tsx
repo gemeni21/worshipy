@@ -16,6 +16,7 @@ import {
   Heart,
   Layers,
   ListMusic,
+  Mic,
   Music2,
   Palette,
   Play,
@@ -514,6 +515,29 @@ export default function HomePage() {
                 : `${setlists.length} personal ${
                     setlists.length === 1 ? 'setlist' : 'setlists'
                   } saved on this device.`}
+            </p>
+          </div>
+          <ArrowRight
+            className="w-5 h-5 text-[var(--text-secondary)] shrink-0"
+            aria-hidden="true"
+          />
+        </Link>
+
+        {/* Practice Studio & Audio Review Card */}
+        <Link
+          href="/practice"
+          className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] flex items-center justify-between gap-4"
+        >
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
+              <Mic
+                className="w-4 h-4 text-rose-400"
+                aria-hidden="true"
+              />
+              <span>Practice Takes &amp; Audio Review</span>
+            </div>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Record rehearsal takes, review audio with scrubbable waveforms, speed controls, and notes directly on device.
             </p>
           </div>
           <ArrowRight
