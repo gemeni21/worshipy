@@ -6,19 +6,15 @@ import {
   Mic,
   Search,
   BookOpen,
-  FileMusic,
   Clock,
-  Sparkles,
   ArrowRight,
   Music2,
-  Trash2,
   Filter,
   Upload,
   Link2,
   X,
   Check,
   AlertCircle,
-  Plus,
 } from 'lucide-react';
 import {
   PracticeTake,
@@ -58,7 +54,7 @@ export default function PracticeStudioPage() {
 
   const catalogSongs = useMemo(() => getAllSongs(), []);
 
-  const loadAll = async () => {
+  const refreshTakes = async () => {
     setIsLoading(true);
     const all = await getAllPracticeTakes();
     setTakes(all);
@@ -66,12 +62,21 @@ export default function PracticeStudioPage() {
   };
 
   useEffect(() => {
-    loadAll();
+    let cancelled = false;
+    getAllPracticeTakes().then((all) => {
+      if (!cancelled) {
+        setTakes(all);
+        setIsLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleDeleteTake = async (id: string) => {
     await deletePracticeTake(id);
-    await loadAll();
+    await refreshTakes();
   };
 
   // Distinct songs that have takes
@@ -159,7 +164,7 @@ export default function PracticeStudioPage() {
     setShowLinkModal(false);
     setLinkUrl('');
     setLinkNotes('');
-    await loadAll();
+    await refreshTakes();
   };
 
   // Handle File Upload Save
@@ -198,7 +203,7 @@ export default function PracticeStudioPage() {
       setShowUploadModal(false);
       setUploadFile(null);
       setUploadNotes('');
-      await loadAll();
+      await refreshTakes();
     } catch (err) {
       console.error('Upload processing error:', err);
       setUploadError('Failed to read or decode audio file.');
@@ -381,8 +386,8 @@ export default function PracticeStudioPage() {
               <PracticeWaveformPlayer
                 take={take}
                 onDelete={handleDeleteTake}
-                onNotesUpdated={loadAll}
-                onTitleUpdated={loadAll}
+                onNotesUpdated={refreshTakes}
+                onTitleUpdated={refreshTakes}
               />
               <div className="mt-1 flex items-center justify-end px-2">
                 <Link

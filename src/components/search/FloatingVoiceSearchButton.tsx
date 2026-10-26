@@ -4,17 +4,14 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { Mic } from 'lucide-react';
+import { useIsMounted } from '@/hooks/useIsMounted';
 import { VoiceSearchModal } from './VoiceSearchModal';
 
 export function FloatingVoiceSearchButton() {
   const [isOpen, setIsOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsMounted();
   const [isPerformanceModeActive, setIsPerformanceModeActive] = useState(false);
   const pathname = usePathname();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Watch for performance mode class on document body/element to avoid obstructing chord charts
   useEffect(() => {

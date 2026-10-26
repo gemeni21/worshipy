@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -73,10 +73,12 @@ function DesktopNavLinksActive() {
 
 function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [prevPathname, setPrevPathname] = useState(pathname);
 
-  useEffect(() => {
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
     setIsMoreOpen(false);
-  }, [pathname]);
+  }
 
   const isActive = (href: string) => {
     if (!pathname) return false;

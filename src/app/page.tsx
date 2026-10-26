@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -14,24 +14,21 @@ import {
   FolderHeart,
   Gauge,
   Heart,
-  Layers,
   ListMusic,
   Mic,
-  Music2,
-  Palette,
-  Play,
   Plus,
   Radio,
   Search,
   Sparkles,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useIsMounted } from '@/hooks/useIsMounted';
 import {
   getCatalogFilterOptions,
   resolveSongsByIds,
 } from '@/lib/catalog/songCatalog';
 import { SongRowCard } from '@/components/songs/SongRowCard';
-import type { AccentColor, SongRecord } from '@/types/song';
+import type { SongRecord } from '@/types/song';
 
 function getNextSundayInfo(): { dateLabel: string; isTodaySunday: boolean } {
   const now = new Date();
@@ -73,8 +70,6 @@ export default function HomePage() {
     offlineEntries,
     createSetlist,
     addSongToSetlist,
-    settings,
-    updateSettings,
   } = useApp();
 
   const allSongs = allAvailableSongs;
@@ -84,19 +79,11 @@ export default function HomePage() {
   const favoriteSongs = resolveSongsByIds(favorites, allSongs).slice(0, 4);
   const featuredSongs = allSongs.slice(0, 4);
 
-  const [sundayInfo, setSundayInfo] = useState<{
-    dateLabel: string;
-    isTodaySunday: boolean;
-  }>({
-    dateLabel: 'This Sunday',
-    isTodaySunday: false,
-  });
-  const [greeting, setGreeting] = useState('Welcome');
-
-  useEffect(() => {
-    setSundayInfo(getNextSundayInfo());
-    setGreeting(getDayPeriodGreeting());
-  }, []);
+  const isMounted = useIsMounted();
+  const sundayInfo = isMounted
+    ? getNextSundayInfo()
+    : { dateLabel: 'This Sunday', isTodaySunday: false };
+  const greeting = isMounted ? getDayPeriodGreeting() : 'Welcome';
 
   // Find either a setlist explicitly with "sunday" in its name, or default to the first setlist
   const sundaySetlist = useMemo(() => {

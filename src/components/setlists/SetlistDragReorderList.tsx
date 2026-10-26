@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Check, GripVertical, Trash2 } from 'lucide-react';
 import {
@@ -45,7 +45,6 @@ function createManagedKey(item: SetlistItem, idx: number): string {
 }
 
 export function SetlistDragReorderList({
-  setlistId,
   setlistName,
   items,
   onReorder,
@@ -69,23 +68,10 @@ export function SetlistDragReorderList({
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [liveAnnouncement, setLiveAnnouncement] = useState<string>('');
 
-  // Active pointer drag tracking ref
-  const activeDragRef = useRef<{
-    pointerId: number;
-    sourceSlot: number;
-    grabOffset: number;
-    rowEl: HTMLElement;
-    containerTop: number;
-    currentY: number;
-    latestTarget: number;
-    startX: number;
-    startY: number;
-    isDragging: boolean;
-  } | null>(null);
-
   // Sync managed items with incoming items prop when not actively dragging
-  useEffect(() => {
-    if (dragState) return;
+  const [prevItems, setPrevItems] = useState(items);
+  if (prevItems !== items && !dragState) {
+    setPrevItems(items);
     setManagedItems((prev) => {
       // Re-use existing keys for matching items to prevent DOM re-creation
       const usedKeys = new Set<string>();
@@ -105,7 +91,21 @@ export function SetlistDragReorderList({
         return { key: newKey, raw: item };
       });
     });
-  }, [items, dragState]);
+  }
+
+  // Active pointer drag tracking ref
+  const activeDragRef = useRef<{
+    pointerId: number;
+    sourceSlot: number;
+    grabOffset: number;
+    rowEl: HTMLElement;
+    containerTop: number;
+    currentY: number;
+    latestTarget: number;
+    startX: number;
+    startY: number;
+    isDragging: boolean;
+  } | null>(null);
 
   // Finalize drop and commit order
   const finalizeDrop = useCallback(

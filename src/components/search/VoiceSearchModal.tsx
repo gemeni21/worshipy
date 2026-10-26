@@ -16,6 +16,7 @@ import {
 import { useApp } from '@/context/AppContext';
 import { searchAndFilterSongs } from '@/lib/catalog/songCatalog';
 import { useVoiceSearch } from '@/lib/speech/useVoiceSearch';
+import { useIsMounted } from '@/hooks/useIsMounted';
 
 interface VoiceSearchModalProps {
   isOpen: boolean;
@@ -34,10 +35,7 @@ const COMMON_VOICE_SUGGESTIONS = [
 ];
 
 export function VoiceSearchModal({ isOpen, onClose }: VoiceSearchModalProps) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useIsMounted();
 
   if (!isOpen || !mounted) return null;
   return createPortal(<VoiceSearchDialog onClose={onClose} />, document.body);

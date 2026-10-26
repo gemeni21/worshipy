@@ -316,7 +316,6 @@ export function playPianoChord(chordName: string, keyContext?: string): SoundPla
     return { stop: () => {}, isPlaying: false };
   }
 
-  const now = ctx.currentTime;
   const controllers: SoundPlaybackController[] = [];
   const timeoutIds: ReturnType<typeof setTimeout>[] = [];
 

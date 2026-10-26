@@ -3,9 +3,6 @@ import assert from 'node:assert/strict';
 import type { SetlistItem } from '@/types/song';
 
 import {
-  ROW_HEIGHT,
-  ROW_GAP,
-  STEP,
   computeTargetSlot,
   clampTranslateY,
   reorderArray,

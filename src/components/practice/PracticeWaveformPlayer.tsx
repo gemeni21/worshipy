@@ -49,44 +49,31 @@ export function PracticeWaveformPlayer({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement | null>(null);
 
-  const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState<number>(take.durationSeconds || 0);
   const durationRef = useRef<number>(take.durationSeconds || 0);
   const [playbackRate, setPlaybackRate] = useState<number>(1.0);
   const [isLooping, setIsLooping] = useState(false);
-  const [volume, setVolume] = useState<number>(1.0);
-  const [isMuted, setIsMuted] = useState(false);
-  const prevVolumeRef = useRef<number>(1.0);
-  const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const [isScrubbing, setIsScrubbing] = useState(false);
-
-  // Restore saved volume preference on client mount
-  useEffect(() => {
+  const [volume, setVolume] = useState<number>(() => {
+    if (typeof window === 'undefined') return 1.0;
     try {
       const saved = localStorage.getItem('worshipy_practice_volume');
       if (saved !== null) {
         const val = parseFloat(saved);
-        if (!isNaN(val) && val >= 0 && val <= 1) {
-          setVolume(val);
-          prevVolumeRef.current = val;
-          if (audioRef.current) audioRef.current.volume = val;
-        }
+        if (!isNaN(val) && val >= 0 && val <= 1) return val;
       }
     } catch {}
-  }, []);
-
-  // Sync duration state & ref when take changes
-  useEffect(() => {
-    if (take.durationSeconds && take.durationSeconds > 0) {
-      setDuration(take.durationSeconds);
-      durationRef.current = take.durationSeconds;
-    }
-  }, [take.durationSeconds, take.id]);
+    return 1.0;
+  });
+  const [isMuted, setIsMuted] = useState(false);
+  const prevVolumeRef = useRef<number>(volume);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   // Decode audio buffer duration if blob exists but duration is uncalculated/zero
   useEffect(() => {
+    let cancelled = false;
     if (take.blob && (!take.durationSeconds || take.durationSeconds <= 0)) {
       const AudioCtx =
         window.AudioContext ||
@@ -97,7 +84,7 @@ export function PracticeWaveformPlayer({
           .arrayBuffer()
           .then((buf) => ctx.decodeAudioData(buf))
           .then((decoded) => {
-            if (decoded && decoded.duration > 0) {
+            if (!cancelled && decoded && decoded.duration > 0) {
               setDuration(decoded.duration);
               durationRef.current = decoded.duration;
             }
@@ -108,6 +95,9 @@ export function PracticeWaveformPlayer({
           });
       }
     }
+    return () => {
+      cancelled = true;
+    };
   }, [take.blob, take.durationSeconds]);
 
   // Song Title state
@@ -117,10 +107,33 @@ export function PracticeWaveformPlayer({
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [titleSavedToast, setTitleSavedToast] = useState(false);
 
-  useEffect(() => {
+  // Synchronize state with props on change during render
+  const [prevTakeProps, setPrevTakeProps] = useState({
+    id: take.id,
+    songTitle: take.songTitle,
+    duration: take.durationSeconds,
+  });
+  if (
+    prevTakeProps.id !== take.id ||
+    prevTakeProps.songTitle !== take.songTitle ||
+    prevTakeProps.duration !== take.durationSeconds
+  ) {
+    setPrevTakeProps({
+      id: take.id,
+      songTitle: take.songTitle,
+      duration: take.durationSeconds,
+    });
     setSongTitle(take.songTitle || 'Untitled Practice');
     setTitleInput(take.songTitle || '');
-  }, [take.songTitle, take.id]);
+    if (take.durationSeconds && take.durationSeconds > 0) {
+      setDuration(take.durationSeconds);
+    }
+  }
+
+  // Keep durationRef in sync outside of render
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
 
   // Notes state
   const [notes, setNotes] = useState(take.notes || '');
@@ -128,31 +141,34 @@ export function PracticeWaveformPlayer({
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [notesSavedToast, setNotesSavedToast] = useState(false);
 
-  // Maintain reliable audio source URL
-  useEffect(() => {
-    let activeUrl: string | null = null;
-
+  // Generate blob URL if take.blob exists
+  const blobUrl = useMemo(() => {
     if (take.blob && take.blob.size > 0) {
       try {
-        activeUrl = URL.createObjectURL(take.blob);
-        setAudioSrc(activeUrl);
+        return URL.createObjectURL(take.blob);
       } catch (err) {
         console.error('Failed to create audio blob URL:', err);
-        setAudioSrc(null);
+        return null;
       }
-    } else if (take.audioUrl) {
-      const resolved = resolvePlaybackUrl(take.audioUrl);
-      setAudioSrc(resolved);
-    } else {
-      setAudioSrc(null);
     }
+    return null;
+  }, [take.blob]);
 
+  // Clean up object URL on unmount or blob change
+  useEffect(() => {
     return () => {
-      if (activeUrl) {
-        URL.revokeObjectURL(activeUrl);
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [take.blob, take.audioUrl]);
+  }, [blobUrl]);
+
+  // Reliable resolved playback audio source
+  const audioSrc = useMemo(() => {
+    if (blobUrl) return blobUrl;
+    if (take.audioUrl) return resolvePlaybackUrl(take.audioUrl);
+    return null;
+  }, [blobUrl, take.audioUrl]);
 
   // Keep audio playback properties in sync
   useEffect(() => {
@@ -248,7 +264,7 @@ export function PracticeWaveformPlayer({
           });
       }
     }
-  }, [isPlaying, playbackRate, isLooping, volume, isMuted]);
+  }, [isPlaying, playbackRate, isLooping, volume, isMuted, audioSrc, take.audioUrl]);
 
   const seekTo = (fraction: number) => {
     const audio = audioRef.current;

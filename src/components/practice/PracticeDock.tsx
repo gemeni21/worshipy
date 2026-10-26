@@ -15,8 +15,6 @@ import {
   FileMusic,
   Upload,
   Link2,
-  ExternalLink,
-  Plus,
 } from 'lucide-react';
 import {
   practiceAudioRecorder,
@@ -58,6 +56,7 @@ export function PracticeDock({
   const [pendingResult, setPendingResult] = useState<PracticeRecordingResult | null>(null);
   const [pendingTitle, setPendingTitle] = useState(songTitle);
   const [pendingNotes, setPendingNotes] = useState('');
+  const [pendingCreatedAt, setPendingCreatedAt] = useState(0);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [micErrorMessage, setMicErrorMessage] = useState<string | null>(null);
@@ -80,15 +79,25 @@ export function PracticeDock({
   }, []);
 
   // Load past takes for this song
-  const loadTakes = useCallback(async () => {
+  const refreshTakes = useCallback(async () => {
     if (!songSlug) return;
     const loaded = await getPracticeTakesForSong(songSlug);
     setTakes(loaded);
   }, [songSlug]);
 
   useEffect(() => {
-    loadTakes();
-  }, [loadTakes]);
+    let active = true;
+    if (songSlug) {
+      getPracticeTakesForSong(songSlug).then((loaded) => {
+        if (active) {
+          setTakes(loaded);
+        }
+      });
+    }
+    return () => {
+      active = false;
+    };
+  }, [songSlug]);
 
   // Start microphone recording
   const handleStart = async () => {
@@ -115,6 +124,7 @@ export function PracticeDock({
       setPendingResult(res);
       setPendingTitle(songTitle);
       setPendingNotes('');
+      setPendingCreatedAt(Date.now());
     }
   };
 
@@ -147,7 +157,7 @@ export function PracticeDock({
     setPendingResult(null);
     setPendingNotes('');
     setIsSaving(false);
-    await loadTakes();
+    await refreshTakes();
   };
 
   // Upload local audio file
@@ -184,7 +194,7 @@ export function PracticeDock({
       };
 
       await savePracticeTake(newTake);
-      await loadTakes();
+      await refreshTakes();
       setShowHistoryModal(true);
     } catch (err) {
       console.error('File upload error:', err);
@@ -239,13 +249,13 @@ export function PracticeDock({
     setShowLinkModal(false);
     setLinkUrlInput('');
     setLinkNotesInput('');
-    await loadTakes();
+    await refreshTakes();
     setShowHistoryModal(true);
   };
 
   const handleDeleteTake = async (id: string) => {
     await deletePracticeTake(id);
-    await loadTakes();
+    await refreshTakes();
   };
 
   const formatTimer = (secs: number) => {
@@ -491,7 +501,7 @@ export function PracticeDock({
                 key: currentKey,
                 capo: currentCapo > 0 ? currentCapo : undefined,
                 durationSeconds: pendingResult.durationSeconds,
-                createdAt: Date.now(),
+                createdAt: pendingCreatedAt,
                 blob: pendingResult.blob,
                 sourceType: 'recording',
                 mimeType: pendingResult.mimeType,
@@ -715,8 +725,8 @@ export function PracticeDock({
                     key={take.id}
                     take={take}
                     onDelete={handleDeleteTake}
-                    onNotesUpdated={loadTakes}
-                    onTitleUpdated={loadTakes}
+                    onNotesUpdated={refreshTakes}
+                    onTitleUpdated={refreshTakes}
                   />
                 ))
               )}

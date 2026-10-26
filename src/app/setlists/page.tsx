@@ -15,10 +15,6 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
-import {
-  formatSignedSemitones,
-  transposeKey,
-} from '@/lib/music/transposition';
 import { SetlistDragReorderList } from '@/components/setlists/SetlistDragReorderList';
 import type { SongRecord } from '@/types/song';
 
@@ -32,7 +28,6 @@ export default function SetlistsPage() {
     renameSetlist,
     addSongToSetlist,
     removeSongFromSetlist,
-    moveSongInSetlist,
     updateSetlistItems,
     isSongSavedOffline,
     saveBatchSongsOffline,
