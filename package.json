@@ -2,10 +2,15 @@
   "name": "worship-music-companion",
   "version": "0.1.0",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev -H 0.0.0.0 --experimental-https --experimental-https-key ./certificates/localhost.key --experimental-https-cert ./certificates/localhost.crt",
     "dev:http": "next dev -H 0.0.0.0",
     "build": "next build",
+    "build:standalone": "next build && node scripts/prepare-standalone.js",
+    "electron:dev": "node electron/dev.js",
+    "electron:build:win": "npm run build:standalone && electron-builder --win nsis portable",
+    "electron:build:mac": "npm run build:standalone && electron-builder --mac dmg",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -22,9 +27,41 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "build": {
+    "appId": "com.worshipy.app",
+    "productName": "Worshipy",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      ".next/standalone/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Worshipy"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.png",
+      "category": "public.app-category.music"
+    }
   }
 }

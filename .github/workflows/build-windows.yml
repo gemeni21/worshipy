@@ -1,0 +1,38 @@
+name: Build Windows App
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Next.js Standalone and Windows Executable
+        run: npm run electron:build:win
+
+      - name: Upload Windows Setup & Portable Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Worshipy-Windows-Build
+          path: |
+            dist-electron/*.exe
+            dist-electron/win-unpacked/
