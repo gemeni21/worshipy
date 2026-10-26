@@ -8,6 +8,7 @@ import {
   deletePracticeTake,
   updatePracticeTakeNotes,
   transformCloudAudioUrl,
+  resolvePlaybackUrl,
   type PracticeTake,
 } from '../practiceStorage.ts';
 import { PracticeAudioRecorder } from '../practiceRecorder.ts';
@@ -96,7 +97,7 @@ describe('Practice Audio Storage & Recording Engine', () => {
     );
   });
 
-  it('5. transforms Google Drive, Dropbox, and cloud audio links to direct streaming endpoints', () => {
+  it('5. transforms Google Drive, Dropbox, and cloud audio links to proxy streaming endpoints', () => {
     // Google Drive share link
     const gDrive1 = transformCloudAudioUrl(
       'https://drive.google.com/file/d/1XyZ9abc123DEF456/view?usp=sharing'
@@ -104,7 +105,7 @@ describe('Practice Audio Storage & Recording Engine', () => {
     assert.equal(gDrive1.provider, 'gdrive');
     assert.equal(
       gDrive1.streamUrl,
-      'https://drive.google.com/uc?export=download&id=1XyZ9abc123DEF456'
+      '/api/audio/stream?id=1XyZ9abc123DEF456&provider=gdrive'
     );
 
     // Google Drive open?id link
@@ -112,13 +113,13 @@ describe('Practice Audio Storage & Recording Engine', () => {
     assert.equal(gDrive2.provider, 'gdrive');
     assert.equal(
       gDrive2.streamUrl,
-      'https://drive.google.com/uc?export=download&id=MY_FILE_ID_789'
+      '/api/audio/stream?id=MY_FILE_ID_789&provider=gdrive'
     );
 
     // Dropbox dl=0 link
     const dropbox = transformCloudAudioUrl('https://www.dropbox.com/s/xyz123/rehearsal.mp3?dl=0');
     assert.equal(dropbox.provider, 'dropbox');
-    assert.equal(dropbox.streamUrl, 'https://www.dropbox.com/s/xyz123/rehearsal.mp3?raw=1');
+    assert.ok(dropbox.streamUrl.startsWith('/api/audio/stream?url='));
 
     // Direct MP3 URL
     const direct = transformCloudAudioUrl('https://cdn.example.com/audio/practice-take.mp3');
@@ -129,5 +130,32 @@ describe('Practice Audio Storage & Recording Engine', () => {
     const empty = transformCloudAudioUrl('   ');
     assert.equal(empty.provider, 'unknown');
     assert.equal(empty.streamUrl, '');
+  });
+
+  it('6. safely resolves legacy Google Drive links and existing cloud takes into stream proxy URLs', () => {
+    // Existing stored take with direct uc?export=download link
+    const legacyGdrive = resolvePlaybackUrl(
+      'https://drive.google.com/uc?export=download&id=1scWL6LO2ME9UYVeG74g1yRDcetSWFgfI'
+    );
+    assert.equal(
+      legacyGdrive,
+      '/api/audio/stream?id=1scWL6LO2ME9UYVeG74g1yRDcetSWFgfI&provider=gdrive'
+    );
+
+    // Standard Google Drive share view link
+    const viewGdrive = resolvePlaybackUrl(
+      'https://drive.google.com/file/d/1lA1YVVvkCHv0PTwhsRWeh8CMVtMpqj9O/view?usp=sharing'
+    );
+    assert.equal(
+      viewGdrive,
+      '/api/audio/stream?id=1lA1YVVvkCHv0PTwhsRWeh8CMVtMpqj9O&provider=gdrive'
+    );
+
+    // Blob URL preserved as-is
+    assert.equal(resolvePlaybackUrl('blob:http://localhost:3000/xyz'), 'blob:http://localhost:3000/xyz');
+
+    // Null/empty safe
+    assert.equal(resolvePlaybackUrl(null), null);
+    assert.equal(resolvePlaybackUrl(''), null);
   });
 });

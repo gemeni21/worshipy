@@ -267,6 +267,53 @@ export interface CloudAudioTransform {
   suggestedName?: string;
 }
 
+/**
+ * Resolves any audio URL (including legacy direct Google Drive links, Dropbox, or OneDrive)
+ * into a reliable, same-origin streaming proxy URL to prevent CORS and CORP NotSupportedError blocks.
+ */
+export function resolvePlaybackUrl(audioUrl: string | undefined | null): string | null {
+  if (!audioUrl) return null;
+  const trimmed = audioUrl.trim();
+  if (!trimmed) return null;
+
+  // Local blobs or already proxied endpoints are used directly
+  if (
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('/api/audio/stream')
+  ) {
+    return trimmed;
+  }
+
+  // Google Drive URL or ID
+  const gDriveMatch =
+    trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+    trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+
+  if (gDriveMatch && gDriveMatch[1]) {
+    return `/api/audio/stream?id=${encodeURIComponent(gDriveMatch[1])}&provider=gdrive`;
+  }
+
+  // Dropbox Sharing Link
+  if (trimmed.includes('dropbox.com')) {
+    let streamUrl = trimmed;
+    if (streamUrl.includes('dl=0')) {
+      streamUrl = streamUrl.replace('dl=0', 'raw=1');
+    } else if (!streamUrl.includes('raw=1')) {
+      streamUrl += (streamUrl.includes('?') ? '&' : '?') + 'raw=1';
+    }
+    return `/api/audio/stream?url=${encodeURIComponent(streamUrl)}&provider=dropbox`;
+  }
+
+  // OneDrive Sharing Link
+  if (trimmed.includes('1drv.ms') || trimmed.includes('onedrive.live.com')) {
+    const streamUrl = trimmed.replace('/view.aspx', '/download.aspx');
+    return `/api/audio/stream?url=${encodeURIComponent(streamUrl)}&provider=onedrive`;
+  }
+
+  return trimmed;
+}
+
 export function transformCloudAudioUrl(rawUrl: string): CloudAudioTransform {
   const trimmed = rawUrl.trim();
   if (!trimmed) {
@@ -284,7 +331,7 @@ export function transformCloudAudioUrl(rawUrl: string): CloudAudioTransform {
   if (gDriveMatch && gDriveMatch[1]) {
     const fileId = gDriveMatch[1];
     return {
-      streamUrl: `https://drive.google.com/uc?export=download&id=${fileId}`,
+      streamUrl: `/api/audio/stream?id=${encodeURIComponent(fileId)}&provider=gdrive`,
       provider: 'gdrive',
       originalUrl: trimmed,
       suggestedName: 'Google Drive Audio',
@@ -300,7 +347,7 @@ export function transformCloudAudioUrl(rawUrl: string): CloudAudioTransform {
       streamUrl += (streamUrl.includes('?') ? '&' : '?') + 'raw=1';
     }
     return {
-      streamUrl,
+      streamUrl: `/api/audio/stream?url=${encodeURIComponent(streamUrl)}&provider=dropbox`,
       provider: 'dropbox',
       originalUrl: trimmed,
       suggestedName: 'Dropbox Audio',
@@ -309,8 +356,9 @@ export function transformCloudAudioUrl(rawUrl: string): CloudAudioTransform {
 
   // 3. OneDrive Sharing Link
   if (trimmed.includes('1drv.ms') || trimmed.includes('onedrive.live.com')) {
+    const streamUrl = trimmed.replace('/view.aspx', '/download.aspx');
     return {
-      streamUrl: trimmed.replace('/view.aspx', '/download.aspx'),
+      streamUrl: `/api/audio/stream?url=${encodeURIComponent(streamUrl)}&provider=onedrive`,
       provider: 'onedrive',
       originalUrl: trimmed,
       suggestedName: 'OneDrive Audio',

@@ -23,6 +23,7 @@ import {
   PracticeTake,
   exportPracticeTake,
   updatePracticeTakeNotes,
+  resolvePlaybackUrl,
 } from '@/lib/audio/practiceStorage';
 
 interface PracticeWaveformPlayerProps {
@@ -103,7 +104,8 @@ export function PracticeWaveformPlayer({
         setAudioSrc(null);
       }
     } else if (take.audioUrl) {
-      setAudioSrc(take.audioUrl);
+      const resolved = resolvePlaybackUrl(take.audioUrl);
+      setAudioSrc(resolved);
     } else {
       setAudioSrc(null);
     }
@@ -191,9 +193,18 @@ export function PracticeWaveformPlayer({
           })
           .catch((err) => {
             console.error('Playback start failure:', err);
-            setPlaybackError(
-              err instanceof Error ? err.message : 'Audio playback blocked by browser.'
-            );
+            const msg = err instanceof Error ? err.message : '';
+            if (msg.includes('NotSupportedError') || msg.includes('not supported')) {
+              setPlaybackError(
+                take.audioUrl && (take.audioUrl.includes('drive.google.com') || take.audioUrl.includes('drive.usercontent.google.com') || audioSrc?.includes('provider=gdrive'))
+                  ? 'Unable to play Google Drive audio: please verify that the file sharing permissions in Google Drive are set to "Anyone with the link can view".'
+                  : 'Audio format or stream is not supported by your browser.'
+              );
+            } else if (msg.includes('NotAllowedError')) {
+              setPlaybackError('Browser audio autoplay blocked. Tap Play to listen.');
+            } else {
+              setPlaybackError(msg || 'Audio playback failed to start.');
+            }
             setIsPlaying(false);
           });
       }
@@ -320,8 +331,8 @@ export function PracticeWaveformPlayer({
           onError={() => {
             console.warn('Audio playback error on source:', audioSrc);
             setPlaybackError(
-              take.audioUrl && take.audioUrl.includes('drive.google.com')
-                ? 'Google Drive audio link requires public access ("Anyone with the link can view").'
+              take.audioUrl && (take.audioUrl.includes('drive.google.com') || take.audioUrl.includes('drive.usercontent.google.com') || audioSrc?.includes('provider=gdrive'))
+                ? 'Google Drive audio requires public access ("Anyone with the link can view").'
                 : 'Unable to decode audio. Check file format or network permissions.'
             );
             setIsPlaying(false);
