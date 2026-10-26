@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   Play,
   Pause,
-  RotateCcw,
   FastForward,
   Rewind,
   Download,
@@ -18,6 +17,7 @@ import {
   UploadCloud,
   Link as LinkIcon,
   AlertCircle,
+  Volume2,
 } from 'lucide-react';
 import {
   PracticeTake,
@@ -39,14 +39,50 @@ export function PracticeWaveformPlayer({
   compact = false,
 }: PracticeWaveformPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const waveformRef = useRef<HTMLDivElement | null>(null);
 
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(take.durationSeconds || 0);
+  const [duration, setDuration] = useState<number>(take.durationSeconds || 0);
+  const durationRef = useRef<number>(take.durationSeconds || 0);
   const [playbackRate, setPlaybackRate] = useState<number>(1.0);
   const [isLooping, setIsLooping] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+
+  // Sync duration state & ref when take changes
+  useEffect(() => {
+    if (take.durationSeconds && take.durationSeconds > 0) {
+      setDuration(take.durationSeconds);
+      durationRef.current = take.durationSeconds;
+    }
+  }, [take.durationSeconds, take.id]);
+
+  // Decode audio buffer duration if blob exists but duration is uncalculated/zero
+  useEffect(() => {
+    if (take.blob && (!take.durationSeconds || take.durationSeconds <= 0)) {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        take.blob
+          .arrayBuffer()
+          .then((buf) => ctx.decodeAudioData(buf))
+          .then((decoded) => {
+            if (decoded && decoded.duration > 0) {
+              setDuration(decoded.duration);
+              durationRef.current = decoded.duration;
+            }
+            ctx.close();
+          })
+          .catch(() => {
+            ctx.close();
+          });
+      }
+    }
+  }, [take.blob, take.durationSeconds]);
 
   // Notes state
   const [notes, setNotes] = useState(take.notes || '');
@@ -54,7 +90,7 @@ export function PracticeWaveformPlayer({
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [notesSavedToast, setNotesSavedToast] = useState(false);
 
-  // Maintain reliable audio source URL (blob object URL or external cloud streaming link)
+  // Maintain reliable audio source URL
   useEffect(() => {
     let activeUrl: string | null = null;
 
@@ -79,59 +115,62 @@ export function PracticeWaveformPlayer({
     };
   }, [take.blob, take.audioUrl]);
 
-  // Sync audio element events
+  // Keep audio playback properties in sync
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-
     audio.preservesPitch = true;
     audio.playbackRate = playbackRate;
     audio.loop = isLooping;
+  }, [playbackRate, isLooping, audioSrc]);
 
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
-    };
+  // Ultra-smooth 60fps playhead animation loop during playback
+  useEffect(() => {
+    if (!isPlaying) return;
+    let animId: number;
 
-    const handleLoadedMetadata = () => {
-      if (Number.isFinite(audio.duration) && audio.duration > 0) {
-        setDuration(audio.duration);
+    const tick = () => {
+      const audio = audioRef.current;
+      if (audio && !audio.paused) {
+        setCurrentTime(audio.currentTime);
+
+        // Dynamically correct WebM Infinite duration or missing duration if needed
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+          if (audio.duration !== durationRef.current) {
+            durationRef.current = audio.duration;
+            setDuration(audio.duration);
+          }
+        } else if (audio.currentTime > durationRef.current) {
+          const nextDur = Math.ceil(audio.currentTime);
+          durationRef.current = nextDur;
+          setDuration(nextDur);
+        }
       }
+      animId = requestAnimationFrame(tick);
     };
 
-    const handleEnded = () => {
-      if (!audio.loop) {
-        setIsPlaying(false);
-        setCurrentTime(0);
-      }
-    };
+    animId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animId);
+  }, [isPlaying]);
 
-    const handleError = () => {
-      console.warn('Audio playback error on source:', audio.src);
-      setPlaybackError(
-        take.audioUrl && take.audioUrl.includes('drive.google.com')
-          ? 'Google Drive audio link requires public access ("Anyone with the link can view").'
-          : 'Unable to decode audio. Check file format or network permissions.'
-      );
-      setIsPlaying(false);
-    };
+  // Effective duration calculation
+  const effectiveDuration = useMemo(() => {
+    if (Number.isFinite(duration) && duration > 0) {
+      return Math.max(duration, currentTime);
+    }
+    if (Number.isFinite(take.durationSeconds) && take.durationSeconds > 0) {
+      return Math.max(take.durationSeconds, currentTime);
+    }
+    return Math.max(1, currentTime);
+  }, [duration, take.durationSeconds, currentTime]);
 
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('error', handleError);
+  const progressFraction = Math.max(0, Math.min(1, currentTime / effectiveDuration));
 
-    return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('error', handleError);
-    };
-  }, [playbackRate, isLooping, take.audioUrl]);
-
+  // Transport toggle
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) {
-      setPlaybackError('Audio player is still initializing...');
+      setPlaybackError('Audio player initializing, please try again in a moment...');
       return;
     }
 
@@ -140,6 +179,10 @@ export function PracticeWaveformPlayer({
       setIsPlaying(false);
     } else {
       setPlaybackError(null);
+      audio.preservesPitch = true;
+      audio.playbackRate = playbackRate;
+      audio.loop = isLooping;
+
       const playPromise = audio.play();
       if (playPromise !== undefined) {
         playPromise
@@ -155,28 +198,49 @@ export function PracticeWaveformPlayer({
           });
       }
     }
-  }, [isPlaying]);
+  }, [isPlaying, playbackRate, isLooping]);
 
   const seekTo = (fraction: number) => {
     const audio = audioRef.current;
     if (!audio) return;
-    const effectiveDuration = duration > 0 ? duration : take.durationSeconds || 1;
     const target = Math.max(0, Math.min(effectiveDuration, fraction * effectiveDuration));
     audio.currentTime = target;
     setCurrentTime(target);
   };
 
-  const handleWaveformClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seekFromPointer = (e: React.PointerEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const fraction = Math.max(0, Math.min(1, clickX / rect.width));
     seekTo(fraction);
   };
 
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    setIsScrubbing(true);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+    seekFromPointer(e);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isScrubbing) {
+      seekFromPointer(e);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isScrubbing) {
+      setIsScrubbing(false);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+  };
+
   const skipSeconds = (seconds: number) => {
     const audio = audioRef.current;
     if (!audio) return;
-    const effectiveDuration = duration > 0 ? duration : take.durationSeconds || 1;
     const target = Math.max(0, Math.min(effectiveDuration, audio.currentTime + seconds));
     audio.currentTime = target;
     setCurrentTime(target);
@@ -203,6 +267,7 @@ export function PracticeWaveformPlayer({
   };
 
   const formatTime = (secs: number) => {
+    if (!Number.isFinite(secs) || secs < 0) return '0:00';
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
@@ -212,17 +277,55 @@ export function PracticeWaveformPlayer({
     ? take.waveformPeaks
     : Array(64).fill(0.3);
 
-  const effectiveDuration = duration > 0 ? duration : take.durationSeconds || 1;
-  const progressFraction = Math.max(0, Math.min(1, currentTime / effectiveDuration));
-
   return (
-    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm space-y-3">
-      {/* Hidden audio element with reactive state src */}
+    <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 shadow-sm space-y-3 transition-all">
+      {/* Audio Element with direct React event bindings */}
       {audioSrc && (
         <audio
           ref={audioRef}
           src={audioSrc}
           preload="auto"
+          onTimeUpdate={(e) => {
+            const audio = e.currentTarget;
+            if (audio) {
+              setCurrentTime(audio.currentTime);
+              if (Number.isFinite(audio.duration) && audio.duration > 0) {
+                setDuration(audio.duration);
+              }
+            }
+          }}
+          onLoadedMetadata={(e) => {
+            const audio = e.currentTarget;
+            if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+              setDuration(audio.duration);
+            }
+          }}
+          onDurationChange={(e) => {
+            const audio = e.currentTarget;
+            if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+              setDuration(audio.duration);
+            }
+          }}
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onEnded={() => {
+            if (!isLooping) {
+              setIsPlaying(false);
+              setCurrentTime(0);
+              if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+              }
+            }
+          }}
+          onError={() => {
+            console.warn('Audio playback error on source:', audioSrc);
+            setPlaybackError(
+              take.audioUrl && take.audioUrl.includes('drive.google.com')
+                ? 'Google Drive audio link requires public access ("Anyone with the link can view").'
+                : 'Unable to decode audio. Check file format or network permissions.'
+            );
+            setIsPlaying(false);
+          }}
         />
       )}
 
@@ -230,7 +333,7 @@ export function PracticeWaveformPlayer({
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-sm text-[var(--text-primary)] truncate">
+            <span className="font-bold text-sm text-[var(--text-primary)] truncate">
               {take.songTitle}
             </span>
 
@@ -256,6 +359,13 @@ export function PracticeWaveformPlayer({
               Key of {take.key}
               {take.capo ? ` • Capo ${take.capo}` : ''}
             </span>
+
+            {isPlaying && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full animate-pulse">
+                <Volume2 className="w-3 h-3" />
+                <span>Playing</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2 mt-0.5">
@@ -268,7 +378,7 @@ export function PracticeWaveformPlayer({
               })}
             </span>
             {take.fileName && (
-              <span className="text-[11px] text-[var(--text-secondary)] truncate max-w-[180px]">
+              <span className="text-[11px] text-[var(--text-secondary)] truncate max-w-[200px]">
                 • {take.fileName}
               </span>
             )}
@@ -317,25 +427,61 @@ export function PracticeWaveformPlayer({
         </div>
       )}
 
-      {/* Scrubbable Waveform */}
+      {/* Interactive Drag-and-Click Waveform Scrubber */}
       <div
-        onClick={handleWaveformClick}
-        title="Click anywhere to seek"
-        className="group relative h-12 flex items-center gap-[2px] px-2 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] cursor-pointer select-none overflow-hidden"
+        ref={waveformRef}
+        role="slider"
+        tabIndex={0}
+        aria-label="Seek audio timeline"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(effectiveDuration)}
+        aria-valuenow={Math.round(currentTime)}
+        aria-valuetext={`${formatTime(currentTime)} of ${formatTime(effectiveDuration)}`}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            skipSeconds(5);
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            skipSeconds(-5);
+          } else if (e.key === 'Home') {
+            e.preventDefault();
+            seekTo(0);
+          } else if (e.key === 'End') {
+            e.preventDefault();
+            seekTo(1);
+          } else if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            togglePlay();
+          }
+        }}
+        title="Click or drag anywhere to seek (or use Arrow keys)"
+        className="group relative h-14 flex items-center gap-[2.5px] px-2.5 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] hover:border-[var(--brand-accent)]/40 focus:border-[var(--brand-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--brand-accent)]/20 cursor-pointer select-none overflow-hidden transition-colors touch-none"
       >
-        {/* Progress Fill Background Highlight */}
+        {/* Dynamic Waveform Progress Background Fill */}
         <div
-          className="absolute inset-y-0 left-0 bg-[var(--brand-accent)]/15 pointer-events-none transition-[width] duration-75"
+          className={`absolute inset-y-0 left-0 bg-[var(--brand-accent)]/15 pointer-events-none ${
+            isPlaying ? 'transition-none' : 'transition-[width] duration-100 ease-out'
+          }`}
           style={{ width: `${progressFraction * 100}%` }}
         />
 
-        {/* Playhead Marker */}
+        {/* Floating Playhead Needle with Top & Bottom Beads */}
         <div
-          className="absolute inset-y-0 w-0.5 bg-[var(--brand-accent)] shadow-sm pointer-events-none transition-[left] duration-75"
+          className={`absolute inset-y-0 w-0.5 bg-[var(--brand-accent)] shadow-md pointer-events-none z-10 ${
+            isPlaying ? 'transition-none' : 'transition-[left] duration-100 ease-out'
+          }`}
           style={{ left: `${progressFraction * 100}%` }}
-        />
+        >
+          <div className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-[var(--brand-accent)] shadow-sm" />
+          <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 rounded-full bg-[var(--brand-accent)] shadow-sm" />
+        </div>
 
-        {/* Waveform Bars */}
+        {/* Waveform Sound Bars */}
         {peaks.map((val, idx) => {
           const barFraction = idx / peaks.length;
           const isPassed = barFraction <= progressFraction;
@@ -349,17 +495,17 @@ export function PracticeWaveformPlayer({
               <div
                 className={`w-full max-w-[4px] rounded-full transition-all duration-75 ${
                   isPassed
-                    ? 'bg-[var(--brand-accent)] shadow-xs'
-                    : 'bg-[var(--border-strong)] group-hover:bg-[var(--text-secondary)]/50'
+                    ? 'bg-[var(--brand-accent)] shadow-[0_0_8px_rgba(var(--brand-accent-rgb),0.5)]'
+                    : 'bg-[var(--border-strong)] group-hover:bg-[var(--text-secondary)]/40'
                 }`}
-                style={{ height: `${Math.max(15, barHeightPct)}%` }}
+                style={{ height: `${Math.max(14, barHeightPct)}%` }}
               />
             </div>
           );
         })}
       </div>
 
-      {/* Transport Controls & Time */}
+      {/* Transport Controls & Time Readout */}
       <div className="flex items-center justify-between gap-2 pt-1">
         <div className="flex items-center gap-1.5">
           {/* 5s Rewind */}
@@ -372,12 +518,14 @@ export function PracticeWaveformPlayer({
             <Rewind className="w-4 h-4" />
           </button>
 
-          {/* Play/Pause */}
+          {/* Play/Pause Main Button */}
           <button
             type="button"
             onClick={togglePlay}
             aria-label={isPlaying ? 'Pause' : 'Play'}
-            className="w-10 h-10 rounded-full flex items-center justify-center bg-[var(--brand-accent)] text-[#0c0c10] font-bold shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
+            className={`w-10 h-10 rounded-full flex items-center justify-center bg-[var(--brand-accent)] text-[#0c0c10] font-bold shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer ${
+              isPlaying ? 'ring-4 ring-[var(--brand-accent)]/30' : ''
+            }`}
           >
             {isPlaying ? (
               <Pause className="w-4 h-4 fill-current" />
@@ -396,17 +544,17 @@ export function PracticeWaveformPlayer({
             <FastForward className="w-4 h-4" />
           </button>
 
-          {/* Speed Control Pill */}
+          {/* Pitch-Preserved Speed Control Pill */}
           <button
             type="button"
             onClick={cycleSpeed}
             title="Cycle Speed (Pitch-Preserved)"
-            className="ml-1 px-2 py-1 rounded-lg text-xs font-mono font-bold bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--brand-accent)]/50 transition-colors cursor-pointer"
+            className="ml-1 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--brand-accent)]/50 transition-colors cursor-pointer"
           >
             {playbackRate}×
           </button>
 
-          {/* Section Loop Toggle */}
+          {/* Continuous Loop Toggle */}
           <button
             type="button"
             onClick={() => setIsLooping(!isLooping)}
@@ -421,9 +569,9 @@ export function PracticeWaveformPlayer({
           </button>
         </div>
 
-        {/* Time Display */}
+        {/* Real-time Current Time / Total Duration */}
         <div className="font-mono text-xs text-[var(--text-secondary)] tracking-tight">
-          <span className="text-[var(--text-primary)] font-semibold">
+          <span className="text-[var(--text-primary)] font-bold">
             {formatTime(currentTime)}
           </span>{' '}
           / {formatTime(effectiveDuration)}
