@@ -7,6 +7,7 @@ import {
   savePracticeTake,
   deletePracticeTake,
   updatePracticeTakeNotes,
+  updatePracticeTakeTitle,
   transformCloudAudioUrl,
   resolvePlaybackUrl,
   type PracticeTake,
@@ -44,6 +45,13 @@ describe('Practice Audio Storage & Recording Engine', () => {
 
     const updateRes = await updatePracticeTakeNotes('test-123', 'Great vocal take!');
     assert.equal(updateRes.ok, false);
+
+    const updateTitleRes = await updatePracticeTakeTitle('test-123', 'Updated Song Title');
+    assert.equal(updateTitleRes.ok, false);
+
+    const emptyTitleRes = await updatePracticeTakeTitle('test-123', '   ');
+    assert.equal(emptyTitleRes.ok, false);
+    assert.equal(emptyTitleRes.error, 'Song title cannot be empty.');
   });
 
   it('2. resamples and normalizes waveform peaks correctly', () => {

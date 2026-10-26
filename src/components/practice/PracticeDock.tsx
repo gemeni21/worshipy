@@ -56,6 +56,7 @@ export function PracticeDock({
 
   const [takes, setTakes] = useState<PracticeTake[]>([]);
   const [pendingResult, setPendingResult] = useState<PracticeRecordingResult | null>(null);
+  const [pendingTitle, setPendingTitle] = useState(songTitle);
   const [pendingNotes, setPendingNotes] = useState('');
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -112,6 +113,7 @@ export function PracticeDock({
     const res = await practiceAudioRecorder.stop();
     if (res && res.blob.size > 0) {
       setPendingResult(res);
+      setPendingTitle(songTitle);
       setPendingNotes('');
     }
   };
@@ -128,7 +130,7 @@ export function PracticeDock({
     const newTake: PracticeTake = {
       id: `take_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       songSlug,
-      songTitle,
+      songTitle: pendingTitle.trim() || songTitle,
       songArtist,
       key: currentKey,
       capo: currentCapo > 0 ? currentCapo : undefined,
@@ -452,7 +454,7 @@ export function PracticeDock({
                   Review Practice Take
                 </h3>
                 <p className="text-xs text-[var(--text-secondary)]">
-                  {songTitle} • Key of {currentKey}
+                  Key of {currentKey}
                   {currentCapo > 0 ? ` • Capo ${currentCapo}` : ''}
                 </p>
               </div>
@@ -465,12 +467,26 @@ export function PracticeDock({
               </button>
             </div>
 
+            {/* Song Title Input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-[var(--text-secondary)] block">
+                Song Title
+              </label>
+              <input
+                type="text"
+                value={pendingTitle}
+                onChange={(e) => setPendingTitle(e.target.value)}
+                placeholder="Song title..."
+                className="w-full text-xs font-bold p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/60 focus:outline-none focus:border-[var(--brand-accent)]"
+              />
+            </div>
+
             {/* Audio Preview Waveform Player */}
             <PracticeWaveformPlayer
               take={{
                 id: 'preview',
                 songSlug,
-                songTitle,
+                songTitle: pendingTitle.trim() || songTitle,
                 songArtist,
                 key: currentKey,
                 capo: currentCapo > 0 ? currentCapo : undefined,
@@ -700,6 +716,7 @@ export function PracticeDock({
                     take={take}
                     onDelete={handleDeleteTake}
                     onNotesUpdated={loadTakes}
+                    onTitleUpdated={loadTakes}
                   />
                 ))
               )}

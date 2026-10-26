@@ -258,6 +258,68 @@ export async function updatePracticeTakeNotes(id: string, notes: string): Promis
 }
 
 /**
+ * Updates the song title (and optional song slug/artist) on an existing take.
+ */
+export async function updatePracticeTakeTitle(
+  id: string,
+  newTitle: string,
+  newSlug?: string,
+  newArtist?: string
+): Promise<StorageResult> {
+  const trimmedTitle = newTitle.trim();
+  if (!trimmedTitle) {
+    return { ok: false, error: 'Song title cannot be empty.' };
+  }
+
+  if (!isPracticeDbSupported()) {
+    return { ok: false, error: 'IndexedDB is not supported.' };
+  }
+
+  try {
+    const db = await openPracticeDatabase();
+    return new Promise((resolve) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const getReq = store.get(id);
+
+      getReq.onsuccess = () => {
+        const take = getReq.result as PracticeTake | undefined;
+        if (!take) {
+          resolve({ ok: false, error: 'Practice take not found.' });
+          return;
+        }
+
+        take.songTitle = trimmedTitle;
+        if (newSlug) {
+          take.songSlug = newSlug;
+        }
+        if (newArtist !== undefined) {
+          take.songArtist = newArtist;
+        }
+
+        const putReq = store.put(take);
+        putReq.onsuccess = () => resolve({ ok: true });
+        putReq.onerror = () =>
+          resolve({ ok: false, error: putReq.error?.message ?? 'Failed to update song title.' });
+      };
+
+      getReq.onerror = () => {
+        resolve({ ok: false, error: getReq.error?.message ?? 'Failed to find record.' });
+      };
+
+      tx.oncomplete = () => {
+        db.close();
+      };
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    };
+  }
+}
+
+/**
  * Transforms standard cloud share URLs (Google Drive, Dropbox, OneDrive) into direct audio streaming links.
  */
 export interface CloudAudioTransform {

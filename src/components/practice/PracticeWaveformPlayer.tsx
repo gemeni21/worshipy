@@ -18,11 +18,14 @@ import {
   Link as LinkIcon,
   AlertCircle,
   Volume2,
+  Pencil,
+  X,
 } from 'lucide-react';
 import {
   PracticeTake,
   exportPracticeTake,
   updatePracticeTakeNotes,
+  updatePracticeTakeTitle,
   resolvePlaybackUrl,
 } from '@/lib/audio/practiceStorage';
 
@@ -30,6 +33,7 @@ interface PracticeWaveformPlayerProps {
   take: PracticeTake;
   onDelete?: (id: string) => void;
   onNotesUpdated?: (id: string, notes: string) => void;
+  onTitleUpdated?: (id: string, newTitle: string) => void;
   compact?: boolean;
 }
 
@@ -37,6 +41,7 @@ export function PracticeWaveformPlayer({
   take,
   onDelete,
   onNotesUpdated,
+  onTitleUpdated,
   compact = false,
 }: PracticeWaveformPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -84,6 +89,18 @@ export function PracticeWaveformPlayer({
       }
     }
   }, [take.blob, take.durationSeconds]);
+
+  // Song Title state
+  const [songTitle, setSongTitle] = useState(take.songTitle || 'Untitled Practice');
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleInput, setTitleInput] = useState(take.songTitle || '');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [titleSavedToast, setTitleSavedToast] = useState(false);
+
+  useEffect(() => {
+    setSongTitle(take.songTitle || 'Untitled Practice');
+    setTitleInput(take.songTitle || '');
+  }, [take.songTitle, take.id]);
 
   // Notes state
   const [notes, setNotes] = useState(take.notes || '');
@@ -267,6 +284,24 @@ export function PracticeWaveformPlayer({
     }
   };
 
+  const handleSaveTitle = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = titleInput.trim();
+    if (!trimmed || trimmed === songTitle) {
+      setIsEditingTitle(false);
+      return;
+    }
+
+    setIsSavingTitle(true);
+    await updatePracticeTakeTitle(take.id, trimmed);
+    setSongTitle(trimmed);
+    setIsSavingTitle(false);
+    setIsEditingTitle(false);
+    setTitleSavedToast(true);
+    onTitleUpdated?.(take.id, trimmed);
+    setTimeout(() => setTitleSavedToast(false), 2000);
+  };
+
   const handleSaveNotes = async () => {
     setIsSavingNotes(true);
     await updatePracticeTakeNotes(take.id, notes);
@@ -344,9 +379,68 @@ export function PracticeWaveformPlayer({
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-sm text-[var(--text-primary)] truncate">
-              {take.songTitle}
-            </span>
+            {isEditingTitle ? (
+              <form
+                onSubmit={handleSaveTitle}
+                className="inline-flex items-center gap-1.5 min-w-[200px] max-w-full"
+              >
+                <input
+                  type="text"
+                  value={titleInput}
+                  onChange={(e) => setTitleInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setIsEditingTitle(false);
+                      setTitleInput(songTitle);
+                    }
+                  }}
+                  autoFocus
+                  placeholder="Song name..."
+                  className="px-2 py-0.5 text-sm font-bold rounded-lg border border-[var(--brand-accent)] bg-[var(--bg-subtle)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--brand-accent)]"
+                />
+                <button
+                  type="submit"
+                  disabled={isSavingTitle || !titleInput.trim()}
+                  title="Save song title"
+                  aria-label="Save song title"
+                  className="p-1 rounded-md bg-[var(--brand-accent)] text-[#0c0c10] hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditingTitle(false);
+                    setTitleInput(songTitle);
+                  }}
+                  title="Cancel"
+                  aria-label="Cancel"
+                  className="p-1 rounded-md text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            ) : (
+              <div className="group/title inline-flex items-center gap-1.5 max-w-full">
+                <span className="font-bold text-sm text-[var(--text-primary)] truncate">
+                  {songTitle}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTitle(true)}
+                  title="Edit song name"
+                  aria-label="Edit song name"
+                  className="p-1 rounded-md text-[var(--text-secondary)] opacity-70 group-hover/title:opacity-100 hover:text-[var(--brand-accent)] hover:bg-[var(--bg-subtle)] transition-all cursor-pointer"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                {titleSavedToast && (
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-400 animate-in fade-in">
+                    <Check className="w-3 h-3" /> Saved
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Source Type Badge */}
             {take.sourceType === 'upload' ? (
@@ -411,7 +505,7 @@ export function PracticeWaveformPlayer({
           )}
           <button
             type="button"
-            onClick={() => exportPracticeTake(take)}
+            onClick={() => exportPracticeTake({ ...take, songTitle })}
             title="Download / Export Audio"
             className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
           >

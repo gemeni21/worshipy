@@ -382,6 +382,7 @@ export default function PracticeStudioPage() {
                 take={take}
                 onDelete={handleDeleteTake}
                 onNotesUpdated={loadAll}
+                onTitleUpdated={loadAll}
               />
               <div className="mt-1 flex items-center justify-end px-2">
                 <Link
