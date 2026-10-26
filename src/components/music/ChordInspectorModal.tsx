@@ -103,17 +103,17 @@ export function ChordInspectorModal({
               aria-label={activeSound ? 'Stop chord audio' : `Hear ${chord} chord sound`}
               data-testid="chord-hear-sound-btn"
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
-                activeSound === 'guitar'
+                activeSound !== null
                   ? 'bg-[var(--brand-accent)] text-[#0c0c10] animate-pulse ring-2 ring-[var(--brand-accent)]/40'
                   : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
               }`}
             >
-              {activeSound === 'guitar' ? (
+              {activeSound !== null ? (
                 <VolumeX className="w-3.5 h-3.5" aria-hidden="true" />
               ) : (
                 <Volume2 className="w-3.5 h-3.5" aria-hidden="true" />
               )}
-              <span>{activeSound === 'guitar' ? 'Playing...' : 'Hear Chord'}</span>
+              <span>{activeSound !== null ? 'Playing...' : 'Hear Chord'}</span>
             </button>
           </div>
           <button
@@ -340,7 +340,7 @@ function GuitarFretboardSVG({ diagram }: { diagram: GuitarChordDiagram }) {
             </text>
           );
         }
-        if (fretVal === 0 || fretVal === diagram.baseFret - 1) {
+        if (fretVal === 0) {
           return (
             <circle
               key={strIdx}
@@ -357,11 +357,42 @@ function GuitarFretboardSVG({ diagram }: { diagram: GuitarChordDiagram }) {
         return null;
       })}
 
+      {/* Barre Chord Markers */}
+      {diagram.barres?.map((barreFret) => {
+        const relFret = barreFret - diagram.baseFret + 1;
+        if (relFret < 1 || relFret > numFrets) return null;
+
+        // Find strings that are barred at or above this fret
+        const activeIndices = diagram.frets
+          .map((f, idx) => (typeof f === 'number' && f >= barreFret ? idx : -1))
+          .filter((idx) => idx !== -1);
+        if (activeIndices.length < 2) return null;
+
+        const minIdx = Math.min(...activeIndices);
+        const maxIdx = Math.max(...activeIndices);
+        const startX = stringX[minIdx];
+        const endX = stringX[maxIdx];
+        const cy = (fretY[relFret - 1] + fretY[relFret]) / 2;
+
+        return (
+          <rect
+            key={`barre-${barreFret}`}
+            x={startX - 6}
+            y={cy - 6.5}
+            width={endX - startX + 12}
+            height="13"
+            rx="6.5"
+            fill="currentColor"
+            className="text-[var(--brand-accent)] opacity-85"
+          />
+        );
+      })}
+
       {/* Pressed Frets (Dots) */}
       {diagram.frets.map((fretVal, strIdx) => {
         if (typeof fretVal !== 'number' || fretVal <= 0) return null;
         // Relative fret from baseFret
-        const relFret = fretVal >= diagram.baseFret ? fretVal - diagram.baseFret + 1 : fretVal;
+        const relFret = fretVal - diagram.baseFret + 1;
         if (relFret < 1 || relFret > numFrets) return null;
 
         const cx = stringX[strIdx];

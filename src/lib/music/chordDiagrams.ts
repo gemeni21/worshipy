@@ -49,11 +49,13 @@ const STANDARD_GUITAR_CHORDS: Record<string, GuitarChordDiagram> = {
   'D/F#': { chord: 'D/F#', baseFret: 1, frets: [2, 0, 0, 2, 3, 2], fingers: ['T', null, null, 1, 3, 2] },
   'D/A': { chord: 'D/A', baseFret: 1, frets: ['x', 0, 0, 2, 3, 2], fingers: [null, null, null, 1, 3, 2] },
   'D/C': { chord: 'D/C', baseFret: 1, frets: ['x', 3, 0, 2, 3, 2], fingers: [null, 2, null, 1, 4, 3] },
+  'Dm/C': { chord: 'Dm/C', baseFret: 1, frets: ['x', 3, 0, 2, 3, 1], fingers: [null, 3, null, 2, 4, 1] },
 
   // E family
   E: { chord: 'E', baseFret: 1, frets: [0, 2, 2, 1, 0, 0], fingers: [null, 2, 3, 1, null, null] },
   Em: { chord: 'Em', baseFret: 1, frets: [0, 2, 2, 0, 0, 0], fingers: [null, 2, 3, null, null, null] },
   Em7: { chord: 'Em7', baseFret: 1, frets: [0, 2, 2, 0, 3, 3], fingers: [null, 1, 2, null, 3, 4] },
+  'Em/D': { chord: 'Em/D', baseFret: 1, frets: ['x', 'x', 0, 0, 0, 0], fingers: [null, null, null, null, null, null] },
   E7: { chord: 'E7', baseFret: 1, frets: [0, 2, 0, 1, 0, 0], fingers: [null, 2, null, 1, null, null] },
   Esus4: { chord: 'Esus4', baseFret: 1, frets: [0, 2, 2, 2, 0, 0], fingers: [null, 2, 3, 4, null, null] },
   'E/G#': { chord: 'E/G#', baseFret: 1, frets: [4, 2, 2, 4, 0, 0], fingers: [3, 1, 1, 4, null, null] },
@@ -69,6 +71,7 @@ const STANDARD_GUITAR_CHORDS: Record<string, GuitarChordDiagram> = {
   'F#': { chord: 'F#', baseFret: 2, frets: [2, 4, 4, 3, 2, 2], barres: [2], fingers: [1, 3, 4, 2, 1, 1] },
   'F#m': { chord: 'F#m', baseFret: 2, frets: [2, 4, 4, 2, 2, 2], barres: [2], fingers: [1, 3, 4, 1, 1, 1] },
   'F#m7': { chord: 'F#m7', baseFret: 2, frets: [2, 4, 2, 2, 2, 2], barres: [2], fingers: [1, 3, 1, 1, 1, 1] },
+  'F#m/E': { chord: 'F#m/E', baseFret: 2, frets: [0, 4, 4, 2, 2, 2], barres: [2], fingers: [null, 3, 4, 1, 1, 1] },
   'F#7': { chord: 'F#7', baseFret: 2, frets: [2, 4, 2, 3, 2, 2], barres: [2], fingers: [1, 3, 1, 2, 1, 1] },
   'F#/A#': { chord: 'F#/A#', baseFret: 1, frets: ['x', 1, 4, 3, 2, 2], fingers: [null, 1, 4, 3, 2, 2] },
 
@@ -85,6 +88,7 @@ const STANDARD_GUITAR_CHORDS: Record<string, GuitarChordDiagram> = {
   A: { chord: 'A', baseFret: 1, frets: ['x', 0, 2, 2, 2, 0], fingers: [null, null, 1, 2, 3, null] },
   Am: { chord: 'Am', baseFret: 1, frets: ['x', 0, 2, 2, 1, 0], fingers: [null, null, 2, 3, 1, null] },
   Am7: { chord: 'Am7', baseFret: 1, frets: ['x', 0, 2, 0, 1, 0], fingers: [null, null, 2, null, 1, null] },
+  'Am/G': { chord: 'Am/G', baseFret: 1, frets: [3, 0, 2, 2, 1, 0], fingers: [3, null, 1, 2, null, null] },
   A7: { chord: 'A7', baseFret: 1, frets: ['x', 0, 2, 0, 2, 0], fingers: [null, null, 2, null, 3, null] },
   Asus4: { chord: 'Asus4', baseFret: 1, frets: ['x', 0, 2, 2, 3, 0], fingers: [null, null, 1, 2, 4, null] },
   Asus2: { chord: 'Asus2', baseFret: 1, frets: ['x', 0, 2, 2, 0, 0], fingers: [null, null, 1, 2, null, null] },
@@ -96,6 +100,7 @@ const STANDARD_GUITAR_CHORDS: Record<string, GuitarChordDiagram> = {
   B: { chord: 'B', baseFret: 2, frets: ['x', 2, 4, 4, 4, 2], barres: [2], fingers: [null, 1, 2, 3, 4, 1] },
   Bm: { chord: 'Bm', baseFret: 2, frets: ['x', 2, 4, 4, 3, 2], barres: [2], fingers: [null, 1, 3, 4, 2, 1] },
   Bm7: { chord: 'Bm7', baseFret: 2, frets: ['x', 2, 4, 2, 3, 2], barres: [2], fingers: [null, 1, 3, 1, 2, 1] },
+  'Bm/A': { chord: 'Bm/A', baseFret: 2, frets: ['x', 0, 4, 4, 3, 2], fingers: [null, null, 3, 4, 2, 1] },
   Bsus4: { chord: 'Bsus4', baseFret: 2, frets: ['x', 2, 4, 4, 5, 2], barres: [2], fingers: [null, 1, 2, 3, 4, 1] },
   B7: { chord: 'B7', baseFret: 1, frets: ['x', 2, 1, 2, 0, 2], fingers: [null, 2, 1, 3, null, 4] },
   'B/D#': { chord: 'B/D#', baseFret: 1, frets: ['x', 'x', 1, 4, 4, 2], fingers: [null, null, 1, 3, 4, 2] },
@@ -230,9 +235,11 @@ export function getPianoKeysForChord(
         (sharpNote === bass || flatNote === bass);
 
       const isToneMatch =
-        chordToneSet.has(sharpNote) ||
-        chordToneSet.has(flatNote) ||
-        (octave === 2 && (sharpNote === rootNote || flatNote === rootFlat));
+        octave === 2 &&
+        (chordToneSet.has(sharpNote) ||
+          chordToneSet.has(flatNote) ||
+          sharpNote === rootNote ||
+          flatNote === rootFlat);
 
       const isRootMatch = sharpNote === rootNote || flatNote === rootFlat;
 

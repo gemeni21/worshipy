@@ -59,6 +59,26 @@ describe('Chord Diagram & Piano Fingering Engine', () => {
     const bassKeys = pianoCOverE.keys.filter((k) => k.isBass);
     assert.ok(bassKeys.length > 0);
     assert.equal(bassKeys[0].note, 'E');
+
+    // Strict octave separation: Octave 1 (left hand) must only contain the bass note, not chord tones
+    const octave1Keys = pianoCOverE.keys.slice(0, 12);
+    const octave2Keys = pianoCOverE.keys.slice(12, 24);
+
+    assert.equal(octave1Keys.filter((k) => k.isBass).length, 1);
+    assert.equal(octave1Keys.filter((k) => k.isChordTone).length, 0, 'Octave 1 must not contain chord tones');
+
+    // Octave 2 (right hand) must contain chord tones, but no bass notes
+    assert.equal(octave2Keys.filter((k) => k.isBass).length, 0, 'Octave 2 must not contain bass notes');
+    assert.ok(octave2Keys.filter((k) => k.isChordTone).length >= 3, 'Octave 2 must contain RH chord tones');
+  });
+
+  it('resolves worship minor slash chords correctly', () => {
+    const minorSlashChords = ['Am/G', 'Bm/A', 'Em/D', 'Dm/C', 'F#m/E'];
+    for (const ch of minorSlashChords) {
+      const diagram = getGuitarChordDiagram(ch);
+      assert.ok(diagram, `Should resolve chord diagram for ${ch}`);
+      assert.equal(diagram.frets.length, 6);
+    }
   });
 
   it('handles non-chord tokens and empty strings safely', () => {

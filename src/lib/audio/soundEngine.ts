@@ -34,13 +34,17 @@ export const BASS_OPEN_FREQUENCIES: readonly number[] = [
 
 // Note name to standard octave 4 semitone offset from C4 (0)
 const NOTE_SEMITONES: Record<string, number> = {
+  Cb: -1,
   C: 0,
+  'B#': 12,
   'C#': 1,
   Db: 1,
   D: 2,
   'D#': 3,
   Eb: 3,
   E: 4,
+  Fb: 4,
+  'E#': 5,
   F: 5,
   'F#': 6,
   Gb: 6,
@@ -122,7 +126,7 @@ export interface SoundPlaybackController {
 export function playPluckedTone(
   frequencyHz: number,
   duration: number = 2.4,
-  instrument: 'guitar' | 'bass' = 'guitar'
+  instrument: 'guitar' | 'bass' | 'piano' = 'guitar'
 ): SoundPlaybackController {
   const ctx = getAudioContext();
   if (!ctx) {
@@ -133,45 +137,58 @@ export function playPluckedTone(
   const masterGain = ctx.createGain();
   masterGain.connect(ctx.destination);
 
-  // Natural pluck envelope: sharp 6ms attack, exponential acoustic decay
-  const peakVolume = instrument === 'bass' ? 0.45 : 0.32;
+  // Natural attack and acoustic decay envelope per instrument
+  const peakVolume = instrument === 'bass' ? 0.45 : instrument === 'piano' ? 0.28 : 0.32;
+  const attackTime = instrument === 'piano' ? 0.005 : 0.008;
   masterGain.gain.setValueAtTime(0.0001, now);
-  masterGain.gain.exponentialRampToValueAtTime(peakVolume, now + 0.008);
-  masterGain.gain.exponentialRampToValueAtTime(peakVolume * 0.4, now + 0.3);
+  masterGain.gain.exponentialRampToValueAtTime(peakVolume, now + attackTime);
+  masterGain.gain.exponentialRampToValueAtTime(peakVolume * 0.42, now + (instrument === 'piano' ? 0.22 : 0.3));
   masterGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
 
   // Dynamic low-pass filter to simulate string damping over time
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.setValueAtTime(instrument === 'bass' ? 1400 : 3800, now);
+  filter.frequency.setValueAtTime(
+    instrument === 'bass' ? 1400 : instrument === 'piano' ? 4200 : 3800,
+    now
+  );
   filter.frequency.exponentialRampToValueAtTime(
-    instrument === 'bass' ? 180 : 500,
+    instrument === 'bass' ? 180 : instrument === 'piano' ? 550 : 500,
     now + duration
   );
   filter.connect(masterGain);
 
-  // 1. Fundamental tone (triangle wave for warm body)
+  // 1. Fundamental tone (triangle for guitar, warm sine for piano body)
   const osc1 = ctx.createOscillator();
-  osc1.type = 'triangle';
+  osc1.type = instrument === 'piano' ? 'sine' : 'triangle';
   osc1.frequency.setValueAtTime(frequencyHz, now);
   const osc1Gain = ctx.createGain();
   osc1Gain.gain.setValueAtTime(1.0, now);
   osc1.connect(osc1Gain);
   osc1Gain.connect(filter);
 
-  // 2. 2nd Harmonic (essential for punch, especially on low bass frequencies)
+  // 2. 2nd Harmonic (or unison string chorusing for acoustic piano)
   const osc2 = ctx.createOscillator();
   osc2.type = 'sine';
-  osc2.frequency.setValueAtTime(frequencyHz * 2, now);
+  osc2.frequency.setValueAtTime(
+    instrument === 'piano' ? frequencyHz + 0.9 : frequencyHz * 2,
+    now
+  );
   const osc2Gain = ctx.createGain();
-  osc2Gain.gain.setValueAtTime(instrument === 'bass' ? 0.6 : 0.35, now);
+  osc2Gain.gain.setValueAtTime(
+    instrument === 'bass' ? 0.6 : instrument === 'piano' ? 0.42 : 0.35,
+    now
+  );
   osc2.connect(osc2Gain);
   osc2Gain.connect(filter);
 
-  // 3. 3rd Harmonic (adds acoustic ring)
+  // 3. 3rd Harmonic (adds acoustic ring & piano octave resonance)
   const osc3 = ctx.createOscillator();
   osc3.type = 'sine';
-  osc3.frequency.setValueAtTime(frequencyHz * 3, now);
+  osc3.frequency.setValueAtTime(
+    instrument === 'piano' ? frequencyHz * 2 : frequencyHz * 3,
+    now
+  );
   const osc3Gain = ctx.createGain();
   osc3Gain.gain.setValueAtTime(instrument === 'bass' ? 0.25 : 0.18, now);
   osc3.connect(osc3Gain);
@@ -301,6 +318,7 @@ export function playPianoChord(chordName: string, keyContext?: string): SoundPla
 
   const now = ctx.currentTime;
   const controllers: SoundPlaybackController[] = [];
+  const timeoutIds: ReturnType<typeof setTimeout>[] = [];
 
   // Left hand bass note (octave 2 or 3)
   if (piano.leftHandBass) {
@@ -314,12 +332,14 @@ export function playPianoChord(chordName: string, keyContext?: string): SoundPla
     const octave = idx === 0 ? 3 : 4;
     const freq = noteToFrequency(noteName, octave);
     // Slight humanization: 3ms stagger
-    setTimeout(() => {
-      controllers.push(playPluckedTone(freq, 2.5, 'guitar'));
+    const tid = setTimeout(() => {
+      controllers.push(playPluckedTone(freq, 2.5, 'piano'));
     }, idx * 3);
+    timeoutIds.push(tid);
   });
 
   const stop = () => {
+    timeoutIds.forEach(clearTimeout);
     controllers.forEach((c) => c.stop());
   };
 

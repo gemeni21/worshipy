@@ -49,6 +49,12 @@ describe('Worship Audio & Sound Synthesis Engine', () => {
     assert.ok(Math.abs(noteToFrequency('C', 4, 440) - 261.63) < 0.05);
     // E2 ~ 82.41 Hz
     assert.ok(Math.abs(noteToFrequency('E', 2, 440) - 82.41) < 0.05);
+
+    // Enharmonic equivalents must calculate the exact same frequencies
+    assert.equal(noteToFrequency('B#', 4), noteToFrequency('C', 5));
+    assert.equal(noteToFrequency('E#', 4), noteToFrequency('F', 4));
+    assert.equal(noteToFrequency('Fb', 4), noteToFrequency('E', 4));
+    assert.equal(noteToFrequency('Cb', 4), noteToFrequency('B', 3));
   });
 
   it('4. calculates guitar chord frequencies for standard worship chords', () => {
@@ -78,9 +84,17 @@ describe('Worship Audio & Sound Synthesis Engine', () => {
 
   it('6. safely handles playback calls in Node/SSR environment without throwing', () => {
     // In Node (where window.AudioContext is undefined), calls must return valid no-op controllers
-    const pluck = playPluckedTone(440);
-    assert.equal(typeof pluck.stop, 'function');
-    pluck.stop();
+    const pluckGuitar = playPluckedTone(440, 2.4, 'guitar');
+    assert.equal(typeof pluckGuitar.stop, 'function');
+    pluckGuitar.stop();
+
+    const pluckPiano = playPluckedTone(440, 2.4, 'piano');
+    assert.equal(typeof pluckPiano.stop, 'function');
+    pluckPiano.stop();
+
+    const pluckBass = playPluckedTone(110, 2.4, 'bass');
+    assert.equal(typeof pluckBass.stop, 'function');
+    pluckBass.stop();
 
     const continuous = playContinuousReferenceTone(440);
     assert.equal(typeof continuous.stop, 'function');
