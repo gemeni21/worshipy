@@ -18,6 +18,8 @@ import {
   Link as LinkIcon,
   AlertCircle,
   Volume2,
+  Volume1,
+  VolumeX,
   Pencil,
   X,
 } from 'lucide-react';
@@ -54,8 +56,26 @@ export function PracticeWaveformPlayer({
   const durationRef = useRef<number>(take.durationSeconds || 0);
   const [playbackRate, setPlaybackRate] = useState<number>(1.0);
   const [isLooping, setIsLooping] = useState(false);
+  const [volume, setVolume] = useState<number>(1.0);
+  const [isMuted, setIsMuted] = useState(false);
+  const prevVolumeRef = useRef<number>(1.0);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
+
+  // Restore saved volume preference on client mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('worshipy_practice_volume');
+      if (saved !== null) {
+        const val = parseFloat(saved);
+        if (!isNaN(val) && val >= 0 && val <= 1) {
+          setVolume(val);
+          prevVolumeRef.current = val;
+          if (audioRef.current) audioRef.current.volume = val;
+        }
+      }
+    } catch {}
+  }, []);
 
   // Sync duration state & ref when take changes
   useEffect(() => {
@@ -141,7 +161,8 @@ export function PracticeWaveformPlayer({
     audio.preservesPitch = true;
     audio.playbackRate = playbackRate;
     audio.loop = isLooping;
-  }, [playbackRate, isLooping, audioSrc]);
+    audio.volume = isMuted ? 0 : volume;
+  }, [playbackRate, isLooping, volume, isMuted, audioSrc]);
 
   // Ultra-smooth 60fps playhead animation loop during playback
   useEffect(() => {
@@ -201,6 +222,7 @@ export function PracticeWaveformPlayer({
       audio.preservesPitch = true;
       audio.playbackRate = playbackRate;
       audio.loop = isLooping;
+      audio.volume = isMuted ? 0 : volume;
 
       const playPromise = audio.play();
       if (playPromise !== undefined) {
@@ -226,7 +248,7 @@ export function PracticeWaveformPlayer({
           });
       }
     }
-  }, [isPlaying, playbackRate, isLooping]);
+  }, [isPlaying, playbackRate, isLooping, volume, isMuted]);
 
   const seekTo = (fraction: number) => {
     const audio = audioRef.current;
@@ -281,6 +303,33 @@ export function PracticeWaveformPlayer({
     setPlaybackRate(nextSpeed);
     if (audioRef.current) {
       audioRef.current.playbackRate = nextSpeed;
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextVol = Math.max(0, Math.min(1, parseFloat(e.target.value)));
+    setVolume(nextVol);
+    if (nextVol > 0 && isMuted) {
+      setIsMuted(false);
+    }
+    if (audioRef.current) {
+      audioRef.current.volume = nextVol;
+    }
+    try {
+      localStorage.setItem('worshipy_practice_volume', nextVol.toString());
+    } catch {}
+  };
+
+  const toggleMute = () => {
+    if (isMuted) {
+      setIsMuted(false);
+      const restored = prevVolumeRef.current > 0 ? prevVolumeRef.current : 1.0;
+      setVolume(restored);
+      if (audioRef.current) audioRef.current.volume = restored;
+    } else {
+      prevVolumeRef.current = volume;
+      setIsMuted(true);
+      if (audioRef.current) audioRef.current.volume = 0;
     }
   };
 
@@ -674,12 +723,45 @@ export function PracticeWaveformPlayer({
           </button>
         </div>
 
-        {/* Real-time Current Time / Total Duration */}
-        <div className="font-mono text-xs text-[var(--text-secondary)] tracking-tight">
-          <span className="text-[var(--text-primary)] font-bold">
-            {formatTime(currentTime)}
-          </span>{' '}
-          / {formatTime(effectiveDuration)}
+        {/* Right Controls: Volume Control & Time Readout */}
+        <div className="flex items-center gap-3">
+          {/* Volume Control */}
+          <div className="flex items-center gap-1.5 group/volume">
+            <button
+              type="button"
+              onClick={toggleMute}
+              title={isMuted ? 'Unmute audio' : `Mute (${Math.round((isMuted ? 0 : volume) * 100)}%)`}
+              aria-label={isMuted ? 'Unmute audio' : 'Mute audio'}
+              className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-4 h-4 text-rose-400" />
+              ) : volume < 0.5 ? (
+                <Volume1 className="w-4 h-4" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.02"
+              value={isMuted ? 0 : volume}
+              onChange={handleVolumeChange}
+              title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+              aria-label="Audio volume"
+              className="w-14 sm:w-20 h-1.5 rounded-lg appearance-none bg-[var(--border-strong)] accent-[var(--brand-accent)] cursor-pointer"
+            />
+          </div>
+
+          {/* Real-time Current Time / Total Duration */}
+          <div className="font-mono text-xs text-[var(--text-secondary)] tracking-tight shrink-0">
+            <span className="text-[var(--text-primary)] font-bold">
+              {formatTime(currentTime)}
+            </span>{' '}
+            / {formatTime(effectiveDuration)}
+          </div>
         </div>
       </div>
 
