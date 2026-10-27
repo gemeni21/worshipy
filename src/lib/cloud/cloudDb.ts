@@ -4,12 +4,14 @@ import crypto from 'node:crypto';
 import type { SongRecord } from '@/types/song';
 import type {
   EmailNotificationRecord,
+  GroupMember,
   RemovedGlobalSongRecord,
   SongSubmission,
   SubmissionStatus,
   UserCloudSyncPayload,
   UserProfile,
   UserRole,
+  WorshipGroup,
 } from '@/types/auth';
 
 interface StoredUser {
@@ -32,6 +34,7 @@ interface CloudStoreSchema {
   approvedGlobalSongs: Record<string, SongRecord>;
   removedGlobalSongs?: Record<string, RemovedGlobalSongRecord>;
   notifications?: EmailNotificationRecord[];
+  groups?: Record<string, WorshipGroup>;
 }
 
 export const PRIMARY_ADMIN_EMAIL = 'gray2187@gmail.com';
@@ -56,6 +59,7 @@ function ensureDataStore(): CloudStoreSchema {
       const parsed: CloudStoreSchema = JSON.parse(raw);
       if (!parsed.removedGlobalSongs) parsed.removedGlobalSongs = {};
       if (!parsed.notifications) parsed.notifications = [];
+      if (!parsed.groups) parsed.groups = {};
 
       // Ensure primary admin gray2187@gmail.com is seeded with admin privileges and user's requested password
       const grayKey = PRIMARY_ADMIN_EMAIL.toLowerCase();
@@ -152,6 +156,7 @@ function ensureDataStore(): CloudStoreSchema {
     approvedGlobalSongs: {},
     removedGlobalSongs: {},
     notifications: [],
+    groups: {},
   };
 
   try {
@@ -715,4 +720,235 @@ export function getApprovedGlobalSongs(): SongRecord[] {
       !removedIds.has(song.id.replace(/^global_/, ''))
     );
   });
+}
+
+// ============================================================================
+// WORSHIP GROUP & TEAM COLLABORATION ENGINE
+// ============================================================================
+
+function generateGroupInviteCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+export function createWorshipGroup(
+  userId: string,
+  name: string,
+  churchName?: string
+): { ok: boolean; group?: WorshipGroup; error?: string } {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+  if (!user) {
+    return { ok: false, error: 'User not found. Please sign in to create a worship team.' };
+  }
+
+  // Strict User Rule: If user is ALREADY in a group, they cannot create another group unless they leave first
+  if (user.profile.groupId && store.groups[user.profile.groupId]) {
+    const existingGroup = store.groups[user.profile.groupId];
+    return {
+      ok: false,
+      error: `You are already a member of "${existingGroup.name}". You cannot create another group unless you leave your current group first.`,
+    };
+  }
+
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    return { ok: false, error: 'Please enter a valid worship team name.' };
+  }
+
+  let inviteCode = generateGroupInviteCode();
+  while (Object.values(store.groups).some((g) => g.inviteCode === inviteCode)) {
+    inviteCode = generateGroupInviteCode();
+  }
+
+  const groupId = `group_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const now = new Date().toISOString();
+
+  const newGroup: WorshipGroup = {
+    id: groupId,
+    name: trimmedName,
+    churchName: churchName?.trim() || user.profile.churchName,
+    inviteCode,
+    ownerId: userId,
+    createdAt: now,
+    members: [
+      {
+        userId: user.profile.id,
+        email: user.profile.email,
+        displayName: user.profile.displayName,
+        role: 'leader',
+        joinedAt: now,
+      },
+    ],
+  };
+
+  store.groups[groupId] = newGroup;
+
+  user.profile.groupId = groupId;
+  user.profile.groupName = trimmedName;
+  user.profile.groupRole = 'leader';
+  user.profile.lastActiveAt = now;
+
+  saveStore(store);
+  return { ok: true, group: newGroup };
+}
+
+export function joinWorshipGroupByCode(
+  userId: string,
+  inviteCode: string
+): { ok: boolean; group?: WorshipGroup; error?: string } {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+  if (!user) {
+    return { ok: false, error: 'User not found. Please sign in to join a worship team.' };
+  }
+
+  // Strict User Rule: If user is ALREADY in a group, they cannot join another group unless they leave first
+  if (user.profile.groupId && store.groups[user.profile.groupId]) {
+    const existingGroup = store.groups[user.profile.groupId];
+    return {
+      ok: false,
+      error: `You are already a member of "${existingGroup.name}". You must leave this group before joining another team.`,
+    };
+  }
+
+  const normalizedCode = inviteCode.trim().toUpperCase();
+  const targetGroup = Object.values(store.groups).find(
+    (g) => g.inviteCode.toUpperCase() === normalizedCode
+  );
+
+  if (!targetGroup) {
+    return { ok: false, error: 'No worship team found with that invite code. Please verify the code with your worship leader.' };
+  }
+
+  const now = new Date().toISOString();
+
+  if (!targetGroup.members.some((m) => m.userId === userId)) {
+    targetGroup.members.push({
+      userId: user.profile.id,
+      email: user.profile.email,
+      displayName: user.profile.displayName,
+      role: 'member',
+      joinedAt: now,
+    });
+  }
+
+  user.profile.groupId = targetGroup.id;
+  user.profile.groupName = targetGroup.name;
+  user.profile.groupRole = 'member';
+  user.profile.lastActiveAt = now;
+
+  saveStore(store);
+  return { ok: true, group: targetGroup };
+}
+
+export function leaveWorshipGroup(userId: string): { ok: boolean; error?: string } {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+  if (!user) {
+    return { ok: false, error: 'User not found.' };
+  }
+
+  if (!user.profile.groupId) {
+    return { ok: true };
+  }
+
+  const groupId = user.profile.groupId;
+  const group = store.groups[groupId];
+
+  if (group) {
+    group.members = group.members.filter((m) => m.userId !== userId);
+
+    if (group.members.length === 0) {
+      delete store.groups[groupId];
+    } else if (group.ownerId === userId) {
+      group.ownerId = group.members[0].userId;
+      group.members[0].role = 'leader';
+      const newOwner = Object.values(store.users).find((u) => u.profile.id === group.ownerId);
+      if (newOwner) {
+        newOwner.profile.groupRole = 'leader';
+      }
+    }
+  }
+
+  user.profile.groupId = undefined;
+  user.profile.groupName = undefined;
+  user.profile.groupRole = undefined;
+  user.profile.lastActiveAt = new Date().toISOString();
+
+  saveStore(store);
+  return { ok: true };
+}
+
+export function getWorshipGroup(groupId: string): WorshipGroup | null {
+  const store = ensureDataStore();
+  if (!store.groups) return null;
+  return store.groups[groupId] || null;
+}
+
+export function findWorshipGroupByCode(code: string): WorshipGroup | null {
+  const store = ensureDataStore();
+  if (!store.groups) return null;
+  const normalized = code.trim().toUpperCase();
+  return Object.values(store.groups).find((g) => g.inviteCode.toUpperCase() === normalized) || null;
+}
+
+// Google 1-Click Authentication
+export function loginOrRegisterWithGoogle(googleUser: {
+  email: string;
+  displayName?: string;
+  photoURL?: string;
+}): { user: UserProfile; token: string } {
+  const store = ensureDataStore();
+  const emailKey = googleUser.email.trim().toLowerCase();
+  const now = new Date().toISOString();
+
+  let storedUser = store.users[emailKey];
+
+  if (!storedUser) {
+    const userId = `user_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    const salt = crypto.randomBytes(16).toString('hex');
+    const role: UserRole = emailKey === PRIMARY_ADMIN_EMAIL.toLowerCase() ? 'admin' : 'user';
+
+    storedUser = {
+      profile: {
+        id: userId,
+        email: googleUser.email.trim(),
+        displayName: googleUser.displayName?.trim() || googleUser.email.split('@')[0],
+        role,
+        createdAt: now,
+        lastActiveAt: now,
+        photoURL: googleUser.photoURL,
+        cloudStorage: { provider: 'none' },
+      },
+      salt,
+      passwordHash: hashPassword(crypto.randomBytes(32).toString('hex'), salt),
+    };
+    store.users[emailKey] = storedUser;
+  } else {
+    storedUser.profile.lastActiveAt = now;
+    if (googleUser.displayName && (!storedUser.profile.displayName || storedUser.profile.displayName === emailKey)) {
+      storedUser.profile.displayName = googleUser.displayName.trim();
+    }
+    if (googleUser.photoURL) {
+      storedUser.profile.photoURL = googleUser.photoURL;
+    }
+    if (emailKey === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
+      storedUser.profile.role = 'admin';
+    }
+  }
+
+  const token = createSessionForUser(store, storedUser.profile.id);
+  saveStore(store);
+  return { user: storedUser.profile, token };
 }

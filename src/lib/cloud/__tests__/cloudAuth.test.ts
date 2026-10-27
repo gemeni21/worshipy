@@ -19,6 +19,12 @@ import {
   getRemovedGlobalSongs,
   getRemovedGlobalSongIds,
   getAdminNotifications,
+  loginOrRegisterWithGoogle,
+  createWorshipGroup,
+  joinWorshipGroupByCode,
+  leaveWorshipGroup,
+  getWorshipGroup,
+  findWorshipGroupByCode,
   PRIMARY_ADMIN_EMAIL,
   PRIMARY_ADMIN_PASSWORD,
 } from '../cloudDb.ts';
@@ -361,5 +367,109 @@ describe('Cloud Auth, Sync & Global Song Curation Engine', () => {
     // Verify removed from removedGlobalSongs tracking
     const removedIdsAfterRestore = getRemovedGlobalSongIds();
     assert.equal(removedIdsAfterRestore.includes('song_curate_999'), false);
+  });
+
+  it('7. authenticates users with Google 1-Click and grants admin to primary admin email', () => {
+    // 1. New Google user registration
+    const res1 = loginOrRegisterWithGoogle({
+      email: 'newmusician@gmail.com',
+      displayName: 'Sarah Keyboards',
+      photoURL: 'https://lh3.googleusercontent.com/a/sarah.jpg',
+    });
+    assert.ok(res1.token.startsWith('wsess_'));
+    assert.equal(res1.user.email, 'newmusician@gmail.com');
+    assert.equal(res1.user.displayName, 'Sarah Keyboards');
+    assert.equal(res1.user.role, 'user');
+
+    // 2. Existing user login via Google
+    const res2 = loginOrRegisterWithGoogle({
+      email: 'newmusician@gmail.com',
+      displayName: 'Sarah Updated',
+    });
+    assert.equal(res2.user.id, res1.user.id);
+    assert.equal(res2.user.email, 'newmusician@gmail.com');
+
+    // 3. Primary admin email logging in with Google gets role: 'admin'
+    const adminRes = loginOrRegisterWithGoogle({
+      email: PRIMARY_ADMIN_EMAIL,
+      displayName: 'Mark Talingting',
+    });
+    assert.equal(adminRes.user.role, 'admin');
+    assert.equal(adminRes.user.email, PRIMARY_ADMIN_EMAIL);
+  });
+
+  it('8. strictly enforces 1-group-per-user worship team collaboration policy', () => {
+    // Register two distinct users with unique timestamps
+    const ts = Date.now();
+    const u1 = registerUser({
+      email: `bandleader_tim_${ts}@church.org`,
+      password: 'password123',
+      displayName: 'Tim Leader',
+      churchName: 'Hope City Church',
+    });
+    const u2 = registerUser({
+      email: `bass_player_dan_${ts}@church.org`,
+      password: 'password123',
+      displayName: 'Dan Bass',
+      churchName: 'Hope City Church',
+    });
+
+    // 1. Tim creates a group
+    const createRes = createWorshipGroup(u1.profile.id, 'Hope City Band', 'Hope City Church');
+    assert.equal(createRes.ok, true);
+    assert.ok(createRes.group);
+    const group = createRes.group;
+    assert.equal(group.name, 'Hope City Band');
+    assert.equal(group.ownerId, u1.profile.id);
+    assert.ok(group.inviteCode.length >= 6);
+    assert.equal(group.members.length, 1);
+    assert.equal(group.members[0].role, 'leader');
+
+    // Verify lookup by invite code
+    const byCode = findWorshipGroupByCode(group.inviteCode);
+    assert.ok(byCode);
+    assert.equal(byCode.id, group.id);
+
+    // 2. Tim CANNOT create another group (1-group-per-user policy)
+    const duplicateCreate = createWorshipGroup(u1.profile.id, 'Another Band');
+    assert.equal(duplicateCreate.ok, false);
+    assert.match(duplicateCreate.error || '', /already a member/);
+
+    // 3. Dan joins Tim's group via invite code
+    const joinRes = joinWorshipGroupByCode(u2.profile.id, group.inviteCode);
+    assert.equal(joinRes.ok, true);
+    assert.ok(joinRes.group);
+    const joined = joinRes.group;
+    assert.equal(joined.members.length, 2);
+    assert.ok(joined.members.some((m) => m.userId === u2.profile.id && m.role === 'member'));
+
+    // 4. Dan CANNOT create a group while already belonging to one
+    const danCreateWhileInGroup = createWorshipGroup(u2.profile.id, 'Dan Solo Band');
+    assert.equal(danCreateWhileInGroup.ok, false);
+    assert.match(danCreateWhileInGroup.error || '', /already a member/);
+
+    // 5. Dan CANNOT join another group while in one
+    const danJoinWhileInGroup = joinWorshipGroupByCode(u2.profile.id, 'XYZ999');
+    assert.equal(danJoinWhileInGroup.ok, false);
+    assert.match(danJoinWhileInGroup.error || '', /already a member/);
+
+    // 6. Dan leaves group
+    const leaveRes = leaveWorshipGroup(u2.profile.id);
+    assert.equal(leaveRes.ok, true);
+    const afterDanLeaves = getWorshipGroup(group.id);
+    assert.ok(afterDanLeaves);
+    assert.equal(afterDanLeaves.members.length, 1);
+    assert.equal(afterDanLeaves.members[0].userId, u1.profile.id);
+
+    // 7. Dan can now create a group after leaving
+    const danNewRes = createWorshipGroup(u2.profile.id, 'Dan New Worship Band');
+    assert.equal(danNewRes.ok, true);
+    assert.ok(danNewRes.group);
+    assert.equal(danNewRes.group.name, 'Dan New Worship Band');
+
+    // 8. Tim leaves group (as the only remaining member, group is cleaned up)
+    leaveWorshipGroup(u1.profile.id);
+    const cleanedUpGroup = getWorshipGroup(group.id);
+    assert.equal(cleanedUpGroup, null);
   });
 });

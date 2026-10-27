@@ -14,14 +14,18 @@ import type {
   SongSubmission,
   UserCloudSyncPayload,
   UserProfile,
+  WorshipGroup,
 } from '@/types/auth';
 import { apiUrl } from '@/lib/api/apiClient';
+import { promptGoogleSignInPopup } from '@/lib/firebase/firebaseClient';
 
 interface AuthContextValue {
   user: UserProfile | null;
   isAdmin: boolean;
   isAuthLoading: boolean;
   login: (email: string, password: string) => Promise<UserProfile>;
+  loginWithGoogle: (email: string, displayName?: string, photoURL?: string) => Promise<UserProfile>;
+  signInWithGoogle: () => Promise<UserProfile>;
   register: (params: {
     email: string;
     password: string;
@@ -34,6 +38,12 @@ interface AuthContextValue {
     updates: Partial<Pick<UserProfile, 'displayName' | 'churchName' | 'instrument' | 'cloudStorage'>>
   ) => Promise<UserProfile>;
   connectCloudStorage: (config: CloudStorageConfig) => Promise<void>;
+  // Group / Worship Team Collaboration
+  activeGroup: WorshipGroup | null;
+  createGroup: (name: string, churchName?: string) => Promise<WorshipGroup>;
+  joinGroup: (inviteCode: string) => Promise<WorshipGroup>;
+  leaveGroup: () => Promise<void>;
+  refreshActiveGroup: () => Promise<void>;
   submissions: SongSubmission[];
   pendingApprovalsCount: number;
   refreshSubmissions: () => Promise<void>;
@@ -246,6 +256,137 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [updateProfile]
   );
 
+  // Google 1-Click Login or Register
+  const loginWithGoogle = useCallback(
+    async (email: string, displayName?: string, photoURL?: string): Promise<UserProfile> => {
+      const res = await fetch(apiUrl('/api/auth/google'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, displayName, photoURL }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Google login failed.');
+      }
+
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.user));
+      setUser(data.user);
+      return data.user;
+    },
+    []
+  );
+
+  const signInWithGoogle = useCallback(async (): Promise<UserProfile> => {
+    try {
+      const googleUser = await promptGoogleSignInPopup();
+      if (googleUser) {
+        return await loginWithGoogle(googleUser.email, googleUser.displayName, googleUser.photoURL);
+      }
+      throw new Error('Google sign-in was cancelled or unsupported on this device.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Google authentication failed';
+      throw new Error(msg);
+    }
+  }, [loginWithGoogle]);
+
+  // Group / Worship Team Collaboration
+  const [activeGroup, setActiveGroup] = useState<WorshipGroup | null>(null);
+
+  const refreshActiveGroup = useCallback(async () => {
+    if (!user?.groupId) {
+      setActiveGroup(null);
+      return;
+    }
+    try {
+      const res = await authFetch(`/api/groups/${user.groupId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setActiveGroup(data.group || null);
+      }
+    } catch {
+      // ignore
+    }
+  }, [user?.groupId, authFetch]);
+
+  useEffect(() => {
+    refreshActiveGroup();
+  }, [refreshActiveGroup]);
+
+  const createGroup = useCallback(
+    async (name: string, churchName?: string): Promise<WorshipGroup> => {
+      const res = await authFetch('/api/groups/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, churchName }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to create group.');
+      }
+      setActiveGroup(data.group);
+      if (user) {
+        const updatedUser: UserProfile = {
+          ...user,
+          groupId: data.group.id,
+          groupName: data.group.name,
+          groupRole: 'leader',
+        };
+        setUser(updatedUser);
+        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
+      }
+      return data.group;
+    },
+    [authFetch, user]
+  );
+
+  const joinGroup = useCallback(
+    async (inviteCode: string): Promise<WorshipGroup> => {
+      const res = await authFetch('/api/groups/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to join group.');
+      }
+      setActiveGroup(data.group);
+      if (user) {
+        const updatedUser: UserProfile = {
+          ...user,
+          groupId: data.group.id,
+          groupName: data.group.name,
+          groupRole: 'member',
+        };
+        setUser(updatedUser);
+        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
+      }
+      return data.group;
+    },
+    [authFetch, user]
+  );
+
+  const leaveGroup = useCallback(async (): Promise<void> => {
+    const res = await authFetch('/api/groups/leave', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to leave group.');
+    }
+    setActiveGroup(null);
+    if (user) {
+      const updatedUser: UserProfile = {
+        ...user,
+        groupId: undefined,
+        groupName: undefined,
+        groupRole: undefined,
+      };
+      setUser(updatedUser);
+      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
+    }
+  }, [authFetch, user]);
+
   // Submit song for Global Publishing
   const submitSongForGlobal = useCallback(
     async (song: SongRecord, notes?: string): Promise<SongSubmission> => {
@@ -386,10 +527,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAdmin,
       isAuthLoading,
       login,
+      loginWithGoogle,
+      signInWithGoogle,
       register,
       logout,
       updateProfile,
       connectCloudStorage,
+      activeGroup,
+      createGroup,
+      joinGroup,
+      leaveGroup,
+      refreshActiveGroup,
       submissions,
       pendingApprovalsCount,
       refreshSubmissions,
@@ -406,10 +554,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAdmin,
       isAuthLoading,
       login,
+      loginWithGoogle,
+      signInWithGoogle,
       register,
       logout,
       updateProfile,
       connectCloudStorage,
+      activeGroup,
+      createGroup,
+      joinGroup,
+      leaveGroup,
+      refreshActiveGroup,
       submissions,
       pendingApprovalsCount,
       refreshSubmissions,

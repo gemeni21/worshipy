@@ -9,6 +9,24 @@ export interface CloudStorageConfig {
   connectedAt?: string;
 }
 
+export interface GroupMember {
+  userId: string;
+  email: string;
+  displayName: string;
+  role: 'leader' | 'member';
+  joinedAt: string;
+}
+
+export interface WorshipGroup {
+  id: string;
+  name: string;
+  churchName?: string;
+  inviteCode: string; // 6-character unique code e.g. "D7FLWV"
+  ownerId: string;
+  createdAt: string;
+  members: GroupMember[];
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -19,6 +37,10 @@ export interface UserProfile {
   createdAt: string;
   lastActiveAt: string;
   cloudStorage?: CloudStorageConfig;
+  groupId?: string;
+  groupName?: string;
+  groupRole?: 'leader' | 'member';
+  photoURL?: string;
 }
 
 export interface EmailNotificationRecord {

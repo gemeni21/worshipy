@@ -15,10 +15,13 @@ import {
   RefreshCw,
   Sun,
   Trash2,
+  Users,
   WifiOff,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { getCloudHubUrl, setCloudHubUrl } from '@/lib/api/apiClient';
+import { WorshipTeamSection } from '@/components/team/WorshipTeamSection';
+import { AuthModal } from '@/components/auth/AuthModal';
 import type {
   AccentColor,
   ChartFontSize,
@@ -69,6 +72,18 @@ export default function SettingsPage() {
     'idle' | 'testing' | 'success' | 'failed'
   >('idle');
   const [cloudPingMessage, setCloudPingMessage] = useState<string>('');
+  const [showTeamAuthModal, setShowTeamAuthModal] = useState(false);
+  const [teamInviteCode, setTeamInviteCode] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('teamCode');
+      if (code) {
+        setTeamInviteCode(code.toUpperCase());
+      }
+    }
+  }, []);
 
   const handleTestCloudConnection = async (targetUrl?: string) => {
     const rawUrl = (targetUrl !== undefined ? targetUrl : cloudUrlInput).trim();
@@ -668,6 +683,27 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* Worship Team Collaboration */}
+      <section className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
+        <div className="space-y-1">
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)]">
+            <Users className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>Worship Team &amp; Band Collaboration</span>
+          </div>
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <span>Band Membership &amp; Sharing</span>
+          </h2>
+          <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
+            Create or join a worship band using your church name or a 6-character team invite code.
+            Members collaborate together and share setlists, arrangements, and rehearsal recordings across all devices.
+          </p>
+        </div>
+        <WorshipTeamSection
+          initialInviteCode={teamInviteCode}
+          onRequireAuth={() => setShowTeamAuthModal(true)}
+        />
+      </section>
+
       {/* Device Storage Explanation & Destructive Reset Controls */}
       <section className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-5">
         <div className="space-y-2">
@@ -821,6 +857,11 @@ export default function SettingsPage() {
           </button>
         </div>
       </section>
+
+      <AuthModal
+        isOpen={showTeamAuthModal}
+        onClose={() => setShowTeamAuthModal(false)}
+      />
     </div>
   );
 }

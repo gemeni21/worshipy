@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
+import { WorshipTeamSection } from '@/components/team/WorshipTeamSection';
 
 interface UserProfileDrawerProps {
   isOpen: boolean;
@@ -127,6 +128,11 @@ export function UserProfileDrawer({ isOpen, onClose }: UserProfileDrawerProps) {
                 {user.instrument || 'Worship Musician'}
               </span>
             </div>
+          </div>
+
+          {/* Worship Team Collaboration */}
+          <div className="mb-6">
+            <WorshipTeamSection />
           </div>
 
           {/* Admin Song Curation Link (If Admin) */}

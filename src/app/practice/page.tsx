@@ -42,7 +42,7 @@ export default function PracticeStudioPage() {
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [manualSongTitle, setManualSongTitle] = useState('');
   const [manualSongKey, setManualSongKey] = useState('G');
-  const [takeChurchName, setTakeChurchName] = useState(user?.churchName || '');
+  const [takeChurchName, setTakeChurchName] = useState(user?.groupName || user?.churchName || '');
 
   // Link Modal Inputs
   const [linkUrl, setLinkUrl] = useState('');
@@ -59,12 +59,12 @@ export default function PracticeStudioPage() {
 
   const catalogSongs = useMemo(() => getAllSongs(), []);
 
-  // Update church name from auth profile if available
+  // Update church or group name from auth profile if available
   useEffect(() => {
-    if (user?.churchName && !takeChurchName) {
-      setTakeChurchName(user.churchName);
+    if ((user?.groupName || user?.churchName) && !takeChurchName) {
+      setTakeChurchName(user.groupName || user.churchName || '');
     }
-  }, [user?.churchName, takeChurchName]);
+  }, [user?.groupName, user?.churchName, takeChurchName]);
 
   const refreshTakes = async () => {
     setIsLoading(true);
@@ -115,14 +115,18 @@ export default function PracticeStudioPage() {
       const matchSong =
         selectedSongFilter === 'all' || take.songSlug === selectedSongFilter;
 
+      const teamIdentifier = user?.groupName || user?.churchName;
       const matchChurch =
         !churchFilterOnly ||
-        !user?.churchName ||
-        (take.churchName && take.churchName.toLowerCase() === user.churchName.toLowerCase());
+        !teamIdentifier ||
+        (take.churchName && (
+          (user?.churchName && take.churchName.toLowerCase() === user.churchName.toLowerCase()) ||
+          (user?.groupName && take.churchName.toLowerCase() === user.groupName.toLowerCase())
+        ));
 
       return matchSearch && matchSong && matchChurch;
     });
-  }, [takes, searchQuery, selectedSongFilter, churchFilterOnly, user?.churchName]);
+  }, [takes, searchQuery, selectedSongFilter, churchFilterOnly, user?.churchName, user?.groupName]);
 
   // Total rehearsal time in minutes & seconds
   const totalSeconds = useMemo(() => {
@@ -514,7 +518,7 @@ export default function PracticeStudioPage() {
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-[var(--text-primary)] block">
-                    Church (Optional)
+                    Church / Team (Optional)
                   </label>
                   <input
                     type="text"
@@ -649,7 +653,7 @@ export default function PracticeStudioPage() {
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-[var(--text-primary)] block">
-                    Church (Optional)
+                    Church / Team (Optional)
                   </label>
                   <input
                     type="text"
