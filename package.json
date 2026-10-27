@@ -1,6 +1,8 @@
 {
   "name": "worship-music-companion",
   "version": "0.1.0",
+  "description": "Worship Music Companion — Chord Charts, Tuner, Setlists, Live Sync & Practice Audio",
+  "author": "Worshipy Team",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -9,7 +11,7 @@
     "build": "next build",
     "build:standalone": "next build && node scripts/prepare-standalone.js",
     "electron:dev": "node electron/dev.js",
-    "electron:build:win": "npm run build:standalone && electron-builder --win nsis portable",
+    "electron:build:win": "npm run build:standalone && electron-builder --win --x64",
     "electron:build:mac": "npm run build:standalone && electron-builder --mac dmg",
     "start": "next start",
     "lint": "eslint",
