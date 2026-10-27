@@ -6,8 +6,8 @@
   "private": true,
   "main": "electron/main.js",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 --experimental-https --experimental-https-key ./certificates/localhost.key --experimental-https-cert ./certificates/localhost.crt",
-    "dev:http": "next dev -H 0.0.0.0",
+    "dev": "next dev -H 0.0.0.0",
+    "dev:https": "next dev -H 0.0.0.0 --experimental-https --experimental-https-key ./certificates/localhost.key --experimental-https-cert ./certificates/localhost.crt",
     "build": "next build",
     "build:standalone": "next build && node scripts/prepare-standalone.js",
     "electron:dev": "node electron/dev.js",
