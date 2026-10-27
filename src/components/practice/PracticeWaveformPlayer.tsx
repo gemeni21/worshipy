@@ -530,6 +530,12 @@ export function PracticeWaveformPlayer({
               {take.capo ? ` • Capo ${take.capo}` : ''}
             </span>
 
+            {take.churchName && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                <span>⛪ {take.churchName}</span>
+              </span>
+            )}
+
             {isPlaying && (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full animate-pulse">
                 <Volume2 className="w-3 h-3" />

@@ -15,7 +15,9 @@ import {
   X,
   Check,
   AlertCircle,
+  Building2,
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import {
   PracticeTake,
   getAllPracticeTakes,
@@ -28,16 +30,19 @@ import { getAllSongs } from '@/lib/catalog/songCatalog';
 import { PracticeWaveformPlayer } from '@/components/practice/PracticeWaveformPlayer';
 
 export default function PracticeStudioPage() {
+  const { user } = useAuth();
   const [takes, setTakes] = useState<PracticeTake[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSongFilter, setSelectedSongFilter] = useState<string>('all');
+  const [churchFilterOnly, setChurchFilterOnly] = useState(false);
 
   // Modals & Upload State
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const [selectedSongSlug, setSelectedSongSlug] = useState('goodness-of-god');
-  const [selectedSongKey, setSelectedSongKey] = useState('G');
+  const [manualSongTitle, setManualSongTitle] = useState('');
+  const [manualSongKey, setManualSongKey] = useState('G');
+  const [takeChurchName, setTakeChurchName] = useState(user?.churchName || '');
 
   // Link Modal Inputs
   const [linkUrl, setLinkUrl] = useState('');
@@ -53,6 +58,13 @@ export default function PracticeStudioPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const catalogSongs = useMemo(() => getAllSongs(), []);
+
+  // Update church name from auth profile if available
+  useEffect(() => {
+    if (user?.churchName && !takeChurchName) {
+      setTakeChurchName(user.churchName);
+    }
+  }, [user?.churchName, takeChurchName]);
 
   const refreshTakes = async () => {
     setIsLoading(true);
@@ -97,14 +109,20 @@ export default function PracticeStudioPage() {
         searchQuery.trim() === '' ||
         take.songTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
         take.key.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (take.churchName && take.churchName.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (take.notes && take.notes.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchSong =
         selectedSongFilter === 'all' || take.songSlug === selectedSongFilter;
 
-      return matchSearch && matchSong;
+      const matchChurch =
+        !churchFilterOnly ||
+        !user?.churchName ||
+        (take.churchName && take.churchName.toLowerCase() === user.churchName.toLowerCase());
+
+      return matchSearch && matchSong && matchChurch;
     });
-  }, [takes, searchQuery, selectedSongFilter]);
+  }, [takes, searchQuery, selectedSongFilter, churchFilterOnly, user?.churchName]);
 
   // Total rehearsal time in minutes & seconds
   const totalSeconds = useMemo(() => {
@@ -133,9 +151,12 @@ export default function PracticeStudioPage() {
       return;
     }
 
-    const song = catalogSongs.find((s) => s.slug === selectedSongSlug);
-    const songTitle = song ? song.title : 'Custom Practice';
-    const songArtist = song?.artist;
+    const songTitle = manualSongTitle.trim() || 'Custom Practice';
+    const songSlug =
+      manualSongTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') ||
+      'practice-take';
+    const keyPracticed = manualSongKey.trim().toUpperCase() || 'G';
+    const church = takeChurchName.trim() || user?.churchName || undefined;
 
     const providerLabel =
       transform.provider === 'gdrive'
@@ -146,10 +167,9 @@ export default function PracticeStudioPage() {
 
     const newTake: PracticeTake = {
       id: `take_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      songSlug: selectedSongSlug,
+      songSlug,
       songTitle,
-      songArtist,
-      key: selectedSongKey,
+      key: keyPracticed,
       durationSeconds: 180,
       createdAt: Date.now(),
       audioUrl: transform.streamUrl,
@@ -158,12 +178,15 @@ export default function PracticeStudioPage() {
       mimeType: 'audio/mpeg',
       notes: linkNotes.trim() || `Linked via ${providerLabel}`,
       waveformPeaks: Array(64).fill(0.35),
+      churchName: church,
+      createdBy: user?.displayName || 'Musician',
     };
 
     await savePracticeTake(newTake);
     setShowLinkModal(false);
     setLinkUrl('');
     setLinkNotes('');
+    setManualSongTitle('');
     await refreshTakes();
   };
 
@@ -179,16 +202,19 @@ export default function PracticeStudioPage() {
 
     try {
       const { durationSeconds, waveformPeaks } = await extractAudioWaveformAndDuration(uploadFile);
-      const song = catalogSongs.find((s) => s.slug === selectedSongSlug);
-      const songTitle = song ? song.title : 'Custom Practice';
-      const songArtist = song?.artist;
+      const songTitle =
+        manualSongTitle.trim() || uploadFile.name.replace(/\.[^/.]+$/, '') || 'Custom Practice';
+      const songSlug =
+        manualSongTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') ||
+        'practice-take';
+      const keyPracticed = manualSongKey.trim().toUpperCase() || 'G';
+      const church = takeChurchName.trim() || user?.churchName || undefined;
 
       const newTake: PracticeTake = {
         id: `take_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        songSlug: selectedSongSlug,
+        songSlug,
         songTitle,
-        songArtist,
-        key: selectedSongKey,
+        key: keyPracticed,
         durationSeconds,
         createdAt: Date.now(),
         blob: uploadFile,
@@ -197,12 +223,15 @@ export default function PracticeStudioPage() {
         mimeType: uploadFile.type || 'audio/mpeg',
         notes: uploadNotes.trim() || `Uploaded file: ${uploadFile.name}`,
         waveformPeaks,
+        churchName: church,
+        createdBy: user?.displayName || 'Musician',
       };
 
       await savePracticeTake(newTake);
       setShowUploadModal(false);
       setUploadFile(null);
       setUploadNotes('');
+      setManualSongTitle('');
       await refreshTakes();
     } catch (err) {
       console.error('Upload processing error:', err);
@@ -308,6 +337,24 @@ export default function PracticeStudioPage() {
               className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--brand-accent)]"
             />
           </div>
+
+          {/* Church Filter Toggle */}
+          {user?.churchName && (
+            <button
+              type="button"
+              onClick={() => setChurchFilterOnly((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                churchFilterOnly
+                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 font-bold'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+              }`}
+              title={`Show only takes for ${user.churchName}`}
+            >
+              <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="truncate max-w-[140px]">{user.churchName}</span>
+              {churchFilterOnly && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+            </button>
+          )}
 
           {/* Song Dropdown Filter */}
           {uniqueSongs.length > 1 && (
@@ -436,40 +483,47 @@ export default function PracticeStudioPage() {
             )}
 
             <div className="space-y-3">
-              {/* Song Selector */}
+              {/* Song Title Input */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-[var(--text-primary)] block">
-                  Assign to Song
-                </label>
-                <select
-                  value={selectedSongSlug}
-                  onChange={(e) => {
-                    setSelectedSongSlug(e.target.value);
-                    const s = catalogSongs.find((song) => song.slug === e.target.value);
-                    if (s) setSelectedSongKey(s.originalKey);
-                  }}
-                  className="w-full text-xs p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)] cursor-pointer"
-                >
-                  {catalogSongs.map((song) => (
-                    <option key={song.slug} value={song.slug}>
-                      {song.title} ({song.originalKey})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Key Practiced */}
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-[var(--text-primary)] block">
-                  Key Practiced
+                  Song Title / Rehearsal Name
                 </label>
                 <input
                   type="text"
-                  value={selectedSongKey}
-                  onChange={(e) => setSelectedSongKey(e.target.value)}
-                  placeholder="e.g. G, Bb, D"
-                  className="w-full text-xs p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)]"
+                  value={manualSongTitle}
+                  onChange={(e) => setManualSongTitle(e.target.value)}
+                  placeholder="e.g. Way Maker, Sunday Soundcheck, Goodness of God..."
+                  className="w-full text-xs p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--brand-accent)]"
                 />
+              </div>
+
+              {/* Key & Church Row */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[var(--text-primary)] block">
+                    Key Practiced
+                  </label>
+                  <input
+                    type="text"
+                    value={manualSongKey}
+                    onChange={(e) => setManualSongKey(e.target.value)}
+                    placeholder="e.g. G, Bb, D"
+                    className="w-full text-xs p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[var(--text-primary)] block">
+                    Church (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={takeChurchName}
+                    onChange={(e) => setTakeChurchName(e.target.value)}
+                    placeholder="e.g. Grace Fellowship"
+                    className="w-full text-xs p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--brand-accent)]"
+                  />
+                </div>
               </div>
 
               {/* File Drop / Select Area */}
@@ -564,26 +618,47 @@ export default function PracticeStudioPage() {
             )}
 
             <div className="space-y-3">
-              {/* Song Selector */}
+              {/* Song Title Input */}
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-[var(--text-primary)] block">
-                  Assign to Song
+                  Song Title / Rehearsal Name
                 </label>
-                <select
-                  value={selectedSongSlug}
-                  onChange={(e) => {
-                    setSelectedSongSlug(e.target.value);
-                    const s = catalogSongs.find((song) => song.slug === e.target.value);
-                    if (s) setSelectedSongKey(s.originalKey);
-                  }}
-                  className="w-full text-xs p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)] cursor-pointer"
-                >
-                  {catalogSongs.map((song) => (
-                    <option key={song.slug} value={song.slug}>
-                      {song.title} ({song.originalKey})
-                    </option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  value={manualSongTitle}
+                  onChange={(e) => setManualSongTitle(e.target.value)}
+                  placeholder="e.g. Way Maker, Sunday Soundcheck, Goodness of God..."
+                  className="w-full text-xs p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+              </div>
+
+              {/* Key & Church Row */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[var(--text-primary)] block">
+                    Key Practiced
+                  </label>
+                  <input
+                    type="text"
+                    value={manualSongKey}
+                    onChange={(e) => setManualSongKey(e.target.value)}
+                    placeholder="e.g. G, Bb, D"
+                    className="w-full text-xs p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)]"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-[var(--text-primary)] block">
+                    Church (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={takeChurchName}
+                    onChange={(e) => setTakeChurchName(e.target.value)}
+                    placeholder="e.g. Grace Fellowship"
+                    className="w-full text-xs p-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none focus:border-[var(--brand-accent)]"
+                  />
+                </div>
               </div>
 
               {/* Audio URL */}

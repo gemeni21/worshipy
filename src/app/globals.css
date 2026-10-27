@@ -686,4 +686,21 @@ p {
   }
 }
 
+/* Mobile Safe Area & Cross-Platform Touch Responsiveness */
+body {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@supports (padding: max(0px)) {
+  .safe-bottom-padding {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Ensure mobile tap targets respond instantly without 300ms touch delay */
+button, a, input, select {
+  touch-action: manipulation;
+}
+
+
 

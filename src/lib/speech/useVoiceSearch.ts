@@ -131,6 +131,16 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
   const startListening = useCallback(async () => {
     if (typeof window === 'undefined') return;
 
+    // In Windows Electron desktop, Chromium lacks Google Speech Cloud keys
+    const isWindowsDesktop =
+      typeof window !== 'undefined' &&
+      (window as unknown as { worshipyDesktop?: { platform?: string } }).worshipyDesktop?.platform === 'win32';
+
+    if (isWindowsDesktop) {
+      setError('Voice search requires Google Cloud keys on Windows desktop. Please use the quick-search box below.');
+      return;
+    }
+
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRec) {
       setError('Voice recognition is not supported in this browser. You can type in the search box below.');
@@ -146,40 +156,38 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
       }
     }
 
-    // Request audio stream permission via getUserMedia first if available,
-    // which prompts the user with the browser's native permission modal if not already granted.
-    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        // Immediately release tracks so speech recognition can access the audio device cleanly
-        stream.getTracks().forEach((track) => track.stop());
-      } catch (err: unknown) {
-        const errorName = (err as { name?: string })?.name;
-        if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
-          setError('Microphone access was denied. Please allow microphone permissions or use the search box below.');
-          return;
-        }
-      }
-    }
-
     try {
       const recognition = new SpeechRec();
       recognitionRef.current = recognition;
 
       recognition.continuous = false;
       recognition.interimResults = true;
-      // Many worship songs are in English or Filipino/Tagalog. Leaving default allows browser's system language,
-      // or we can fallback to navigator.language.
+      // Many worship songs are in English or Filipino/Tagalog.
       recognition.lang = typeof navigator !== 'undefined' && navigator.language ? navigator.language : 'en-US';
 
       setTranscript('');
       setError(null);
 
+      let silenceTimeout: ReturnType<typeof setTimeout> | null = null;
+
       recognition.onstart = () => {
         setIsListening(true);
+        // Safety timeout if no speech is detected after 7 seconds
+        silenceTimeout = setTimeout(() => {
+          if (recognitionRef.current) {
+            try {
+              recognitionRef.current.stop();
+            } catch {}
+          }
+          setIsListening(false);
+        }, 7000);
       };
 
       recognition.onresult = (event: SpeechRecognitionEventLike) => {
+        if (silenceTimeout) {
+          clearTimeout(silenceTimeout);
+          silenceTimeout = null;
+        }
         let currentTranscript = '';
         let isFinal = false;
 
@@ -200,6 +208,10 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
+        if (silenceTimeout) {
+          clearTimeout(silenceTimeout);
+          silenceTimeout = null;
+        }
         setIsListening(false);
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           setError('Microphone access was denied. Please allow microphone permissions in your browser or type your search below.');
@@ -216,6 +228,10 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
       };
 
       recognition.onend = () => {
+        if (silenceTimeout) {
+          clearTimeout(silenceTimeout);
+          silenceTimeout = null;
+        }
         setIsListening(false);
       };
 

@@ -22,6 +22,7 @@ import {
   Music,
   Piano,
   Plus,
+  QrCode,
   Radio,
   RefreshCw,
   RotateCcw,
@@ -49,6 +50,7 @@ import {
   getGuitarCapoSuggestions,
   getKeyboardVoicing,
 } from '@/lib/music/instrumentGuidance';
+import { LiveSyncQrModal } from '@/components/live/LiveSyncQrModal';
 import type {
   CreateLiveSessionResponse,
   InstrumentViewMode,
@@ -152,6 +154,7 @@ function LiveSyncWorkspace({
   const [copiedField, setCopiedField] = useState<
     'code' | 'link' | 'network' | null
   >(null);
+  const [showQrModal, setShowQrModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [songToAddId, setSongToAddId] = useState(allSongs[0]?.id ?? '');
 
@@ -1350,6 +1353,16 @@ function LiveSyncWorkspace({
                     </>
                   )}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(true)}
+                  aria-label="Show QR Code for phones"
+                  className="p-1.5 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-all"
+                  title="Display QR code for phones and tablets to scan and join instantly"
+                >
+                  <QrCode className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>QR Code</span>
+                </button>
                 {networkOrigin && (
                   <button
                     type="button"
@@ -2128,6 +2141,17 @@ function LiveSyncWorkspace({
           </section>
         </div>
       </div>
+
+      {/* Live Sync QR Code Modal for Mobile Quick Join */}
+      {session && (
+        <LiveSyncQrModal
+          isOpen={showQrModal}
+          onClose={() => setShowQrModal(false)}
+          sessionCode={session.joinCode}
+          joinUrl={fullJoinLink}
+          sessionTitle={session.title}
+        />
+      )}
     </div>
   );
 }

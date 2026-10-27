@@ -22,6 +22,8 @@ export interface PracticeTake {
   mimeType: string;
   notes?: string;
   waveformPeaks: number[]; // Normalized 0..1 values for visual playback scrubbing
+  churchName?: string; // Church affiliation for team sharing
+  createdBy?: string; // Submitter or musician name
 }
 
 const DB_NAME = 'worship_companion_practice_db';
