@@ -32,9 +32,61 @@ const INSTRUMENT_OPTIONS = [
   'Sound & Media Tech',
 ];
 
+export interface DeviceAccount {
+  email: string;
+  displayName: string;
+  role?: 'admin' | 'user';
+  churchName?: string;
+}
+
+const DEVICE_ACCOUNTS_KEY = 'worshipy_device_accounts_v1';
+
+export function getDeviceAccounts(): DeviceAccount[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(DEVICE_ACCOUNTS_KEY);
+    if (raw) {
+      const parsed: DeviceAccount[] = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+
+  // Default pre-seeded account for this device for instant 1-click connection
+  return [
+    {
+      email: 'gray2187@gmail.com',
+      displayName: 'Gray (Admin)',
+      role: 'admin',
+      churchName: 'Central Worship Community',
+    },
+  ];
+}
+
+export function saveDeviceAccount(account: DeviceAccount): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const existing = getDeviceAccounts().filter(
+      (a) => a.email.toLowerCase() !== account.email.toLowerCase()
+    );
+    const updated = [account, ...existing].slice(0, 5);
+    localStorage.setItem(DEVICE_ACCOUNTS_KEY, JSON.stringify(updated));
+  } catch {}
+}
+
 export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalProps) {
   const { login, register, signInWithGoogle } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>(defaultMode);
+
+  // Stored accounts on this device
+  const [savedAccounts, setSavedAccounts] = useState<DeviceAccount[]>([]);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setSavedAccounts(getDeviceAccounts());
+    }
+  }, [isOpen]);
 
   // Form State
   const [email, setEmail] = useState('');
@@ -63,7 +115,15 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
           ? email.trim()
           : undefined);
 
-      await signInWithGoogle(emailToUse, displayName || undefined);
+      const profile = await signInWithGoogle(emailToUse, displayName || undefined);
+      if (profile) {
+        saveDeviceAccount({
+          email: profile.email,
+          displayName: profile.displayName,
+          role: profile.role,
+          churchName: profile.churchName,
+        });
+      }
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -81,21 +141,51 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
     }
   };
 
+  const handleSelectDeviceAccount = async (acct: DeviceAccount) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const profile = await signInWithGoogle(acct.email, acct.displayName);
+      if (profile) {
+        saveDeviceAccount({
+          email: profile.email,
+          displayName: profile.displayName,
+          role: profile.role,
+          churchName: profile.churchName,
+        });
+      }
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not connect account.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
 
     try {
+      let profile;
       if (mode === 'login') {
-        await login(email, password);
+        profile = await login(email, password);
       } else {
-        await register({
+        profile = await register({
           email,
           password,
           displayName: displayName || email.split('@')[0],
           churchName,
           instrument,
+        });
+      }
+      if (profile) {
+        saveDeviceAccount({
+          email: profile.email,
+          displayName: profile.displayName,
+          role: profile.role,
+          churchName: profile.churchName,
         });
       }
       onClose();
@@ -132,6 +222,52 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
               : 'Keep your chord charts and setlists synchronized across all devices'}
           </p>
         </div>
+
+        {/* Saved Accounts on This Computer (1-Click Connect) */}
+        {savedAccounts.length > 0 && mode === 'login' && (
+          <div className="mb-5 p-3.5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--brand-accent)]/30 space-y-2.5 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between text-xs font-semibold text-[var(--text-secondary)]">
+              <span className="flex items-center gap-1.5 text-[var(--text-primary)] font-bold">
+                <User className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                <span>Accounts on this computer</span>
+              </span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold">
+                1-Click Select
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {savedAccounts.map((acct) => (
+                <button
+                  key={acct.email}
+                  type="button"
+                  onClick={() => handleSelectDeviceAccount(acct)}
+                  disabled={isLoading}
+                  className="w-full p-2.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-surface)]/80 border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] flex items-center justify-between text-left transition-all cursor-pointer group disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-[var(--brand-accent)]/20 border border-[var(--brand-accent)]/40 text-[var(--brand-accent)] flex items-center justify-center font-bold text-xs shrink-0">
+                      {acct.displayName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5 truncate">
+                        <span>{acct.displayName}</span>
+                        {acct.role === 'admin' && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[var(--text-secondary)] truncate">{acct.email}</p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-[var(--brand-accent)] group-hover:translate-x-0.5 transition-transform shrink-0 pl-2">
+                    Connect &rarr;
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Google 1-Click Sign-In Button */}
         <div className="space-y-3.5 mb-5">
@@ -336,6 +472,8 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
               <input
                 type="email"
+                name="email"
+                autoComplete="username email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -353,6 +491,8 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
               <input
                 type="password"
+                name="password"
+                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
