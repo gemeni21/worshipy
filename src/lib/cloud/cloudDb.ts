@@ -1021,12 +1021,14 @@ export function findWorshipGroupByCode(code: string): WorshipGroup | null {
   return Object.values(store.groups).find((g) => g.inviteCode.toUpperCase() === normalized) || null;
 }
 
-// Google 1-Click Authentication
+// Google & Instant Email 1-Click Authentication
 export function loginOrRegisterWithGoogle(googleUser: {
   email: string;
   displayName?: string;
   photoURL?: string;
   emailVerified?: boolean;
+  churchName?: string;
+  instrument?: string;
 }): { user: UserProfile; token: string } {
   const store = ensureDataStore();
   const emailKey = googleUser.email.trim().toLowerCase();
@@ -1044,6 +1046,8 @@ export function loginOrRegisterWithGoogle(googleUser: {
         id: userId,
         email: googleUser.email.trim(),
         displayName: googleUser.displayName?.trim() || googleUser.email.split('@')[0],
+        churchName: googleUser.churchName?.trim() || undefined,
+        instrument: googleUser.instrument?.trim() || undefined,
         role,
         createdAt: now,
         lastActiveAt: now,
@@ -1062,6 +1066,12 @@ export function loginOrRegisterWithGoogle(googleUser: {
     storedUser.profile.authProvider = 'google';
     if (googleUser.displayName && (!storedUser.profile.displayName || storedUser.profile.displayName === emailKey)) {
       storedUser.profile.displayName = googleUser.displayName.trim();
+    }
+    if (googleUser.churchName && !storedUser.profile.churchName) {
+      storedUser.profile.churchName = googleUser.churchName.trim();
+    }
+    if (googleUser.instrument && !storedUser.profile.instrument) {
+      storedUser.profile.instrument = googleUser.instrument.trim();
     }
     if (googleUser.photoURL) {
       storedUser.profile.photoURL = googleUser.photoURL;

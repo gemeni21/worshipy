@@ -4,7 +4,7 @@ import { loginOrRegisterWithGoogle } from '@/lib/cloud/cloudDb';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, displayName, photoURL, emailVerified } = body;
+    const { email, displayName, photoURL, emailVerified, churchName, instrument } = body;
 
     if (!email || typeof email !== 'string') {
       return NextResponse.json({ error: 'Valid email is required.' }, { status: 400 });
@@ -15,6 +15,8 @@ export async function POST(req: NextRequest) {
       displayName,
       photoURL,
       emailVerified: Boolean(emailVerified),
+      churchName,
+      instrument,
     });
 
     const res = NextResponse.json({ user, token });

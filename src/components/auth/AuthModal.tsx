@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import {
   X,
   Mail,
-  Lock,
   User,
   Church,
   Music2,
@@ -32,13 +31,11 @@ const INSTRUMENT_OPTIONS = [
   'Sound & Media Tech',
 ];
 
-export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalProps) {
-  const { login, register, signInWithGoogle } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>(defaultMode);
+export function AuthModal({ isOpen, onClose }: AuthModalProps) {
+  const { loginWithInstantEmail, signInWithGoogle } = useAuth();
 
   // Form State
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [churchName, setChurchName] = useState('');
   const [instrument, setInstrument] = useState(INSTRUMENT_OPTIONS[0]);
@@ -47,6 +44,27 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleInstantSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      await loginWithInstantEmail(
+        email.trim(),
+        displayName.trim() || undefined,
+        churchName.trim() || undefined,
+        instrument
+      );
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed. Please check your connection.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
@@ -57,39 +75,12 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('GOOGLE_CLIENT_ID_REQUIRED') || msg.includes('FIREBASE_CONFIG_MISSING')) {
-        setError(
-          'Google Sign-In is not configured yet on this domain. Please sign in or create your profile using your email below.'
-        );
+        setError('Please enter your email above to sign in instantly with 1-click.');
       } else if (msg.includes('cancelled') || msg.includes('popup_closed') || msg.includes('popup')) {
         setError('Google sign-in popup was closed.');
       } else {
         setError(msg);
       }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      if (mode === 'login') {
-        await login(email, password);
-      } else {
-        await register({
-          email,
-          password,
-          displayName: displayName || email.split('@')[0],
-          churchName,
-          instrument,
-        });
-      }
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed.');
     } finally {
       setIsLoading(false);
     }
@@ -114,22 +105,121 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
             <Sparkles className="w-6 h-6" />
           </div>
           <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
-            {mode === 'login' ? 'Sign in to Worshipy' : 'Create Worshipy Profile'}
+            Sign in to Worshipy
           </h2>
-          <p className="text-xs text-[var(--text-secondary)] mt-1">
-            {mode === 'login'
-              ? 'Access your private songs, sync across devices & manage rehearsals'
-              : 'Keep your chord charts and setlists synchronized across all devices'}
+          <p className="text-xs text-[var(--text-secondary)] mt-1 leading-relaxed">
+            Enter your email to sync your chord charts, setlists, and band rehearsals across all your devices.
           </p>
         </div>
 
-        {/* Google Sign-In Button */}
-        <div className="space-y-4 mb-5">
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-4 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+            <span className="leading-relaxed">{error}</span>
+          </div>
+        )}
+
+        {/* Instant 1-Click Form */}
+        <form onSubmit={handleInstantSignIn} className="space-y-3.5">
+          <div>
+            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+              Your Email Address <span className="text-[var(--brand-accent)]">*</span>
+            </label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
+              <input
+                type="email"
+                name="email"
+                autoComplete="username email"
+                required
+                autoFocus
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. name@gmail.com or church.com"
+                className="w-full pl-9 pr-3 py-2.5 text-xs sm:text-sm rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+              />
+            </div>
+            <p className="text-[10px] text-[var(--text-secondary)] mt-1">
+              Instant 1-click connection. No passwords or credit cards needed.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+              Your Name / Nickname <span className="text-[var(--text-secondary)] font-normal">(Optional)</span>
+            </label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="e.g. David / Gray"
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+              Church / Ministry <span className="text-[var(--text-secondary)] font-normal">(Optional)</span>
+            </label>
+            <div className="relative">
+              <Church className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
+              <input
+                type="text"
+                value={churchName}
+                onChange={(e) => setChurchName(e.target.value)}
+                placeholder="e.g. Central Worship Community"
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+              Instrument / Role <span className="text-[var(--text-secondary)] font-normal">(Optional)</span>
+            </label>
+            <div className="relative">
+              <Music2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
+              <select
+                value={instrument}
+                onChange={(e) => setInstrument(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)] appearance-none cursor-pointer"
+              >
+                {INSTRUMENT_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt} className="bg-[#18181f] text-white">
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={!email.trim() || isLoading}
+            className="w-full mt-2 py-3 px-4 rounded-xl bg-[var(--brand-accent)] text-black text-xs sm:text-sm font-bold hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-md"
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                <span>Sign In &amp; Sync</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* Optional Google Button */}
+        <div className="mt-4 pt-3 border-t border-[var(--border-subtle)]">
           <button
             type="button"
             onClick={handleGoogleSignIn}
             disabled={isLoading}
-            className="w-full py-3 px-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] hover:border-[var(--brand-accent)]/40 text-xs sm:text-sm font-semibold text-[var(--text-primary)] flex items-center justify-center gap-3 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+            className="w-full py-2.5 px-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
           >
             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
               <path
@@ -151,198 +241,10 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
             </svg>
             <span>Continue with Google</span>
           </button>
-
-          <div className="relative flex items-center justify-center">
-            <div className="border-t border-[var(--border-subtle)] w-full" />
-            <span className="bg-[#101014] px-2 text-[10px] uppercase font-bold tracking-wider text-[var(--text-secondary)]">
-              or with email
-            </span>
-          </div>
         </div>
-
-        {/* Mode Toggle Switch */}
-        <div className="flex p-1 mb-5 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)]">
-          <button
-            type="button"
-            onClick={() => {
-              setMode('login');
-              setError(null);
-            }}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              mode === 'login'
-                ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode('register');
-              setError(null);
-            }}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-              mode === 'register'
-                ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            Create Account
-          </button>
-        </div>
-
-        {/* Error Alert with 1-Click Mode Switch helper */}
-        {error && (
-          <div className="mb-4 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs space-y-2">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
-              <span className="leading-relaxed">{error}</span>
-            </div>
-            {mode === 'login' && error.toLowerCase().includes('no account found') && (
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('register');
-                  setError(null);
-                }}
-                className="w-full py-1.5 px-3 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-xs hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <span>Click here to Create Account for this Email</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {mode === 'register' && error.toLowerCase().includes('already exists') && (
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('login');
-                  setError(null);
-                }}
-                className="w-full py-1.5 px-3 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-xs hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <span>Click here to Sign In with your existing password</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Auth Form */}
-        <form onSubmit={handleSubmit} className="space-y-3.5">
-          {mode === 'register' && (
-            <>
-              <div>
-                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-                  Full Name / Display Name
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
-                  <input
-                    type="text"
-                    required
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="e.g. Pastor David"
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-                  Church / Ministry Name (Optional)
-                </label>
-                <div className="relative">
-                  <Church className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
-                  <input
-                    type="text"
-                    value={churchName}
-                    onChange={(e) => setChurchName(e.target.value)}
-                    placeholder="e.g. Grace Fellowship"
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-                  Primary Instrument / Role
-                </label>
-                <div className="relative">
-                  <Music2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
-                  <select
-                    value={instrument}
-                    onChange={(e) => setInstrument(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)] appearance-none cursor-pointer"
-                  >
-                    {INSTRUMENT_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt} className="bg-[#18181f] text-white">
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </>
-          )}
-
-          <div>
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-              Email Address
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
-              <input
-                type="email"
-                name="email"
-                autoComplete="username email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@church.com"
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
-              Password
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)]" />
-              <input
-                type="password"
-                name="password"
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full mt-2 py-2.5 px-4 rounded-xl bg-[var(--brand-accent)] text-black text-xs font-bold hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <span>{mode === 'login' ? 'Sign In to Account' : 'Create Free Profile'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
 
         {/* Guest Mode Option */}
-        <div className="mt-5 pt-3.5 border-t border-[var(--border-subtle)] text-center">
+        <div className="mt-4 pt-3 border-t border-[var(--border-subtle)] text-center">
           <button
             type="button"
             onClick={onClose}

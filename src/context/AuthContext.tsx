@@ -31,6 +31,12 @@ interface AuthContextValue {
     photoURL?: string,
     emailVerified?: boolean
   ) => Promise<UserProfile>;
+  loginWithInstantEmail: (
+    email: string,
+    displayName?: string,
+    churchName?: string,
+    instrument?: string
+  ) => Promise<UserProfile>;
   signInWithGoogle: (fallbackEmail?: string, fallbackName?: string) => Promise<UserProfile>;
   register: (params: {
     email: string;
@@ -287,6 +293,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Google login failed.');
+      }
+
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.user));
+      setUser(data.user);
+      return data.user;
+    },
+    []
+  );
+
+  // Instant Passwordless Email Login or Register (Zero credentials / Google setup needed)
+  const loginWithInstantEmail = useCallback(
+    async (
+      email: string,
+      displayName?: string,
+      churchName?: string,
+      instrument?: string
+    ): Promise<UserProfile> => {
+      const res = await fetch(apiUrl('/api/auth/google'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          displayName,
+          churchName,
+          instrument,
+          emailVerified: true,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Instant email sign-in failed.');
       }
 
       localStorage.setItem(TOKEN_KEY, data.token);
@@ -583,6 +622,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthLoading,
       login,
       loginWithGoogle,
+      loginWithInstantEmail,
       signInWithGoogle,
       register,
       logout,
@@ -610,6 +650,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthLoading,
       login,
       loginWithGoogle,
+      loginWithInstantEmail,
       signInWithGoogle,
       register,
       logout,
