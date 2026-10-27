@@ -1,5 +1,6 @@
-const { app, BrowserWindow, utilityProcess, session, Menu } = require('electron');
+const { app, BrowserWindow, utilityProcess, session, Menu, dialog } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
 const http = require('node:http');
 const net = require('node:net');
 
@@ -8,6 +9,7 @@ const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
 let mainWindow = null;
 let serverProcess = null;
 let serverPort = 3000;
+const serverLogs = [];
 
 // Find an available local TCP port
 function getFreePort() {
@@ -64,13 +66,38 @@ async function startServer() {
   serverPort = await getFreePort();
   const standaloneServerPath = path.join(app.getAppPath(), '.next/standalone/server.js');
 
+  if (!fs.existsSync(standaloneServerPath)) {
+    throw new Error(`Standalone Next.js server not found at: ${standaloneServerPath}`);
+  }
+
+  const userDataDir = app.getPath('userData');
+  console.log(`Starting Next.js standalone server on port ${serverPort}...`);
+  console.log(`Server path: ${standaloneServerPath}`);
+  console.log(`User data dir: ${userDataDir}`);
+
   serverProcess = utilityProcess.fork(standaloneServerPath, [], {
     env: {
       ...process.env,
       PORT: String(serverPort),
       HOSTNAME: '127.0.0.1',
       NODE_ENV: 'production',
+      WORSHIPY_USER_DATA: userDataDir,
     },
+    stdio: 'pipe',
+  });
+
+  serverProcess.stdout?.on('data', (data) => {
+    const text = data.toString();
+    serverLogs.push(text);
+    if (serverLogs.length > 40) serverLogs.shift();
+    process.stdout.write(`[Next.js] ${text}`);
+  });
+
+  serverProcess.stderr?.on('data', (data) => {
+    const text = data.toString();
+    serverLogs.push(text);
+    if (serverLogs.length > 40) serverLogs.shift();
+    process.stderr.write(`[Next.js ERR] ${text}`);
   });
 
   serverProcess.on('exit', (code) => {
@@ -165,8 +192,17 @@ async function createWindow(url) {
   await mainWindow.loadURL(url);
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
   });
+
+  // Failsafe: Ensure window is shown even if ready-to-show event is delayed
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }, 2500);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -179,6 +215,13 @@ app.whenReady().then(async () => {
     await createWindow(url);
   } catch (err) {
     console.error('Failed to initialize desktop application:', err);
+    try {
+      const recentLogs = serverLogs.length > 0 ? `\n\nRecent Server Logs:\n${serverLogs.join('')}` : '';
+      dialog.showErrorBox(
+        'Worshipy Startup Error',
+        `Failed to launch internal engine:\n\n${err.message || err}${recentLogs}`
+      );
+    } catch {}
     app.quit();
   }
 

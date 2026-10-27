@@ -37,7 +37,8 @@ interface CloudStoreSchema {
 export const PRIMARY_ADMIN_EMAIL = 'gray2187@gmail.com';
 export const PRIMARY_ADMIN_PASSWORD = 'ow62ET';
 
-const DATA_DIR = path.resolve(process.cwd(), '.data');
+const BASE_DIR = process.env.WORSHIPY_USER_DATA || process.cwd();
+const DATA_DIR = path.resolve(BASE_DIR, '.data');
 const STORE_FILE = path.join(DATA_DIR, 'cloud-store.json');
 
 function hashPassword(password: string, salt: string): string {

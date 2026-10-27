@@ -69,7 +69,8 @@ export function isUsingDefaultDevSecret(): boolean {
 }
 
 function getPersistenceFilePath(): string {
-  return path.join(process.cwd(), '.data', 'live-sessions.json');
+  const baseDir = process.env.WORSHIPY_USER_DATA || process.cwd();
+  return path.join(baseDir, '.data', 'live-sessions.json');
 }
 
 function getStore(): GlobalLiveStore {

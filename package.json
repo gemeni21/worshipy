@@ -39,6 +39,7 @@
   "build": {
     "appId": "com.worshipy.app",
     "productName": "Worshipy",
+    "asar": false,
     "directories": {
       "output": "dist-electron"
     },
@@ -61,9 +62,14 @@
       "shortcutName": "Worshipy"
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "build/icon.png",
-      "category": "public.app-category.music"
+      "category": "public.app-category.music",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     }
   }
 }
