@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
+import { apiUrl, getCloudHubUrl } from '@/lib/api/apiClient';
 import { getAllSongs, getSongById } from '@/lib/catalog/songCatalog';
 import {
   formatSignedSemitones,
@@ -156,7 +157,7 @@ function LiveSyncWorkspace({
 
   // Discover local network origin (for band Wi-Fi synchronization)
   useEffect(() => {
-    fetch('/api/live/network-info')
+    fetch(apiUrl('/api/live/network-info'))
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.networkOrigin) {
@@ -180,9 +181,11 @@ function LiveSyncWorkspace({
       const stored = JSON.parse(raw) as StoredLiveCredentials;
       if (stored.sessionId && stored.participantToken) {
         fetch(
-          `/api/live/sessions/${encodeURIComponent(
-            stored.sessionId
-          )}?token=${encodeURIComponent(stored.participantToken)}`
+          apiUrl(
+            `/api/live/sessions/${encodeURIComponent(
+              stored.sessionId
+            )}?token=${encodeURIComponent(stored.participantToken)}`
+          )
         )
           .then(async (res) => {
             if (!res.ok) {
@@ -213,9 +216,11 @@ function LiveSyncWorkspace({
     async (sid: string, token: string) => {
       try {
         const res = await fetch(
-          `/api/live/sessions/${encodeURIComponent(
-            sid
-          )}?token=${encodeURIComponent(token)}`,
+          apiUrl(
+            `/api/live/sessions/${encodeURIComponent(
+              sid
+            )}?token=${encodeURIComponent(token)}`
+          ),
           { cache: 'no-store' }
         );
         if (!res.ok) {
@@ -277,9 +282,11 @@ function LiveSyncWorkspace({
         prev === 'connected' ? 'connected' : 'connecting'
       );
 
-      const url = `/api/live/sessions/${encodeURIComponent(
-        activeSessionId
-      )}/stream?token=${encodeURIComponent(participantToken)}`;
+      const url = apiUrl(
+        `/api/live/sessions/${encodeURIComponent(
+          activeSessionId
+        )}/stream?token=${encodeURIComponent(participantToken)}`
+      );
 
       es = new EventSource(url);
 
@@ -379,7 +386,7 @@ function LiveSyncWorkspace({
         ? chosenSetlist.items.map((item) => item.songId)
         : undefined;
 
-      const res = await fetch('/api/live/sessions', {
+      const res = await fetch(apiUrl('/api/live/sessions'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -458,7 +465,7 @@ function LiveSyncWorkspace({
     }
 
     try {
-      const res = await fetch('/api/live/sessions/join', {
+      const res = await fetch(apiUrl('/api/live/sessions/join'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -529,7 +536,7 @@ function LiveSyncWorkspace({
 
     try {
       const res = await fetch(
-        `/api/live/sessions/${encodeURIComponent(session.sessionId)}`,
+        apiUrl(`/api/live/sessions/${encodeURIComponent(session.sessionId)}`),
         {
           method: 'PATCH',
           headers: {
@@ -600,7 +607,7 @@ function LiveSyncWorkspace({
     if (!session || !participantToken) return;
     try {
       await fetch(
-        `/api/live/sessions/${encodeURIComponent(session.sessionId)}`,
+        apiUrl(`/api/live/sessions/${encodeURIComponent(session.sessionId)}`),
         {
           method: 'PATCH',
           headers: {
@@ -625,7 +632,7 @@ function LiveSyncWorkspace({
     if (!session || !participantToken) return;
     try {
       const res = await fetch(
-        `/api/live/sessions/${encodeURIComponent(session.sessionId)}`,
+        apiUrl(`/api/live/sessions/${encodeURIComponent(session.sessionId)}`),
         {
           method: 'PATCH',
           headers: {
@@ -669,7 +676,7 @@ function LiveSyncWorkspace({
 
     try {
       const res = await fetch(
-        `/api/live/sessions/${encodeURIComponent(session.sessionId)}`,
+        apiUrl(`/api/live/sessions/${encodeURIComponent(session.sessionId)}`),
         {
           method: 'PATCH',
           headers: {
@@ -1152,14 +1159,17 @@ function LiveSyncWorkspace({
     )
   );
 
-  const fullJoinLink =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/live?code=${encodeURIComponent(
-          session.joinCode
-        )}${
-          inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : ''
-        }`
-      : `/live?code=${session.joinCode}`;
+  const cloudBase = getCloudHubUrl();
+  const hostOrigin =
+    cloudBase ||
+    (typeof window !== 'undefined' ? window.location.origin : '');
+  const fullJoinLink = hostOrigin
+    ? `${hostOrigin}/live?code=${encodeURIComponent(
+        session.joinCode
+      )}${
+        inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : ''
+      }`
+    : `/live?code=${session.joinCode}`;
 
   const wifiJoinLink = networkOrigin
     ? `${networkOrigin}/live?code=${encodeURIComponent(

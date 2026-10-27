@@ -4,17 +4,21 @@ import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   AlertTriangle,
   Check,
+  Cloud,
   Download,
+  Globe,
   HardDrive,
   Loader2,
   Monitor,
   Moon,
   Palette,
+  RefreshCw,
   Sun,
   Trash2,
   WifiOff,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { getCloudHubUrl, setCloudHubUrl } from '@/lib/api/apiClient';
 import type {
   AccentColor,
   ChartFontSize,
@@ -60,6 +64,51 @@ export default function SettingsPage() {
   } = useApp();
 
   const [isDownloadingCatalog, setIsDownloadingCatalog] = useState(false);
+  const [cloudUrlInput, setCloudUrlInput] = useState(() => getCloudHubUrl());
+  const [cloudPingStatus, setCloudPingStatus] = useState<
+    'idle' | 'testing' | 'success' | 'failed'
+  >('idle');
+  const [cloudPingMessage, setCloudPingMessage] = useState<string>('');
+
+  const handleTestCloudConnection = async (targetUrl?: string) => {
+    const rawUrl = (targetUrl !== undefined ? targetUrl : cloudUrlInput).trim();
+    if (!rawUrl) {
+      setCloudPingStatus('idle');
+      setCloudPingMessage('Operating in Local / Offline Server mode.');
+      return;
+    }
+    setCloudPingStatus('testing');
+    try {
+      const cleanUrl = rawUrl.replace(/\/+$/, '');
+      const res = await fetch(`${cleanUrl}/api/cloud/global-songs`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        setCloudPingStatus('success');
+        setCloudPingMessage('Connected successfully to Worshipy Cloud Hub!');
+      } else {
+        setCloudPingStatus('failed');
+        setCloudPingMessage(`Server responded with HTTP ${res.status}.`);
+      }
+    } catch (err: unknown) {
+      setCloudPingStatus('failed');
+      setCloudPingMessage(
+        err instanceof Error ? err.message : 'Could not reach server.'
+      );
+    }
+  };
+
+  const handleSaveCloudUrl = () => {
+    const trimmed = cloudUrlInput.trim().replace(/\/+$/, '');
+    setCloudHubUrl(trimmed);
+    setCloudUrlInput(trimmed);
+    setStatusMessage(
+      trimmed
+        ? `Cloud Hub URL saved: ${trimmed}`
+        : 'Switched to Local / Offline mode.'
+    );
+    handleTestCloudConnection(trimmed);
+  };
 
   const systemDark = useSyncExternalStore(
     subscribeColorScheme,
@@ -514,6 +563,108 @@ export default function SettingsPage() {
               ? 'Offline Simulation: ON'
               : 'Simulate Offline Mode'}
           </button>
+        </div>
+      </section>
+
+      {/* Cloud Hub & Online Synchronization */}
+      <section className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-5">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)]">
+            <Globe className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>Internet Live Sync &amp; Global Cloud Hub</span>
+          </div>
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <Cloud className="w-5 h-5 text-[var(--brand-accent)]" aria-hidden="true" />
+            <span>Cloud Hub Connection</span>
+          </h2>
+          <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
+            Connect your desktop apps (Mac &amp; Windows) and mobile devices (iPhone, iPad, Android) to a central Cloud Hub.
+            Musicians can join live rehearsals from anywhere in the world using just their 6-character code over the internet.
+          </p>
+        </div>
+
+        <div className="space-y-3 pt-1">
+          <label htmlFor="cloud-hub-url-input" className="block text-xs font-semibold text-[var(--text-secondary)]">
+            Cloud Hub Web Address (URL)
+          </label>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              id="cloud-hub-url-input"
+              type="url"
+              value={cloudUrlInput}
+              onChange={(e) => setCloudUrlInput(e.target.value)}
+              placeholder="e.g. https://worshipy.vercel.app or https://worshipy.onrender.com"
+              className="flex-1 h-11 px-3.5 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] text-xs sm:text-sm focus:bg-[var(--bg-surface)] font-mono"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSaveCloudUrl}
+                className="px-4 py-2.5 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-xs sm:text-sm hover:opacity-90 cursor-pointer shadow-xs"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => handleTestCloudConnection()}
+                disabled={cloudPingStatus === 'testing' || !cloudUrlInput.trim()}
+                className="px-3.5 py-2.5 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] text-xs sm:text-sm font-semibold hover:text-[var(--brand-accent)] disabled:opacity-40 cursor-pointer inline-flex items-center gap-1.5"
+              >
+                {cloudPingStatus === 'testing' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                    <span>Testing...</span>
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Test Ping</span>
+                  </>
+                )}
+              </button>
+              {cloudUrlInput && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCloudUrlInput('');
+                    setCloudHubUrl('');
+                    setStatusMessage('Switched to Local / Offline mode.');
+                    setCloudPingStatus('idle');
+                    setCloudPingMessage('');
+                  }}
+                  className="px-3 py-2.5 rounded-xl border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] hover:text-rose-400 cursor-pointer"
+                  title="Clear cloud URL and use local offline server"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          {cloudPingMessage && (
+            <p
+              className={`text-xs flex items-center gap-1.5 ${
+                cloudPingStatus === 'success'
+                  ? 'text-emerald-500 dark:text-emerald-400 font-semibold'
+                  : cloudPingStatus === 'failed'
+                  ? 'text-rose-500 dark:text-rose-400 font-semibold'
+                  : 'text-[var(--text-secondary)]'
+              }`}
+            >
+              {cloudPingStatus === 'success' && <Check className="w-3.5 h-3.5" aria-hidden="true" />}
+              {cloudPingStatus === 'failed' && <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />}
+              <span>{cloudPingMessage}</span>
+            </p>
+          )}
+
+          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)]/60 p-3 text-xs text-[var(--text-secondary)] space-y-1">
+            <span className="font-semibold text-[var(--text-primary)] block">Current Mode:</span>
+            <span>
+              {getCloudHubUrl()
+                ? `Online: All Live Sync sessions and submissions route to ${getCloudHubUrl()}`
+                : 'Local / Offline: Sessions run locally on your computer (ideal for venues with no internet).'}
+            </span>
+          </div>
         </div>
       </section>
 

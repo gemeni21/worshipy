@@ -15,6 +15,7 @@ import type {
   UserCloudSyncPayload,
   UserProfile,
 } from '@/types/auth';
+import { apiUrl } from '@/lib/api/apiClient';
 
 interface AuthContextValue {
   user: UserProfile | null;
@@ -72,7 +73,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
     }
-    return fetch(input, { ...init, headers });
+    const resolvedInput = typeof input === 'string' ? apiUrl(input) : input;
+    return fetch(resolvedInput, { ...init, headers });
   }, []);
 
   // Fetch submissions (user sees theirs, admin sees all)
@@ -100,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const res = await fetch('/api/auth/me', {
+        const res = await fetch(apiUrl('/api/auth/me'), {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -154,7 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Login
   const login = useCallback(
     async (email: string, password: string): Promise<UserProfile> => {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -182,7 +184,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       churchName?: string;
       instrument?: string;
     }): Promise<UserProfile> => {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(apiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),

@@ -16,6 +16,7 @@ import {
   saveBatchSongsForOffline,
   StorageOperationResult,
 } from '@/lib/storage/offlineSongsDb';
+import { apiUrl } from '@/lib/api/apiClient';
 import {
   clearAllCustomSongsFromStorage,
   CUSTOM_SONGS_LOCALSTORAGE_KEY,
@@ -269,7 +270,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshGlobalSongs = useCallback(async () => {
     try {
-      const res = await fetch('/api/cloud/global-songs');
+      const res = await fetch(apiUrl('/api/cloud/global-songs'));
       if (res.ok) {
         const data = await res.json();
         if (data?.songs && Array.isArray(data.songs)) {
@@ -344,7 +345,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    fetch('/api/cloud/global-songs')
+    fetch(apiUrl('/api/cloud/global-songs'))
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!cancelled) {
