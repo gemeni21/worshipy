@@ -5,6 +5,7 @@
  */
 
 export const GOOGLE_CLIENT_ID_STORAGE_KEY = 'worshipy_google_client_id';
+export const DEFAULT_GOOGLE_CLIENT_ID = '802566602164-1kij6sud07rhnkccpr0qnvbk2vcvnmso.apps.googleusercontent.com';
 
 export function getGoogleClientId(): string {
   if (typeof window !== 'undefined') {
@@ -15,7 +16,7 @@ export function getGoogleClientId(): string {
       }
     } catch {}
   }
-  return process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  return process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
 }
 
 export function setGoogleClientId(clientId: string): void {
