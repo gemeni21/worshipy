@@ -1026,6 +1026,7 @@ export function loginOrRegisterWithGoogle(googleUser: {
   email: string;
   displayName?: string;
   photoURL?: string;
+  emailVerified?: boolean;
 }): { user: UserProfile; token: string } {
   const store = ensureDataStore();
   const emailKey = googleUser.email.trim().toLowerCase();
@@ -1047,6 +1048,8 @@ export function loginOrRegisterWithGoogle(googleUser: {
         createdAt: now,
         lastActiveAt: now,
         photoURL: googleUser.photoURL,
+        emailVerified: googleUser.emailVerified ?? true,
+        authProvider: 'google',
         cloudStorage: { provider: 'none' },
       },
       salt,
@@ -1055,6 +1058,8 @@ export function loginOrRegisterWithGoogle(googleUser: {
     store.users[emailKey] = storedUser;
   } else {
     storedUser.profile.lastActiveAt = now;
+    storedUser.profile.emailVerified = true;
+    storedUser.profile.authProvider = 'google';
     if (googleUser.displayName && (!storedUser.profile.displayName || storedUser.profile.displayName === emailKey)) {
       storedUser.profile.displayName = googleUser.displayName.trim();
     }

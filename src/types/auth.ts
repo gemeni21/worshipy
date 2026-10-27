@@ -41,6 +41,8 @@ export interface UserProfile {
   groupName?: string;
   groupRole?: 'leader' | 'member';
   photoURL?: string;
+  emailVerified?: boolean;
+  authProvider?: 'google' | 'password';
 }
 
 export interface EmailNotificationRecord {

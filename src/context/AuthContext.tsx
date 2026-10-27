@@ -18,13 +18,19 @@ import type {
 } from '@/types/auth';
 import { apiUrl } from '@/lib/api/apiClient';
 import { promptGoogleSignInPopup } from '@/lib/firebase/firebaseClient';
+import { promptGoogleAccountPicker } from '@/lib/auth/googleOAuth';
 
 interface AuthContextValue {
   user: UserProfile | null;
   isAdmin: boolean;
   isAuthLoading: boolean;
   login: (email: string, password: string) => Promise<UserProfile>;
-  loginWithGoogle: (email: string, displayName?: string, photoURL?: string) => Promise<UserProfile>;
+  loginWithGoogle: (
+    email: string,
+    displayName?: string,
+    photoURL?: string,
+    emailVerified?: boolean
+  ) => Promise<UserProfile>;
   signInWithGoogle: (fallbackEmail?: string, fallbackName?: string) => Promise<UserProfile>;
   register: (params: {
     email: string;
@@ -266,11 +272,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Google 1-Click Login or Register
   const loginWithGoogle = useCallback(
-    async (email: string, displayName?: string, photoURL?: string): Promise<UserProfile> => {
+    async (
+      email: string,
+      displayName?: string,
+      photoURL?: string,
+      emailVerified?: boolean
+    ): Promise<UserProfile> => {
       const res = await fetch(apiUrl('/api/auth/google'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, displayName, photoURL }),
+        body: JSON.stringify({ email, displayName, photoURL, emailVerified }),
       });
 
       const data = await res.json();
@@ -292,11 +303,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (fallbackEmail) {
           return await loginWithGoogle(fallbackEmail, fallbackName);
         }
-        const googleUser = await promptGoogleSignInPopup();
-        if (googleUser) {
-          return await loginWithGoogle(googleUser.email, googleUser.displayName, googleUser.photoURL);
+
+        // 1. Try Google Identity Services (GIS) / Account Picker first (like Spotify)
+        try {
+          const googleUser = await promptGoogleAccountPicker();
+          if (googleUser) {
+            return await loginWithGoogle(
+              googleUser.email,
+              googleUser.displayName,
+              googleUser.photoURL,
+              googleUser.emailVerified
+            );
+          }
+        } catch (pickerErr) {
+          const pickerMsg = pickerErr instanceof Error ? pickerErr.message : '';
+          if (pickerMsg === 'GOOGLE_CLIENT_ID_REQUIRED') {
+            // Rethrow so AuthModal can prompt for Google Client ID setup
+            throw pickerErr;
+          }
+          if (
+            pickerMsg.toLowerCase().includes('popup_closed') ||
+            pickerMsg.toLowerCase().includes('user_cancel') ||
+            pickerMsg.toLowerCase().includes('closed')
+          ) {
+            throw pickerErr;
+          }
+          console.warn('Google Account Picker note:', pickerMsg);
         }
-        throw new Error('FIREBASE_CONFIG_MISSING');
+
+        // 2. Fall back to Firebase Google Auth popup if GIS is not configured or failed
+        const fbUser = await promptGoogleSignInPopup();
+        if (fbUser) {
+          return await loginWithGoogle(fbUser.email, fbUser.displayName, fbUser.photoURL, true);
+        }
+
+        throw new Error('GOOGLE_AUTH_FAILED');
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Google authentication failed';
         throw new Error(msg);

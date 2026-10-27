@@ -12,8 +12,12 @@ import {
   Loader2,
   Sparkles,
   ArrowRight,
+  ExternalLink,
+  ShieldCheck,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { getGoogleClientId, setGoogleClientId } from '@/lib/auth/googleOAuth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -37,31 +41,46 @@ export interface DeviceAccount {
   displayName: string;
   role?: 'admin' | 'user';
   churchName?: string;
+  photoURL?: string;
 }
 
 const DEVICE_ACCOUNTS_KEY = 'worshipy_device_accounts_v1';
 
+const DEFAULT_DEVICE_ACCOUNTS: DeviceAccount[] = [
+  {
+    email: 'gemeni21@gmail.com',
+    displayName: 'Gray',
+    role: 'user',
+    churchName: 'Central Worship Community',
+  },
+  {
+    email: 'gray2187@gmail.com',
+    displayName: 'Gray Talingting',
+    role: 'admin',
+    churchName: 'Central Worship Community',
+  },
+];
+
 export function getDeviceAccounts(): DeviceAccount[] {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === 'undefined') return DEFAULT_DEVICE_ACCOUNTS;
   try {
     const raw = localStorage.getItem(DEVICE_ACCOUNTS_KEY);
     if (raw) {
       const parsed: DeviceAccount[] = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        // Ensure both accounts from this computer are always accessible
+        const merged = [...parsed];
+        for (const def of DEFAULT_DEVICE_ACCOUNTS) {
+          if (!merged.some((a) => a.email.toLowerCase() === def.email.toLowerCase())) {
+            merged.push(def);
+          }
+        }
+        return merged;
       }
     }
   } catch {}
 
-  // Default pre-seeded account for this device for instant 1-click connection
-  return [
-    {
-      email: 'gray2187@gmail.com',
-      displayName: 'Gray (Admin)',
-      role: 'admin',
-      churchName: 'Central Worship Community',
-    },
-  ];
+  return DEFAULT_DEVICE_ACCOUNTS;
 }
 
 export function saveDeviceAccount(account: DeviceAccount): void {
@@ -99,6 +118,10 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
   const [showGoogleInput, setShowGoogleInput] = useState(false);
   const [googleEmailInput, setGoogleEmailInput] = useState('');
 
+  // Google Client ID Setup State (Spotify GIS)
+  const [showGoogleSetup, setShowGoogleSetup] = useState(false);
+  const [googleClientIdInput, setGoogleClientIdInput] = useState(() => getGoogleClientId());
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,18 +150,28 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('FIREBASE_CONFIG_MISSING')) {
-        // Firebase config missing in .env — smoothly offer 1-click Google Email sign in
+      if (msg.includes('GOOGLE_CLIENT_ID_REQUIRED')) {
+        // Show Google Client ID setup guide so user can enter Client ID
+        setShowGoogleSetup(true);
+      } else if (msg.includes('FIREBASE_CONFIG_MISSING') || msg.includes('GOOGLE_AUTH_FAILED')) {
+        // Offer inline Google Email sign in
         setShowGoogleInput(true);
         if (email.trim()) setGoogleEmailInput(email.trim());
-      } else if (msg.includes('cancelled') || msg.includes('popup')) {
-        setError('Google sign-in popup was cancelled. You can enter your email directly below.');
+      } else if (msg.includes('cancelled') || msg.includes('popup_closed') || msg.includes('popup')) {
+        setError('Google sign-in popup was cancelled or closed.');
       } else {
         setError(msg);
       }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSaveGoogleClientIdAndSignIn = async () => {
+    if (!googleClientIdInput.trim()) return;
+    setGoogleClientId(googleClientIdInput.trim());
+    setShowGoogleSetup(false);
+    await handleGoogleSignIn();
   };
 
   const handleSelectDeviceAccount = async (acct: DeviceAccount) => {
@@ -214,77 +247,175 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
             <Sparkles className="w-6 h-6" />
           </div>
           <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
-            {mode === 'login' ? 'Sign in to Worshipy' : 'Create Worshipy Profile'}
+            {showGoogleSetup
+              ? 'Connect Google Account Picker'
+              : mode === 'login'
+              ? 'Sign in to Worshipy'
+              : 'Create Worshipy Profile'}
           </h2>
           <p className="text-xs text-[var(--text-secondary)] mt-1">
-            {mode === 'login'
+            {showGoogleSetup
+              ? 'Enable native Google Account Chooser (like Spotify) with 1-click select'
+              : mode === 'login'
               ? 'Access your private songs, sync across devices & manage rehearsals'
               : 'Keep your chord charts and setlists synchronized across all devices'}
           </p>
         </div>
 
-        {/* Saved Accounts on This Computer (1-Click Connect) */}
-        {savedAccounts.length > 0 && mode === 'login' && (
-          <div className="mb-5 p-3.5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--brand-accent)]/30 space-y-2.5 animate-in fade-in duration-150">
-            <div className="flex items-center justify-between text-xs font-semibold text-[var(--text-secondary)]">
-              <span className="flex items-center gap-1.5 text-[var(--text-primary)] font-bold">
-                <User className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
-                <span>Accounts on this computer</span>
-              </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold">
-                1-Click Select
-              </span>
+        {/* Google Client ID Setup Dialog (Shows when Google GIS needs Client ID) */}
+        {showGoogleSetup ? (
+          <div className="space-y-4 animate-in fade-in duration-200">
+            <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/30 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-blue-300">
+                <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>Google OAuth Setup (Spotify Style)</span>
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                To show Google&apos;s native &ldquo;Choose an Account&rdquo; popup with your saved computer accounts, Google Cloud requires a free Web Client ID.
+              </p>
             </div>
-            <div className="space-y-1.5">
-              {savedAccounts.map((acct) => (
-                <button
-                  key={acct.email}
-                  type="button"
-                  onClick={() => handleSelectDeviceAccount(acct)}
-                  disabled={isLoading}
-                  className="w-full p-2.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-surface)]/80 border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] flex items-center justify-between text-left transition-all cursor-pointer group disabled:opacity-50"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-xl bg-[var(--brand-accent)]/20 border border-[var(--brand-accent)]/40 text-[var(--brand-accent)] flex items-center justify-center font-bold text-xs shrink-0">
-                      {acct.displayName.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5 truncate">
-                        <span>{acct.displayName}</span>
-                        {acct.role === 'admin' && (
-                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                            Admin
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-[var(--text-secondary)] truncate">{acct.email}</p>
-                    </div>
+
+            <div className="space-y-3 text-xs text-[var(--text-secondary)]">
+              <div className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[10px] font-bold flex items-center justify-center shrink-0 text-[var(--brand-accent)] mt-0.5">
+                  1
+                </span>
+                <div className="min-w-0">
+                  <a
+                    href="https://console.cloud.google.com/apis/credentials"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--brand-accent)] hover:underline inline-flex items-center gap-1 font-semibold"
+                  >
+                    <span>Open Google Cloud Credentials</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                    Click <strong>Create Credentials &rarr; OAuth client ID</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[10px] font-bold flex items-center justify-center shrink-0 text-[var(--brand-accent)] mt-0.5">
+                  2
+                </span>
+                <div className="text-[11px] min-w-0">
+                  <span>Application type: <strong>Web application</strong>. Add Authorized JavaScript origins:</span>
+                  <div className="mt-1 space-y-0.5 font-mono text-[10px] bg-black/50 p-2 rounded-lg border border-[var(--border-subtle)] text-[var(--text-primary)]">
+                    <div>http://localhost:3000</div>
+                    <div>https://worshipy-gray.vercel.app</div>
                   </div>
-                  <span className="text-xs font-bold text-[var(--brand-accent)] group-hover:translate-x-0.5 transition-transform shrink-0 pl-2">
-                    Connect &rarr;
-                  </span>
-                </button>
-              ))}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <span className="w-5 h-5 rounded-full bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-[10px] font-bold flex items-center justify-center shrink-0 text-[var(--brand-accent)] mt-0.5">
+                  3
+                </span>
+                <div className="text-[11px] flex-1 min-w-0">
+                  <span>Paste your Web Client ID here:</span>
+                  <input
+                    type="text"
+                    value={googleClientIdInput}
+                    onChange={(e) => setGoogleClientIdInput(e.target.value)}
+                    placeholder="xxxxxxxxxxxx-xxxxxxxx.apps.googleusercontent.com"
+                    className="w-full mt-1.5 px-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--brand-accent)]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                disabled={!googleClientIdInput.trim() || isLoading}
+                onClick={handleSaveGoogleClientIdAndSignIn}
+                className="w-full py-2.5 px-4 rounded-xl bg-[var(--brand-accent)] text-black text-xs font-bold hover:brightness-110 cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Save &amp; Open Google Account Picker</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowGoogleSetup(false)}
+                className="w-full py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer text-center"
+              >
+                Back to Computer Accounts
+              </button>
             </div>
           </div>
-        )}
+        ) : (
+          <>
+            {/* Saved Accounts on This Computer (1-Click Connect) */}
+            {savedAccounts.length > 0 && (
+              <div className="mb-5 p-3.5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--brand-accent)]/30 space-y-2.5 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between text-xs font-semibold text-[var(--text-secondary)]">
+                  <span className="flex items-center gap-1.5 text-[var(--text-primary)] font-bold">
+                    <User className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                    <span>Accounts on this computer</span>
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold">
+                    1-Click Select
+                  </span>
+                </div>
+                <div className="space-y-1.5">
+                  {savedAccounts.map((acct) => (
+                    <button
+                      key={acct.email}
+                      type="button"
+                      onClick={() => handleSelectDeviceAccount(acct)}
+                      disabled={isLoading}
+                      className="w-full p-2.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-surface)]/80 border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] flex items-center justify-between text-left transition-all cursor-pointer group disabled:opacity-50"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-xl bg-[var(--brand-accent)]/20 border border-[var(--brand-accent)]/40 text-[var(--brand-accent)] flex items-center justify-center font-bold text-xs shrink-0">
+                          {acct.displayName.slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5 truncate">
+                            <span>{acct.displayName}</span>
+                            {acct.role === 'admin' && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                                Admin
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)] truncate">{acct.email}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-[var(--brand-accent)] group-hover:translate-x-0.5 transition-transform shrink-0 pl-2">
+                        Connect &rarr;
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
-        {/* Google 1-Click Sign-In Button */}
-        <div className="space-y-3.5 mb-5">
-          <button
-            type="button"
-            onClick={() => handleGoogleSignIn()}
-            disabled={isLoading}
-            className="w-full py-2.5 px-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
-          >
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-            </svg>
-            <span>Continue with Google</span>
-          </button>
+            {/* Google 1-Click Sign-In Button */}
+            <div className="space-y-3.5 mb-5">
+              <button
+                type="button"
+                onClick={() => handleGoogleSignIn()}
+                disabled={isLoading}
+                className="w-full py-2.5 px-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </svg>
+                <span>Continue with Google</span>
+              </button>
 
           {/* Inline Google Email fallback (Active when OAuth popup is not configured or on mobile WebViews) */}
           {showGoogleInput && (
@@ -517,6 +648,8 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
             )}
           </button>
         </form>
+        </>
+        )}
 
         {/* Guest Mode Option */}
         <div className="mt-5 pt-3.5 border-t border-[var(--border-subtle)] text-center">
