@@ -46,6 +46,7 @@ next-env.d.ts
 
 # local runtime live session store
 /.data
+/.worshipy-data
 
 # local SSL certificates
 /certificates

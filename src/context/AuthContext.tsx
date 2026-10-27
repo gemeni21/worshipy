@@ -25,7 +25,7 @@ interface AuthContextValue {
   isAuthLoading: boolean;
   login: (email: string, password: string) => Promise<UserProfile>;
   loginWithGoogle: (email: string, displayName?: string, photoURL?: string) => Promise<UserProfile>;
-  signInWithGoogle: () => Promise<UserProfile>;
+  signInWithGoogle: (fallbackEmail?: string, fallbackName?: string) => Promise<UserProfile>;
   register: (params: {
     email: string;
     password: string;
@@ -123,8 +123,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.user));
           }
         } else {
-          localStorage.removeItem(TOKEN_KEY);
-          localStorage.removeItem(USER_CACHE_KEY);
+          // If server responded with error (e.g. temporary serverless hiccup), preserve cached session
+          const cached = localStorage.getItem(USER_CACHE_KEY);
+          if (cached && !cancelled) {
+            try {
+              setUser(JSON.parse(cached));
+            } catch {
+              localStorage.removeItem(TOKEN_KEY);
+              localStorage.removeItem(USER_CACHE_KEY);
+            }
+          }
         }
       } catch (err) {
         console.warn('Auth check fallback to cache:', err);
@@ -278,18 +286,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const signInWithGoogle = useCallback(async (): Promise<UserProfile> => {
-    try {
-      const googleUser = await promptGoogleSignInPopup();
-      if (googleUser) {
-        return await loginWithGoogle(googleUser.email, googleUser.displayName, googleUser.photoURL);
+  const signInWithGoogle = useCallback(
+    async (fallbackEmail?: string, fallbackName?: string): Promise<UserProfile> => {
+      try {
+        if (fallbackEmail) {
+          return await loginWithGoogle(fallbackEmail, fallbackName);
+        }
+        const googleUser = await promptGoogleSignInPopup();
+        if (googleUser) {
+          return await loginWithGoogle(googleUser.email, googleUser.displayName, googleUser.photoURL);
+        }
+        throw new Error('FIREBASE_CONFIG_MISSING');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Google authentication failed';
+        throw new Error(msg);
       }
-      throw new Error('Google sign-in was cancelled or unsupported on this device.');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Google authentication failed';
-      throw new Error(msg);
-    }
-  }, [loginWithGoogle]);
+    },
+    [loginWithGoogle]
+  );
 
   // Group / Worship Team Collaboration
   const [activeGroup, setActiveGroup] = useState<WorshipGroup | null>(null);

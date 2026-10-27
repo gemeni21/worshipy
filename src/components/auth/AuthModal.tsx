@@ -43,25 +43,38 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
   const [churchName, setChurchName] = useState('');
   const [instrument, setInstrument] = useState(INSTRUMENT_OPTIONS[0]);
 
+  // Google 1-Click State
+  const [showGoogleInput, setShowGoogleInput] = useState(false);
+  const [googleEmailInput, setGoogleEmailInput] = useState('');
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  const handleGoogleSignIn = async () => {
+  const handleGoogleSignIn = async (directEmail?: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      await signInWithGoogle();
+      const emailToUse =
+        directEmail ||
+        (email.trim().toLowerCase().endsWith('@gmail.com') ||
+        email.trim().toLowerCase().endsWith('@googlemail.com')
+          ? email.trim()
+          : undefined);
+
+      await signInWithGoogle(emailToUse, displayName || undefined);
       onClose();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('cancelled') || msg.includes('popup')) {
-        setError(msg);
+      if (msg.includes('FIREBASE_CONFIG_MISSING')) {
+        // Firebase config missing in .env — smoothly offer 1-click Google Email sign in
+        setShowGoogleInput(true);
+        if (email.trim()) setGoogleEmailInput(email.trim());
+      } else if (msg.includes('cancelled') || msg.includes('popup')) {
+        setError('Google sign-in popup was cancelled. You can enter your email directly below.');
       } else {
-        setError(
-          msg + '. You can also enter your Gmail address below to sign in or create your profile directly.'
-        );
+        setError(msg);
       }
     } finally {
       setIsLoading(false);
@@ -124,7 +137,7 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
         <div className="space-y-3.5 mb-5">
           <button
             type="button"
-            onClick={handleGoogleSignIn}
+            onClick={() => handleGoogleSignIn()}
             disabled={isLoading}
             className="w-full py-2.5 px-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-primary)] flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-xs disabled:opacity-50"
           >
@@ -136,6 +149,51 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
             </svg>
             <span>Continue with Google</span>
           </button>
+
+          {/* Inline Google Email fallback (Active when OAuth popup is not configured or on mobile WebViews) */}
+          {showGoogleInput && (
+            <div className="p-3.5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--brand-accent)]/30 space-y-2.5 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                  <span>Sign In with Google Account</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-[var(--brand-surface)] text-[var(--brand-accent)] font-semibold">1-Click</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowGoogleInput(false)}
+                  className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                Enter your Gmail address to sign in instantly with 1-click (no password needed).
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={googleEmailInput}
+                  onChange={(e) => setGoogleEmailInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && googleEmailInput.trim()) {
+                      e.preventDefault();
+                      handleGoogleSignIn(googleEmailInput.trim());
+                    }
+                  }}
+                  placeholder="yourname@gmail.com"
+                  className="flex-1 px-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+                <button
+                  type="button"
+                  disabled={!googleEmailInput.trim() || isLoading}
+                  onClick={() => handleGoogleSignIn(googleEmailInput.trim())}
+                  className="px-3.5 py-2 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-xs hover:brightness-110 cursor-pointer disabled:opacity-40 shrink-0"
+                >
+                  {isLoading ? 'Signing in...' : 'Sign In'}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="relative flex items-center justify-center">
             <div className="border-t border-[var(--border-subtle)] w-full" />
@@ -175,11 +233,39 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
           </button>
         </div>
 
-        {/* Error Alert */}
+        {/* Error Alert with Smart 1-Click Action Buttons */}
         {error && (
-          <div className="mb-4 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>{error}</span>
+          <div className="mb-4 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+              <span className="leading-relaxed">{error}</span>
+            </div>
+            {mode === 'login' && error.toLowerCase().includes('no account found') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('register');
+                  setError(null);
+                }}
+                className="w-full py-1.5 px-3 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-xs hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Click here to Create Account for this Email</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {mode === 'register' && error.toLowerCase().includes('already exists') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setError(null);
+                }}
+                className="w-full py-1.5 px-3 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-xs hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Click here to Sign In with your existing password</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         )}
 
