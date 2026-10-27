@@ -169,10 +169,14 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
       setError(null);
 
       let silenceTimeout: ReturnType<typeof setTimeout> | null = null;
+      let startTime = 0;
+      let hasReceivedSpeech = false;
 
       recognition.onstart = () => {
         setIsListening(true);
-        // Safety timeout if no speech is detected after 7 seconds
+        startTime = Date.now();
+        hasReceivedSpeech = false;
+        // Safety timeout if no speech is detected after 8 seconds
         silenceTimeout = setTimeout(() => {
           if (recognitionRef.current) {
             try {
@@ -180,10 +184,11 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
             } catch {}
           }
           setIsListening(false);
-        }, 7000);
+        }, 8000);
       };
 
       recognition.onresult = (event: SpeechRecognitionEventLike) => {
+        hasReceivedSpeech = true;
         if (silenceTimeout) {
           clearTimeout(silenceTimeout);
           silenceTimeout = null;
@@ -213,12 +218,22 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
           silenceTimeout = null;
         }
         setIsListening(false);
+        const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setError('Microphone access was denied. Please allow microphone permissions in your browser or type your search below.');
+          if (isAndroid) {
+            setError('Microphone or Speech Service restricted. In Vivo Settings > Text-to-speech, select Google, and grant Chrome microphone access.');
+          } else {
+            setError('Microphone access was denied. Please allow microphone permissions in your browser or type your search below.');
+          }
+        } else if (event.error === 'network') {
+          if (isAndroid) {
+            setError('Speech service network error. On Vivo OriginOS, ensure Google Speech Services has background data permission, or type below.');
+          } else {
+            setError('Network issue detected with speech recognition service. You can type your search below.');
+          }
         } else if (event.error === 'no-speech') {
           setError('No voice detected. Tap the microphone to try speaking again.');
-        } else if (event.error === 'network') {
-          setError('Network issue detected with speech recognition service. You can type your search below.');
         } else if (event.error === 'aborted') {
           // Intentional user cancellation, don't show error
           setError(null);
@@ -233,6 +248,17 @@ export function useVoiceSearch(onFinalResult?: (result: string) => void): VoiceS
           silenceTimeout = null;
         }
         setIsListening(false);
+        const elapsed = Date.now() - startTime;
+        // If recognition closed almost immediately without capturing speech or firing onerror,
+        // it indicates the OS speech daemon (like OriginOS/Vivo Jovi) aborted Chromium's intent
+        if (startTime > 0 && elapsed < 2000 && !hasReceivedSpeech) {
+          const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+          if (isAndroid) {
+            setError('Voice input closed by phone. On Vivo / OriginOS, check that Google Speech is set as default in Settings > Text-to-speech, or type below.');
+          } else {
+            setError('Voice recognition closed without detecting speech. Tap mic to retry or type below.');
+          }
+        }
       };
 
       recognition.start();
