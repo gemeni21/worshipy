@@ -1077,6 +1077,16 @@ export default function MySongsPage() {
                       </span>
                     )}
 
+                    {existingSubmission?.status === 'removed' && (
+                      <span
+                        title={existingSubmission.adminNotes ? `Admin Note: ${existingSubmission.adminNotes}` : 'Removed from global catalog by an administrator'}
+                        className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-300 border border-rose-500/40 cursor-help"
+                      >
+                        <AlertTriangle className="w-3 h-3 text-rose-500" aria-hidden="true" />
+                        <span>Removed by Admin</span>
+                      </span>
+                    )}
+
                     {savedOffline && (
                       <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
                         <CheckCircle2

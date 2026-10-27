@@ -14,13 +14,17 @@ import {
   getSubmissionById,
   reviewSongSubmission,
   getApprovedGlobalSongs,
+  removeSongGlobally,
+  restoreSongGlobally,
+  getRemovedGlobalSongs,
+  getRemovedGlobalSongIds,
 } from '../cloudDb.ts';
 import type { SongRecord } from '../../../types/song.ts';
 
 const SAMPLE_SONG: SongRecord = {
   id: 'test_song_001',
   slug: 'sa-iyong-presensya-test',
-  title: 'Sa Iyong Presensya',
+  title: 'Sa Iyong Presensya (Unit Test)',
   artist: 'Elena Reyes',
   attribution: 'Elena Reyes',
   originalKey: 'G',
@@ -160,7 +164,7 @@ describe('Cloud Auth, Sync & Global Song Curation Engine', () => {
     const retrieved = getUserSync(leader.id);
     assert.ok(retrieved);
     assert.equal(retrieved.customSongs.length, 1);
-    assert.equal(retrieved.customSongs[0].title, 'Sa Iyong Presensya');
+    assert.equal(retrieved.customSongs[0].title, 'Sa Iyong Presensya (Unit Test)');
     assert.equal(retrieved.setlists.length, 1);
     assert.equal(retrieved.favorites[0], SAMPLE_SONG.id);
   });
@@ -180,7 +184,7 @@ describe('Cloud Auth, Sync & Global Song Curation Engine', () => {
 
     assert.ok(submission.id.startsWith('sub_'));
     assert.equal(submission.status, 'pending');
-    assert.equal(submission.song.title, 'Sa Iyong Presensya');
+    assert.equal(submission.song.title, 'Sa Iyong Presensya (Unit Test)');
     assert.equal(submission.submittedBy.userId, leader.id);
 
     // Verify submission is listed
@@ -233,5 +237,106 @@ describe('Cloud Auth, Sync & Global Song Curation Engine', () => {
       false,
       'Rejected song must be removed from global catalog'
     );
+  });
+
+  it('8. strictly restricts global song removal to administrators and supports global restoration', () => {
+    const leader = findUserByEmail('worshipleader@church.com');
+    const admin = findUserByEmail('admin@worshipy.app');
+    assert.ok(leader);
+    assert.ok(admin);
+
+    const songToCurate: SongRecord = {
+      ...SAMPLE_SONG,
+      id: 'song_curate_999',
+      slug: 'song-curate-999',
+      title: 'Tunay Na Diyos (True God)',
+    };
+
+    // 1. Leader submits song
+    const sub = submitSongForGlobalPublishing({
+      userId: leader.id,
+      song: songToCurate,
+      submissionNotes: 'Ready for Sunday worship catalog.',
+    });
+
+    // 2. Admin approves song -> now in global catalog
+    reviewSongSubmission({
+      submissionId: sub.id,
+      adminUserId: admin.id,
+      status: 'approved',
+    });
+
+    let globalSongs = getApprovedGlobalSongs();
+    assert.ok(
+      globalSongs.some((s) => s.title === 'Tunay Na Diyos (True God)'),
+      'Song should be live in global catalog'
+    );
+
+    // 3. Regular non-admin user CANNOT remove song globally (throws 403 / unauthorized)
+    assert.throws(() => {
+      removeSongGlobally({
+        adminUserId: leader.id, // Regular user!
+        songIdOrSlug: 'song_curate_999',
+        reason: 'Attempted unauthorized removal',
+      });
+    }, /Unauthorized: Admin privileges required/);
+
+    // 4. Admin successfully removes song globally
+    const removeRes = removeSongGlobally({
+      adminUserId: admin.id,
+      songIdOrSlug: 'song_curate_999',
+      reason: 'Inappropriate tempo and unlicensed chord arrangement',
+    });
+
+    assert.equal(removeRes.success, true);
+    assert.equal(removeRes.removedRecord.id, 'song_curate_999');
+    assert.equal(removeRes.removedRecord.removedBy.userId, admin.id);
+
+    // Verify song immediately removed from approved global catalog
+    globalSongs = getApprovedGlobalSongs();
+    assert.equal(
+      globalSongs.some((s) => s.title === 'Tunay Na Diyos (True God)'),
+      false,
+      'Removed song must no longer be in getApprovedGlobalSongs'
+    );
+
+    // Verify tracked in removed songs list
+    const removedList = getRemovedGlobalSongs();
+    assert.ok(removedList.some((r) => r.id === 'song_curate_999' || r.slug === 'song-curate-999'));
+
+    const removedIds = getRemovedGlobalSongIds();
+    assert.ok(removedIds.includes('song_curate_999'));
+
+    // Verify submission status updated to 'removed' with admin reason
+    const updatedSub = getSubmissionById(sub.id);
+    assert.ok(updatedSub);
+    assert.equal(updatedSub.status, 'removed');
+    assert.equal(updatedSub.adminNotes, 'Inappropriate tempo and unlicensed chord arrangement');
+
+    // 5. Regular non-admin CANNOT restore song globally
+    assert.throws(() => {
+      restoreSongGlobally({
+        adminUserId: leader.id,
+        songIdOrSlug: 'song_curate_999',
+      });
+    }, /Unauthorized: Admin privileges required/);
+
+    // 6. Admin restores song globally
+    const restoreRes = restoreSongGlobally({
+      adminUserId: admin.id,
+      songIdOrSlug: 'song_curate_999',
+    });
+    assert.equal(restoreRes.success, true);
+
+    // Verify song is back in getApprovedGlobalSongs
+    globalSongs = getApprovedGlobalSongs();
+    assert.ok(
+      globalSongs.some((s) => s.title === 'Tunay Na Diyos (True God)'),
+      'Restored song should be back in getApprovedGlobalSongs'
+    );
+
+    // Verify removed from removedGlobalSongs tracking
+    const removedIdsAfterRestore = getRemovedGlobalSongIds();
+    assert.equal(removedIdsAfterRestore.includes('song_curate_999'), false);
   });
 });

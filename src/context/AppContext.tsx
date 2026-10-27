@@ -63,6 +63,7 @@ interface AppContextValue {
   storageWarning: string | null;
   customSongs: SongRecord[];
   globalApprovedSongs: SongRecord[];
+  removedGlobalSongIds: string[];
   refreshGlobalSongs: () => Promise<void>;
   allAvailableSongs: SongRecord[];
   getSongByIdOrSlug: (idOrSlug: string) => SongRecord | undefined;
@@ -259,6 +260,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const [customSongs, setCustomSongs] = useState<SongRecord[]>([]);
   const [globalApprovedSongs, setGlobalApprovedSongs] = useState<SongRecord[]>([]);
+  const [removedGlobalSongIds, setRemovedGlobalSongIds] = useState<string[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<string[]>([]);
   const [setlists, setSetlists] = useState<PersonalSetlist[]>([]);
@@ -272,6 +274,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         if (data?.songs && Array.isArray(data.songs)) {
           setGlobalApprovedSongs(data.songs);
+        }
+        if (data?.removedSongIds && Array.isArray(data.removedSongIds)) {
+          setRemovedGlobalSongIds(data.removedSongIds);
         }
       }
     } catch (err) {
@@ -342,8 +347,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fetch('/api/cloud/global-songs')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data?.songs && Array.isArray(data.songs)) {
-          setGlobalApprovedSongs(data.songs);
+        if (!cancelled) {
+          if (data?.songs && Array.isArray(data.songs)) {
+            setGlobalApprovedSongs(data.songs);
+          }
+          if (data?.removedSongIds && Array.isArray(data.removedSongIds)) {
+            setRemovedGlobalSongIds(data.removedSongIds);
+          }
         }
       })
       .catch(() => {});
@@ -675,14 +685,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const allAvailableSongs = useMemo(() => {
-    const combinedCatalog = [...getAllSongs()];
+    const removedSet = new Set(removedGlobalSongIds);
+    const combinedCatalog = getAllSongs().filter(
+      (s) => !removedSet.has(s.id) && !removedSet.has(s.slug)
+    );
     for (const gSong of globalApprovedSongs) {
-      if (!combinedCatalog.some((c) => c.id === gSong.id || c.slug === gSong.slug)) {
+      if (
+        !removedSet.has(gSong.id) &&
+        !removedSet.has(gSong.slug) &&
+        !removedSet.has(gSong.id.replace(/^global_/, '')) &&
+        !combinedCatalog.some((c) => c.id === gSong.id || c.slug === gSong.slug)
+      ) {
         combinedCatalog.push(gSong);
       }
     }
     return mergeCatalogAndCustomSongs(customSongs, combinedCatalog);
-  }, [customSongs, globalApprovedSongs]);
+  }, [customSongs, globalApprovedSongs, removedGlobalSongIds]);
 
   const getSongByIdOrSlug = useCallback(
     (idOrSlug: string): SongRecord | undefined => {
@@ -879,6 +897,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       storageWarning,
       customSongs,
       globalApprovedSongs,
+      removedGlobalSongIds,
       refreshGlobalSongs,
       allAvailableSongs,
       getSongByIdOrSlug,
@@ -920,6 +939,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       storageWarning,
       customSongs,
       globalApprovedSongs,
+      removedGlobalSongIds,
       refreshGlobalSongs,
       allAvailableSongs,
       getSongByIdOrSlug,

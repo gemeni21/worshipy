@@ -54,8 +54,8 @@ export async function PATCH(
     const body = await req.json();
     const { status, adminNotes } = body;
 
-    if (status !== 'approved' && status !== 'rejected') {
-      return NextResponse.json({ error: 'Status must be approved or rejected.' }, { status: 400 });
+    if (status !== 'approved' && status !== 'rejected' && status !== 'removed') {
+      return NextResponse.json({ error: 'Status must be approved, rejected, or removed.' }, { status: 400 });
     }
 
     const updated = reviewSongSubmission({

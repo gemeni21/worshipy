@@ -39,9 +39,11 @@ interface AuthContextValue {
   submitSongForGlobal: (song: SongRecord, notes?: string) => Promise<SongSubmission>;
   reviewSubmission: (
     submissionId: string,
-    status: 'approved' | 'rejected',
+    status: 'approved' | 'rejected' | 'removed',
     adminNotes?: string
   ) => Promise<SongSubmission>;
+  removeSongGlobally: (songId: string, reason?: string) => Promise<void>;
+  restoreSongGlobally: (songId: string) => Promise<void>;
   syncStatus: 'idle' | 'syncing' | 'synced' | 'error';
   lastSyncedAt: string | null;
   syncWithCloud: (localPayload: {
@@ -262,11 +264,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [authFetch, refreshSubmissions]
   );
 
-  // Admin: Review submission (approve / reject)
+  // Admin: Review submission (approve / reject / remove)
   const reviewSubmission = useCallback(
     async (
       submissionId: string,
-      status: 'approved' | 'rejected',
+      status: 'approved' | 'rejected' | 'removed',
       adminNotes?: string
     ): Promise<SongSubmission> => {
       const res = await authFetch(`/api/cloud/submissions/${submissionId}`, {
@@ -282,6 +284,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       await refreshSubmissions();
       return data.submission;
+    },
+    [authFetch, refreshSubmissions]
+  );
+
+  // Admin: Remove a song globally
+  const removeSongGlobally = useCallback(
+    async (songId: string, reason?: string) => {
+      const res = await authFetch('/api/cloud/global-songs', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId, reason }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to remove song globally.');
+      }
+
+      await refreshSubmissions();
+    },
+    [authFetch, refreshSubmissions]
+  );
+
+  // Admin: Restore a song globally
+  const restoreSongGlobally = useCallback(
+    async (songId: string) => {
+      const res = await authFetch('/api/cloud/global-songs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId, action: 'restore' }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to restore song globally.');
+      }
+
+      await refreshSubmissions();
     },
     [authFetch, refreshSubmissions]
   );
@@ -353,6 +393,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshSubmissions,
       submitSongForGlobal,
       reviewSubmission,
+      removeSongGlobally,
+      restoreSongGlobally,
       syncStatus,
       lastSyncedAt,
       syncWithCloud,
@@ -371,6 +413,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshSubmissions,
       submitSongForGlobal,
       reviewSubmission,
+      removeSongGlobally,
+      restoreSongGlobally,
       syncStatus,
       lastSyncedAt,
       syncWithCloud,

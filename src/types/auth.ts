@@ -21,7 +21,21 @@ export interface UserProfile {
   cloudStorage?: CloudStorageConfig;
 }
 
-export type SubmissionStatus = 'pending' | 'approved' | 'rejected';
+export type SubmissionStatus = 'pending' | 'approved' | 'rejected' | 'removed';
+
+export interface RemovedGlobalSongRecord {
+  id: string;
+  slug: string;
+  title: string;
+  artist?: string;
+  removedAt: string;
+  removedBy: {
+    userId: string;
+    email: string;
+    displayName: string;
+  };
+  reason?: string;
+}
 
 export interface SongSubmission {
   id: string;

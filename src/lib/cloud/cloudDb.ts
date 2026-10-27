@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import type { SongRecord } from '@/types/song';
 import type {
+  RemovedGlobalSongRecord,
   SongSubmission,
   SubmissionStatus,
   UserCloudSyncPayload,
@@ -28,6 +29,7 @@ interface CloudStoreSchema {
   userSyncData: Record<string, UserCloudSyncPayload>;
   submissions: Record<string, SongSubmission>;
   approvedGlobalSongs: Record<string, SongRecord>;
+  removedGlobalSongs?: Record<string, RemovedGlobalSongRecord>;
 }
 
 const DATA_DIR = path.resolve(process.cwd(), '.data');
@@ -45,7 +47,9 @@ function ensureDataStore(): CloudStoreSchema {
 
     if (fs.existsSync(STORE_FILE)) {
       const raw = fs.readFileSync(STORE_FILE, 'utf-8');
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (!parsed.removedGlobalSongs) parsed.removedGlobalSongs = {};
+      return parsed;
     }
   } catch (err) {
     console.error('Error reading cloud store file, reinitializing default store:', err);
@@ -97,6 +101,7 @@ function ensureDataStore(): CloudStoreSchema {
     userSyncData: {},
     submissions: {},
     approvedGlobalSongs: {},
+    removedGlobalSongs: {},
   };
 
   try {
@@ -353,7 +358,7 @@ export function getSubmissionById(id: string): SongSubmission | null {
 export function reviewSongSubmission(params: {
   submissionId: string;
   adminUserId: string;
-  status: 'approved' | 'rejected';
+  status: 'approved' | 'rejected' | 'removed';
   adminNotes?: string;
 }): SongSubmission {
   const store = ensureDataStore();
@@ -380,11 +385,11 @@ export function reviewSongSubmission(params: {
   // If approved, publish directly into the Global Approved Catalog!
   if (params.status === 'approved') {
     const publishedSong: SongRecord = {
-      language: { code: 'fil', label: 'Filipino / Tagalog' },
-      category: { id: 'filipino-worship', label: 'Filipino Worship' },
-      originalKey: 'G',
-      sections: [],
       ...submission.song,
+      language: submission.song.language || { code: 'fil', label: 'Filipino / Tagalog' },
+      category: submission.song.category || { id: 'filipino-worship', label: 'Filipino Worship' },
+      originalKey: submission.song.originalKey || 'G',
+      sections: submission.song.sections || [],
       id: `global_${submission.song.id}`,
       slug: submission.song.slug || `global-${submission.song.id}`,
       sourceType: 'catalog',
@@ -397,11 +402,20 @@ export function reviewSongSubmission(params: {
     };
 
     store.approvedGlobalSongs[publishedSong.id] = publishedSong;
-  } else if (params.status === 'rejected') {
-    // If rejected, ensure it is removed from global if previously approved
+  } else if (params.status === 'rejected' || params.status === 'removed') {
+    // If rejected or removed, ensure it is removed from global if previously approved
     const publishedId = `global_${submission.song.id}`;
-    if (store.approvedGlobalSongs[publishedId]) {
-      delete store.approvedGlobalSongs[publishedId];
+    for (const [key, val] of Object.entries(store.approvedGlobalSongs)) {
+      if (
+        key === publishedId ||
+        key === submission.song.id ||
+        key === submission.song.slug ||
+        val.id === publishedId ||
+        val.id === submission.song.id ||
+        val.slug === submission.song.slug
+      ) {
+        delete store.approvedGlobalSongs[key];
+      }
     }
   }
 
@@ -409,7 +423,179 @@ export function reviewSongSubmission(params: {
   return submission;
 }
 
+export function removeSongGlobally(params: {
+  adminUserId: string;
+  songIdOrSlug: string;
+  reason?: string;
+}): { success: boolean; removedRecord: RemovedGlobalSongRecord } {
+  const store = ensureDataStore();
+  if (!store.removedGlobalSongs) store.removedGlobalSongs = {};
+
+  const admin = findUserById(params.adminUserId);
+  if (!admin || admin.role !== 'admin') {
+    throw new Error('Unauthorized: Admin privileges required to remove songs globally.');
+  }
+
+  const targetKey = params.songIdOrSlug.trim();
+  const now = new Date().toISOString();
+
+  let songTitle = targetKey;
+  let songSlug = targetKey;
+  let songArtist: string | undefined = undefined;
+
+  // 1. Remove from approvedGlobalSongs if present
+  const matchedApprovedEntry = Object.entries(store.approvedGlobalSongs).find(([key, song]) => {
+    return (
+      key === targetKey ||
+      key === `global_${targetKey}` ||
+      song.id === targetKey ||
+      song.slug === targetKey ||
+      song.id === `global_${targetKey}`
+    );
+  });
+
+  if (matchedApprovedEntry) {
+    const [key, approvedSong] = matchedApprovedEntry;
+    songTitle = approvedSong.title;
+    songSlug = approvedSong.slug;
+    songArtist = approvedSong.artist;
+    delete store.approvedGlobalSongs[key];
+  }
+
+  // 2. Mark any matching submissions as removed
+  for (const sub of Object.values(store.submissions)) {
+    if (
+      sub.songId === targetKey ||
+      sub.song.id === targetKey ||
+      sub.song.slug === targetKey ||
+      `global_${sub.songId}` === targetKey ||
+      `global_${sub.song.id}` === targetKey
+    ) {
+      sub.status = 'removed';
+      sub.reviewedAt = now;
+      sub.reviewedBy = {
+        userId: admin.id,
+        email: admin.email,
+        displayName: admin.displayName,
+      };
+      sub.adminNotes = params.reason?.trim() || 'Removed from global catalog by administrator.';
+      songTitle = sub.song.title;
+      songSlug = sub.song.slug;
+      songArtist = sub.song.artist;
+    }
+  }
+
+  // 3. Add to removedGlobalSongs index
+  const removedRecord: RemovedGlobalSongRecord = {
+    id: targetKey,
+    slug: songSlug,
+    title: songTitle,
+    artist: songArtist,
+    removedAt: now,
+    removedBy: {
+      userId: admin.id,
+      email: admin.email,
+      displayName: admin.displayName,
+    },
+    reason: params.reason?.trim() || 'Removed from global catalog by administrator.',
+  };
+
+  store.removedGlobalSongs[targetKey] = removedRecord;
+  if (songSlug && songSlug !== targetKey) {
+    store.removedGlobalSongs[songSlug] = removedRecord;
+  }
+
+  saveStore(store);
+  return { success: true, removedRecord };
+}
+
+export function restoreSongGlobally(params: {
+  adminUserId: string;
+  songIdOrSlug: string;
+}): { success: boolean; restoredSongId: string } {
+  const store = ensureDataStore();
+  if (!store.removedGlobalSongs) store.removedGlobalSongs = {};
+
+  const admin = findUserById(params.adminUserId);
+  if (!admin || admin.role !== 'admin') {
+    throw new Error('Unauthorized: Admin privileges required to restore songs globally.');
+  }
+
+  const targetKey = params.songIdOrSlug.trim();
+  delete store.removedGlobalSongs[targetKey];
+
+  // If it was a submission, restore status to approved and re-insert into approvedGlobalSongs
+  for (const sub of Object.values(store.submissions)) {
+    if (
+      sub.songId === targetKey ||
+      sub.song.id === targetKey ||
+      sub.song.slug === targetKey ||
+      `global_${sub.songId}` === targetKey ||
+      `global_${sub.song.id}` === targetKey
+    ) {
+      sub.status = 'approved';
+      sub.reviewedAt = new Date().toISOString();
+      sub.reviewedBy = {
+        userId: admin.id,
+        email: admin.email,
+        displayName: admin.displayName,
+      };
+      sub.adminNotes = 'Restored to global catalog by administrator.';
+
+      const publishedSong: SongRecord = {
+        ...sub.song,
+        language: sub.song.language || { code: 'fil', label: 'Filipino / Tagalog' },
+        category: sub.song.category || { id: 'filipino-worship', label: 'Filipino Worship' },
+        originalKey: sub.song.originalKey || 'G',
+        sections: sub.song.sections || [],
+        id: `global_${sub.song.id}`,
+        slug: sub.song.slug || `global-${sub.song.id}`,
+        sourceType: 'catalog',
+        contentStatus: 'authorized',
+        attribution: `Contributed by ${sub.submittedBy.displayName}${
+          sub.submittedBy.churchName ? ` (${sub.submittedBy.churchName})` : ''
+        }`,
+        rightsAcknowledged: true,
+        updatedAt: new Date().toISOString(),
+      };
+
+      store.approvedGlobalSongs[publishedSong.id] = publishedSong;
+      if (sub.song.slug) {
+        delete store.removedGlobalSongs[sub.song.slug];
+      }
+    }
+  }
+
+  saveStore(store);
+  return { success: true, restoredSongId: targetKey };
+}
+
+export function getRemovedGlobalSongs(): RemovedGlobalSongRecord[] {
+  const store = ensureDataStore();
+  const seenIds = new Set<string>();
+  const list: RemovedGlobalSongRecord[] = [];
+  for (const record of Object.values(store.removedGlobalSongs || {})) {
+    if (!seenIds.has(record.id)) {
+      seenIds.add(record.id);
+      list.push(record);
+    }
+  }
+  return list.sort((a, b) => new Date(b.removedAt).getTime() - new Date(a.removedAt).getTime());
+}
+
+export function getRemovedGlobalSongIds(): string[] {
+  const store = ensureDataStore();
+  return Object.keys(store.removedGlobalSongs || {});
+}
+
 export function getApprovedGlobalSongs(): SongRecord[] {
   const store = ensureDataStore();
-  return Object.values(store.approvedGlobalSongs);
+  const removedIds = new Set(Object.keys(store.removedGlobalSongs || {}));
+  return Object.values(store.approvedGlobalSongs).filter((song) => {
+    return (
+      !removedIds.has(song.id) &&
+      !removedIds.has(song.slug) &&
+      !removedIds.has(song.id.replace(/^global_/, ''))
+    );
+  });
 }

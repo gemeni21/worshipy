@@ -30,8 +30,10 @@ import {
   Trash2,
   Type,
   WifiOff,
+  ShieldCheck,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { downloadSongAsChordPro } from '@/lib/chordpro/chordProDownload';
 import { ChordInspectorModal } from '@/components/music/ChordInspectorModal';
 import { PracticeDock } from '@/components/practice/PracticeDock';
@@ -103,9 +105,15 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     getOfflineSongRecord,
     saveSongOffline,
     removeSongOffline,
+    refreshGlobalSongs,
     settings,
     updateSettings,
   } = useApp();
+
+  const { isAdmin, removeSongGlobally } = useAuth();
+  const [showAdminRemoveModal, setShowAdminRemoveModal] = useState(false);
+  const [adminRemoveReason, setAdminRemoveReason] = useState('');
+  const [isAdminRemoving, setIsAdminRemoving] = useState(false);
 
   // Resolve song from custom songs, built-in catalog, or offline IndexedDB
   const offlineCopy = getOfflineSongRecord(slug);
@@ -497,6 +505,29 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
       type: 'success',
       message: `Created setlist "${created.name}" and added "${activeSourceSong.title}".`,
     });
+  };
+
+  const handleAdminConfirmRemove = async () => {
+    if (!activeSourceSong) return;
+    setIsAdminRemoving(true);
+    try {
+      await removeSongGlobally(activeSourceSong.id, adminRemoveReason);
+      setShowAdminRemoveModal(false);
+      setAdminRemoveReason('');
+      await refreshGlobalSongs();
+      setFeedbackBanner({
+        type: 'success',
+        message: `"${activeSourceSong.title}" has been removed globally from the catalog.`,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to remove song globally.';
+      setFeedbackBanner({
+        type: 'error',
+        message: msg,
+      });
+    } finally {
+      setIsAdminRemoving(false);
+    }
   };
 
   const jumpToSection = (index: number) => {
@@ -1268,6 +1299,22 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 aria-hidden="true"
               />
             </button>
+
+            {/* Admin Remove Globally Action */}
+            {isAdmin && activeSourceSong.sourceType !== 'custom' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminRemoveReason('');
+                  setShowAdminRemoveModal(true);
+                }}
+                title="Admin only: Remove this song globally from the public catalog"
+                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-bold transition-colors cursor-pointer min-h-[2.75rem]"
+              >
+                <ShieldCheck className="w-4 h-4 text-amber-400" aria-hidden="true" />
+                <span>Remove Globally (Admin)</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1703,6 +1750,55 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           currentKey={displayedKey}
           currentCapo={selectedCapo}
         />
+      )}
+
+      {/* Admin Global Song Removal Modal */}
+      {showAdminRemoveModal && activeSourceSong && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-3xl border border-rose-500/30 bg-[#101014] p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-rose-400" />
+              <span>Remove Song Globally</span>
+            </h3>
+
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              Are you sure you want to remove <strong className="text-[var(--text-primary)]">&ldquo;{activeSourceSong.title}&rdquo;</strong> from the global public catalog?
+              It will immediately disappear from the public catalog for all users worldwide.
+            </p>
+
+            <div>
+              <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                Reason for Removal (Logged in admin records)
+              </label>
+              <textarea
+                rows={3}
+                value={adminRemoveReason}
+                onChange={(e) => setAdminRemoveReason(e.target.value)}
+                placeholder="e.g. Inappropriate lyrics, chord inaccuracy, or duplicate."
+                className="w-full p-3 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-rose-400 resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+              <button
+                type="button"
+                onClick={() => setShowAdminRemoveModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleAdminConfirmRemove}
+                disabled={isAdminRemoving}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shadow-rose-600/30"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isAdminRemoving ? 'Removing...' : 'Confirm Global Removal'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

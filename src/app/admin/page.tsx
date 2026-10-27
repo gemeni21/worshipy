@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Volume2,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
@@ -21,7 +23,16 @@ import { playGuitarChord } from '@/lib/audio/soundEngine';
 import type { SongSubmission, SubmissionStatus } from '@/types/auth';
 
 export default function AdminPage() {
-  const { user, isAdmin, isAuthLoading, submissions, reviewSubmission, refreshSubmissions } = useAuth();
+  const {
+    user,
+    isAdmin,
+    isAuthLoading,
+    submissions,
+    reviewSubmission,
+    removeSongGlobally,
+    restoreSongGlobally,
+    refreshSubmissions,
+  } = useAuth();
   const { refreshGlobalSongs } = useApp();
   const [activeTab, setActiveTab] = useState<SubmissionStatus>('pending');
   const [selectedSubmission, setSelectedSubmission] = useState<SongSubmission | null>(null);
@@ -31,6 +42,11 @@ export default function AdminPage() {
   const [reviewAction, setReviewAction] = useState<'approved' | 'rejected' | null>(null);
   const [adminNoteInput, setAdminNoteInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Remove song modal state
+  const [songToRemove, setSongToRemove] = useState<SongSubmission | null>(null);
+  const [removeReason, setRemoveReason] = useState('');
+  const [isRemoving, setIsRemoving] = useState(false);
 
   if (isAuthLoading) {
     return (
@@ -71,6 +87,7 @@ export default function AdminPage() {
   const pendingCount = submissions.filter((s) => s.status === 'pending').length;
   const approvedCount = submissions.filter((s) => s.status === 'approved').length;
   const rejectedCount = submissions.filter((s) => s.status === 'rejected').length;
+  const removedCount = submissions.filter((s) => s.status === 'removed').length;
 
   const handleOpenReviewAction = (submission: SongSubmission, action: 'approved' | 'rejected') => {
     setSelectedSubmission(submission);
@@ -89,6 +106,38 @@ export default function AdminPage() {
       await refreshGlobalSongs();
     } catch (err) {
       console.error('Failed to submit review:', err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleConfirmRemove = async () => {
+    if (!songToRemove) return;
+    setIsRemoving(true);
+    try {
+      await removeSongGlobally(songToRemove.song.id, removeReason);
+      setSongToRemove(null);
+      setRemoveReason('');
+      if (selectedSubmission?.id === songToRemove.id) {
+        setSelectedSubmission(null);
+      }
+      await refreshSubmissions();
+      await refreshGlobalSongs();
+    } catch (err) {
+      console.error('Failed to remove song globally:', err);
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
+  const handleRestoreGlobal = async (sub: SongSubmission) => {
+    setIsProcessing(true);
+    try {
+      await restoreSongGlobally(sub.song.id);
+      await refreshSubmissions();
+      await refreshGlobalSongs();
+    } catch (err) {
+      console.error('Failed to restore song globally:', err);
     } finally {
       setIsProcessing(false);
     }
@@ -173,6 +222,21 @@ export default function AdminPage() {
             {rejectedCount}
           </span>
         </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('removed')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+            activeTab === 'removed'
+              ? 'bg-[var(--bg-surface)] text-slate-300 shadow-sm border border-slate-500/30'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <span>Removed Globally</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-500/30 text-slate-200">
+            {removedCount}
+          </span>
+        </button>
       </div>
 
       {/* Submissions List */}
@@ -185,6 +249,8 @@ export default function AdminPage() {
           <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto">
             {activeTab === 'pending'
               ? 'All user-submitted songs have been reviewed. New submissions from worship leaders will appear here.'
+              : activeTab === 'removed'
+              ? 'No songs have been removed from the global catalog.'
               : `No songs currently in ${activeTab} status.`}
           </p>
         </div>
@@ -237,8 +303,20 @@ export default function AdminPage() {
 
                 {/* Admin Notes if any */}
                 {sub.adminNotes && (
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200 mb-3">
-                    <strong className="text-amber-400 block text-[10px] uppercase tracking-wide">Admin Review Note:</strong>
+                  <div
+                    className={`p-2.5 rounded-xl border text-[11px] mb-3 ${
+                      sub.status === 'removed'
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                        : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                    }`}
+                  >
+                    <strong
+                      className={`block text-[10px] uppercase tracking-wide ${
+                        sub.status === 'removed' ? 'text-rose-400' : 'text-amber-400'
+                      }`}
+                    >
+                      {sub.status === 'removed' ? 'Reason for Removal:' : 'Admin Review Note:'}
+                    </strong>
                     {sub.adminNotes}
                   </div>
                 )}
@@ -274,6 +352,32 @@ export default function AdminPage() {
                       <span>Approve & Publish</span>
                     </button>
                   </div>
+                )}
+
+                {sub.status === 'approved' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSongToRemove(sub);
+                      setRemoveReason('');
+                    }}
+                    className="px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove Globally</span>
+                  </button>
+                )}
+
+                {sub.status === 'removed' && (
+                  <button
+                    type="button"
+                    onClick={() => handleRestoreGlobal(sub)}
+                    disabled={isProcessing}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Restore to Global</span>
+                  </button>
                 )}
               </div>
             </div>
@@ -343,20 +447,53 @@ export default function AdminPage() {
                 Submitted by: {selectedSubmission.submittedBy.displayName}
               </span>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setReviewAction('rejected')}
-                  className="px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-semibold"
-                >
-                  Request Revision
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReviewAction('approved')}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold"
-                >
-                  Approve & Publish
-                </button>
+                {selectedSubmission.status === 'pending' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setReviewAction('rejected')}
+                      className="px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-semibold"
+                    >
+                      Request Revision
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewAction('approved')}
+                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold"
+                    >
+                      Approve & Publish
+                    </button>
+                  </>
+                )}
+
+                {selectedSubmission.status === 'approved' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSongToRemove(selectedSubmission);
+                      setRemoveReason('');
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remove Globally</span>
+                  </button>
+                )}
+
+                {selectedSubmission.status === 'removed' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleRestoreGlobal(selectedSubmission);
+                      setSelectedSubmission(null);
+                    }}
+                    disabled={isProcessing}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Restore to Global</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -427,6 +564,63 @@ export default function AdminPage() {
                   : reviewAction === 'approved'
                   ? 'Publish Globally'
                   : 'Send Revision Request'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Remove Song Globally Confirmation Modal */}
+      {songToRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-3xl border border-rose-500/30 bg-[#101014] p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-rose-400" />
+              <span>Remove Song Globally</span>
+            </h3>
+
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              This will immediately remove <strong className="text-[var(--text-primary)]">&ldquo;{songToRemove.song.title}&rdquo;</strong> ({songToRemove.song.artist || 'Unknown Artist'}) from the global catalog for all Worshipy users worldwide.
+            </p>
+
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-300 space-y-1">
+              <div className="font-bold flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>Author Local Copy Preserved</span>
+              </div>
+              <p className="opacity-90 leading-normal">
+                The author ({songToRemove.submittedBy.displayName}) will retain their local draft on their device in &ldquo;My Songs&rdquo;, updated with your removal reason.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                Reason for Removal (Required for audit log & author feedback)
+              </label>
+              <textarea
+                rows={3}
+                value={removeReason}
+                onChange={(e) => setRemoveReason(e.target.value)}
+                placeholder="e.g. Inappropriate content, copyright concern, or chord inaccuracy."
+                className="w-full p-3 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-rose-400 resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+              <button
+                type="button"
+                onClick={() => setSongToRemove(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemove}
+                disabled={isRemoving}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shadow-rose-600/30"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isRemoving ? 'Removing...' : 'Confirm Global Removal'}</span>
               </button>
             </div>
           </div>
