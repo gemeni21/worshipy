@@ -34,6 +34,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { getAllSongs, getSongById } from '@/lib/catalog/songCatalog';
 import {
   formatSignedSemitones,
@@ -140,14 +141,30 @@ function LiveSyncWorkspace({
     useState<InstrumentViewMode>('guitar');
 
   // UI Alerts & Modals
+  const { user } = useAuth();
+  const [networkOrigin, setNetworkOrigin] = useState<string>('');
   const [errorAlert, setErrorAlert] = useState<{
     title: string;
     message: string;
     code?: string;
   } | null>(null);
-  const [copiedField, setCopiedField] = useState<'code' | 'link' | null>(null);
+  const [copiedField, setCopiedField] = useState<
+    'code' | 'link' | 'network' | null
+  >(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [songToAddId, setSongToAddId] = useState(allSongs[0]?.id ?? '');
+
+  // Discover local network origin (for band Wi-Fi synchronization)
+  useEffect(() => {
+    fetch('/api/live/network-info')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.networkOrigin) {
+          setNetworkOrigin(data.networkOrigin);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const sectionElementsRef = useRef<Record<string, HTMLElement | null>>({});
   const latestRevisionRef = useRef<number>(0);
@@ -367,7 +384,7 @@ function LiveSyncWorkspace({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: sessionTitle,
-          leaderName,
+          leaderName: leaderName.trim() || user?.displayName || 'Worship Leader',
           instrument: starterInstrument,
           initialSongId:
             setlistSongIds && setlistSongIds.length > 0
@@ -434,6 +451,12 @@ function LiveSyncWorkspace({
     setErrorAlert(null);
     setIsSubmitting(true);
 
+    const effectiveName =
+      memberNameInput.trim() || user?.displayName || 'Musician';
+    if (!memberNameInput.trim()) {
+      setMemberNameInput(effectiveName);
+    }
+
     try {
       const res = await fetch('/api/live/sessions/join', {
         method: 'POST',
@@ -441,7 +464,7 @@ function LiveSyncWorkspace({
         body: JSON.stringify({
           joinCode: joinCodeInput.trim() || undefined,
           inviteToken: joinInviteTokenInput.trim() || undefined,
-          participantName: memberNameInput,
+          participantName: effectiveName,
           instrument: memberInstrument,
         }),
       });
@@ -452,6 +475,10 @@ function LiveSyncWorkspace({
       };
 
       if (!res.ok) {
+        let msg = data.error ?? 'Invalid join code or invitation link.';
+        if (data.code === 'SESSION_NOT_FOUND') {
+          msg = `Session "${joinCodeInput.trim()}" was not found on this server. If joining from a separate browser or device, please ensure you are using the leader's exact Invite Link or Wi-Fi Link.`;
+        }
         setErrorAlert({
           title:
             data.code === 'INVITATION_EXPIRED'
@@ -459,7 +486,7 @@ function LiveSyncWorkspace({
               : data.code === 'SESSION_ENDED'
               ? 'Session Already Ended'
               : 'Unable to Join Live Session',
-          message: data.error ?? 'Invalid join code or invitation link.',
+          message: msg,
           code: data.code,
         });
         return;
@@ -673,12 +700,60 @@ function LiveSyncWorkspace({
     setErrorAlert(null);
   };
 
-  const copyToClipboard = (text: string, field: 'code' | 'link') => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => {
-        setCopiedField(field);
-        window.setTimeout(() => setCopiedField(null), 2500);
-      });
+  const copyToClipboard = async (
+    text: string,
+    field: 'code' | 'link' | 'network'
+  ) => {
+    let success = false;
+
+    // 1. Desktop native Electron clipboard bridge
+    try {
+      const desktopBridge = (
+        window as unknown as {
+          worshipyDesktop?: {
+            copyToClipboard?: (t: string) => boolean;
+          };
+        }
+      )?.worshipyDesktop;
+      if (typeof desktopBridge?.copyToClipboard === 'function') {
+        success = desktopBridge.copyToClipboard(text);
+      }
+    } catch {
+      // fallback
+    }
+
+    // 2. Modern Clipboard API
+    if (!success && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        success = true;
+      } catch {
+        // fallback
+      }
+    }
+
+    // 3. Fallback textarea copy execCommand
+    if (!success && typeof document !== 'undefined') {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        success = document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch {
+        // fallback
+      }
+    }
+
+    if (success) {
+      setCopiedField(field);
+      window.setTimeout(() => setCopiedField(null), 2500);
     }
   };
 
@@ -786,10 +861,11 @@ function LiveSyncWorkspace({
                 <input
                   id="member-name-input"
                   type="text"
-                  required
                   value={memberNameInput}
                   onChange={(e) => setMemberNameInput(e.target.value)}
-                  placeholder="e.g. Carlo (Acoustic Guitar)"
+                  placeholder={
+                    user?.displayName || 'e.g. Carlo (Acoustic Guitar)'
+                  }
                   className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm focus:bg-[var(--bg-surface)]"
                 />
               </div>
@@ -826,7 +902,6 @@ function LiveSyncWorkspace({
                 type="submit"
                 disabled={
                   isSubmitting ||
-                  !memberNameInput.trim() ||
                   (!joinCodeInput.trim() && !joinInviteTokenInput.trim())
                 }
                 className="w-full h-12 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm sm:text-base shadow-sm transition-all disabled:opacity-40 cursor-pointer"
@@ -1086,6 +1161,14 @@ function LiveSyncWorkspace({
         }`
       : `/live?code=${session.joinCode}`;
 
+  const wifiJoinLink = networkOrigin
+    ? `${networkOrigin}/live?code=${encodeURIComponent(
+        session.joinCode
+      )}${
+        inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : ''
+      }`
+    : fullJoinLink;
+
   const handleKeyStep = (delta: number) => {
     const next = normalizeSemitones(activeSemitones + delta);
     if (canControlOfficialState && viewMode === 'follow') {
@@ -1205,62 +1288,85 @@ function LiveSyncWorkspace({
           </div>
 
           {/* Right Action Controls: Join Code, Simulate Reconnect, Leave/End */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Join Code Badge + Copy */}
-            <div className="inline-flex items-center rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] px-3 py-1.5 gap-2">
-              <div>
-                <span className="block text-[0.625rem] uppercase tracking-wider text-[var(--text-secondary)]">
-                  Join Code
-                </span>
-                <span
-                  data-testid="live-join-code"
-                  className="font-mono font-bold text-sm sm:text-base tracking-widest text-[var(--brand-accent)]"
+          <div className="flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Join Code Badge + Copy */}
+              <div className="inline-flex items-center rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] px-3 py-1.5 gap-2">
+                <div>
+                  <span className="block text-[0.625rem] uppercase tracking-wider text-[var(--text-secondary)]">
+                    Join Code
+                  </span>
+                  <span
+                    data-testid="live-join-code"
+                    className="font-mono font-bold text-sm sm:text-base tracking-widest text-[var(--brand-accent)]"
+                  >
+                    {session.joinCode}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(session.joinCode, 'code')}
+                  aria-label="Copy join code"
+                  className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:text-[var(--brand-accent)] text-xs font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"
                 >
-                  {session.joinCode}
-                </span>
+                  {copiedField === 'code' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+                      <span className="text-emerald-400 font-bold">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Code</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(fullJoinLink, 'link')}
+                  aria-label="Copy invite link"
+                  className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:text-[var(--brand-accent)] text-xs font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Copy full invite link for this device"
+                >
+                  {copiedField === 'link' ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+                      <span className="text-emerald-400 font-bold">Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Link2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Invite Link</span>
+                    </>
+                  )}
+                </button>
+                {networkOrigin && (
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(wifiJoinLink, 'network')}
+                    aria-label="Copy Wi-Fi link for band members"
+                    className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:text-[var(--brand-accent)] text-xs font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Share this link with band members on the same Wi-Fi network"
+                  >
+                    {copiedField === 'network' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+                        <span className="text-emerald-400 font-bold">Copied Wi-Fi</span>
+                      </>
+                    ) : (
+                      <>
+                        <Wifi className="w-3.5 h-3.5 text-[var(--brand-accent)]" aria-hidden="true" />
+                        <span>Wi-Fi Link</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => copyToClipboard(session.joinCode, 'code')}
-                aria-label="Copy join code"
-                className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:text-[var(--brand-accent)] text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
-              >
-                {copiedField === 'code' ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Copied</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Code</span>
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => copyToClipboard(fullJoinLink, 'link')}
-                aria-label="Copy invite link"
-                className="p-1.5 rounded-lg bg-[var(--bg-surface)] hover:text-[var(--brand-accent)] text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
-              >
-                {copiedField === 'link' ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Copied</span>
-                  </>
-                ) : (
-                  <>
-                    <Link2 className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Invite Link</span>
-                  </>
-                )}
-              </button>
-            </div>
 
-            {/* Test Reconnection Button */}
-            <button
-              type="button"
-              onClick={() => setSimulatedDisconnect((prev) => !prev)}
+              {/* Test Reconnection Button */}
+              <button
+                type="button"
+                onClick={() => setSimulatedDisconnect((prev) => !prev)}
               className={`px-3 py-2 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer ${
                 simulatedDisconnect
                   ? 'bg-amber-600 text-white border-amber-600'
@@ -1289,6 +1395,22 @@ function LiveSyncWorkspace({
               >
                 Leave Session
               </button>
+            )}
+          </div>
+
+            {networkOrigin && (
+              <div className="text-[0.6875rem] text-[var(--text-secondary)] flex items-center gap-1.5 px-1">
+                <Wifi className="w-3 h-3 text-[var(--brand-accent)] shrink-0" />
+                <span>Band Wi-Fi:</span>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(wifiJoinLink, 'network')}
+                  className="font-mono text-[var(--brand-accent)] underline hover:text-[var(--brand-accent)]/80 text-left truncate max-w-[280px] sm:max-w-[420px] cursor-pointer"
+                  title="Click to copy full Wi-Fi join link"
+                >
+                  {wifiJoinLink}
+                </button>
+              </div>
             )}
           </div>
         </div>

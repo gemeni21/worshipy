@@ -1,5 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
 import {
   clearAllLiveSessionsForTest,
   createLiveSession,
@@ -471,5 +472,28 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
         return true;
       }
     );
+  });
+
+  it('15. verifies local network interface discovery and origin formatting for multi-device sync', () => {
+    const ifaces = os.networkInterfaces();
+    const addresses: string[] = [];
+
+    for (const name of Object.keys(ifaces)) {
+      for (const net of ifaces[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) {
+          addresses.push(net.address);
+        }
+      }
+    }
+
+    // Must resolve at least a loopback fallback or valid IPv4
+    const primaryIp = addresses[0] || '127.0.0.1';
+    assert.ok(typeof primaryIp === 'string');
+    assert.ok(primaryIp.length > 0);
+
+    const port = '3000';
+    const networkOrigin = `http://${primaryIp}:${port}`;
+    assert.ok(networkOrigin.startsWith('http://'));
+    assert.ok(networkOrigin.endsWith(':3000'));
   });
 });

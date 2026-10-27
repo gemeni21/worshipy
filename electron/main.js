@@ -11,11 +11,29 @@ let serverProcess = null;
 let serverPort = 3000;
 const serverLogs = [];
 
-// Find an available local TCP port
-function getFreePort() {
+// Check if a specific TCP port is currently free
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once('error', () => resolve(false));
+    srv.once('listening', () => {
+      srv.close(() => resolve(true));
+    });
+    srv.listen(port, '0.0.0.0');
+  });
+}
+
+// Find an available local TCP port, preferring standard ports
+async function findBestPort() {
+  const preferred = [3000, 3001, 3333, 4000, 8080];
+  for (const p of preferred) {
+    if (await isPortAvailable(p)) {
+      return p;
+    }
+  }
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
-    srv.listen(0, '127.0.0.1', () => {
+    srv.listen(0, '0.0.0.0', () => {
       const port = srv.address().port;
       srv.close((err) => {
         if (err) reject(err);
@@ -63,7 +81,7 @@ async function startServer() {
   }
 
   // Production: launch Next.js standalone server
-  serverPort = await getFreePort();
+  serverPort = await findBestPort();
   const standaloneServerPath = path.join(app.getAppPath(), '.next/standalone/server.js');
 
   if (!fs.existsSync(standaloneServerPath)) {
@@ -79,7 +97,7 @@ async function startServer() {
     env: {
       ...process.env,
       PORT: String(serverPort),
-      HOSTNAME: '127.0.0.1',
+      HOSTNAME: '0.0.0.0',
       NODE_ENV: 'production',
       WORSHIPY_USER_DATA: userDataDir,
     },
@@ -126,9 +144,14 @@ async function createWindow(url) {
     },
   });
 
-  // Enable microphone permissions for Tuner and Practice recording
+  // Enable microphone permissions for Tuner & Practice recording, and clipboard for Live Sync codes
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'media') {
+    if (
+      permission === 'media' ||
+      permission === 'clipboard-sanitized-write' ||
+      permission === 'clipboard-read' ||
+      permission === 'clipboard'
+    ) {
       callback(true);
       return;
     }
