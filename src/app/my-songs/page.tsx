@@ -14,7 +14,6 @@ import {
   FileUp,
   FolderHeart,
   Heart,
-  Info,
   Music,
   Plus,
   Search,
@@ -22,8 +21,15 @@ import {
   Trash2,
   Upload,
   X,
+  Globe,
+  Cloud,
+  RefreshCw,
+  LogIn,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
+import { SubmitGlobalSongModal } from '@/components/songs/SubmitGlobalSongModal';
+import { AuthModal } from '@/components/auth/AuthModal';
 import { CustomSongEditor } from '@/components/songs/CustomSongEditor';
 import {
   MAX_CHORDPRO_SIZE_BYTES,
@@ -82,11 +88,24 @@ export default function MySongsPage() {
     isFavorite,
     toggleFavorite,
     isSongSavedOffline,
+    favorites,
+    setlists,
   } = useApp();
+
+  const {
+    user,
+    submissions,
+    syncWithCloud,
+    syncStatus,
+    refreshSubmissions,
+  } = useAuth();
 
   const [mode, setMode] = useState<WorkspaceMode>('list');
   const [editingSongId, setEditingSongId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [songToSubmit, setSongToSubmit] = useState<SongRecord | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Status banner
   const [banner, setBanner] = useState<{
@@ -330,6 +349,45 @@ export default function MySongsPage() {
         type: 'error',
         message: res.error ?? 'Failed to export ChordPro file.',
       });
+    }
+  };
+
+  const handleCloudSync = async () => {
+    if (!user) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    setIsSyncing(true);
+    setBanner(null);
+    try {
+      const result = await syncWithCloud({
+        customSongs,
+        setlists,
+        favorites,
+      });
+
+      if (result?.downloadedSongs && result.downloadedSongs.length > 0) {
+        for (const dlSong of result.downloadedSongs) {
+          const exists = customSongs.some((s) => s.id === dlSong.id);
+          if (!exists) {
+            await saveCustomSong(dlSong);
+          }
+        }
+      }
+
+      setBanner({
+        type: 'success',
+        message: 'Successfully synchronized with Worshipy Cloud across all your devices!',
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Cloud synchronization failed.';
+      setBanner({
+        type: 'error',
+        message: msg,
+      });
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -764,6 +822,26 @@ export default function MySongsPage() {
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
+              onClick={handleCloudSync}
+              disabled={isSyncing}
+              aria-label="Sync personal songs with Worshipy Cloud"
+              className={`h-11 px-4 rounded-xl border text-xs sm:text-sm font-semibold inline-flex items-center gap-2 transition-all cursor-pointer ${
+                syncStatus === 'synced'
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                  : syncStatus === 'error'
+                  ? 'border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                  : 'border-[var(--border-strong)] bg-[var(--bg-surface)] hover:border-[var(--brand-accent)] text-[var(--text-primary)]'
+              }`}
+            >
+              <RefreshCw
+                className={`w-4 h-4 text-[var(--brand-accent)] ${isSyncing ? 'animate-spin' : ''}`}
+                aria-hidden="true"
+              />
+              <span>{isSyncing ? 'Syncing...' : user ? 'Sync to Cloud' : 'Sign In to Sync'}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 setBanner(null);
                 setMode('import');
@@ -792,22 +870,45 @@ export default function MySongsPage() {
           </div>
         </div>
 
-        {/* Device-Local Storage & Rights Explanation */}
-        <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-4 py-3 text-xs sm:text-sm text-[var(--text-secondary)] flex items-start gap-2.5">
-          <Info
-            className="w-4 h-4 text-[var(--brand-accent)] shrink-0 mt-0.5"
-            aria-hidden="true"
-          />
-          <div>
-            <strong className="text-[var(--text-primary)]">
-              Stored Locally on This Device (Basic MVP):
-            </strong>{' '}
-            Personal songs stay separate from the built-in catalog and are saved
-            privately in this browser&apos;s storage (IndexedDB + localStorage).
-            They do not sync across other devices. Use{' '}
-            <strong>Export .cho</strong> to back up or move your personal charts.
+        {/* Free Cloud Sync & Global Publishing Banner */}
+        {!user ? (
+          <div className="rounded-2xl border border-[var(--brand-accent)]/20 bg-[var(--brand-surface)]/40 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0">
+                <Cloud className="w-5 h-5" aria-hidden="true" />
+              </div>
+              <div className="space-y-0.5">
+                <h2 className="text-sm font-bold text-[var(--text-primary)]">
+                  Free Cross-Device Cloud Sync & Global Song Publishing
+                </h2>
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Create a free Worshipy account to back up your custom songs across your phone, tablet, and PC, or submit original songs to the global church catalog.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAuthModalOpen(true)}
+              className="h-9 px-4 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/40 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold inline-flex items-center gap-1.5 shrink-0 transition-all cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Sign In / Create Account</span>
+            </button>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] px-4 py-3 text-xs sm:text-sm text-[var(--text-secondary)] flex items-start gap-2.5">
+            <Cloud
+              className="w-4 h-4 text-[var(--brand-accent)] shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
+            <div>
+              <strong className="text-[var(--text-primary)]">
+                Worshipy Cloud Active ({user.email}):
+              </strong>{' '}
+              Your songs are safely kept offline in this browser and can be synced to your other devices anytime. You can also publish original arrangements to the global catalog for administrator review.
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Status Confirmation / Error Banner */}
@@ -930,6 +1031,10 @@ export default function MySongsPage() {
                 })
               : null;
 
+            const existingSubmission = submissions.find(
+              (sub) => sub.songId === song.id || sub.song?.id === song.id || sub.song?.slug === song.slug
+            );
+
             return (
               <div
                 key={song.id}
@@ -947,6 +1052,30 @@ export default function MySongsPage() {
                     <span className="text-[0.6875rem] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)]">
                       My Song
                     </span>
+
+                    {existingSubmission?.status === 'pending' && (
+                      <span className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                        <Globe className="w-3 h-3 text-amber-500" aria-hidden="true" />
+                        <span>Pending Global Review</span>
+                      </span>
+                    )}
+
+                    {existingSubmission?.status === 'approved' && (
+                      <span className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500" aria-hidden="true" />
+                        <span>Global Catalog</span>
+                      </span>
+                    )}
+
+                    {existingSubmission?.status === 'rejected' && (
+                      <span
+                        title={existingSubmission.adminNotes ? `Admin Note: ${existingSubmission.adminNotes}` : 'Revision requested'}
+                        className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/30 cursor-help"
+                      >
+                        <AlertTriangle className="w-3 h-3 text-rose-500" aria-hidden="true" />
+                        <span>Revision Requested</span>
+                      </span>
+                    )}
 
                     {savedOffline && (
                       <span className="inline-flex items-center gap-1 text-[0.6875rem] font-medium px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
@@ -1009,6 +1138,41 @@ export default function MySongsPage() {
                     <span>Open Chart</span>
                   </Link>
 
+                  {/* Global Publishing Action */}
+                  {existingSubmission?.status === 'approved' ? (
+                    <div
+                      title="This song is approved and published in the global catalog"
+                      className="h-10 px-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-semibold inline-flex items-center gap-1.5"
+                    >
+                      <Globe className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Published Global</span>
+                    </div>
+                  ) : existingSubmission?.status === 'pending' ? (
+                    <div
+                      title="This song is awaiting administrator review"
+                      className="h-10 px-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-semibold inline-flex items-center gap-1.5"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                      <span>Review Pending</span>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!user) {
+                          setIsAuthModalOpen(true);
+                          return;
+                        }
+                        setSongToSubmit(song);
+                      }}
+                      title="Submit song to the global catalog for admin approval"
+                      className="h-10 px-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--brand-accent)] text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    >
+                      <Globe className="w-3.5 h-3.5 text-[var(--brand-accent)]" aria-hidden="true" />
+                      <span>Publish Global</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1069,6 +1233,29 @@ export default function MySongsPage() {
           })}
         </div>
       )}
+
+      {/* Global Song Submission Modal */}
+      {songToSubmit && (
+        <SubmitGlobalSongModal
+          song={songToSubmit}
+          isOpen={Boolean(songToSubmit)}
+          onClose={() => setSongToSubmit(null)}
+          onSubmitted={() => {
+            setSongToSubmit(null);
+            setBanner({
+              type: 'success',
+              message: `"${songToSubmit.title}" has been submitted for global publishing! An administrator will review its chord chart formatting and approve it.`,
+            });
+            refreshSubmissions();
+          }}
+        />
+      )}
+
+      {/* Auth Modal for Sign In / Registration */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+      />
     </div>
   );
 }

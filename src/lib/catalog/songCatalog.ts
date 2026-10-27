@@ -153,8 +153,8 @@ export function searchAndFilterSongs(
     if (
       languageFilter &&
       languageFilter !== 'all' &&
-      song.language.code.toLowerCase() !== languageFilter &&
-      song.language.label.toLowerCase() !== languageFilter
+      song.language?.code?.toLowerCase() !== languageFilter &&
+      song.language?.label?.toLowerCase() !== languageFilter
     ) {
       return false;
     }
@@ -162,8 +162,8 @@ export function searchAndFilterSongs(
     if (
       categoryFilter &&
       categoryFilter !== 'all' &&
-      song.category.id.toLowerCase() !== categoryFilter &&
-      song.category.label.toLowerCase() !== categoryFilter
+      song.category?.id?.toLowerCase() !== categoryFilter &&
+      song.category?.label?.toLowerCase() !== categoryFilter
     ) {
       return false;
     }
@@ -171,7 +171,7 @@ export function searchAndFilterSongs(
     if (
       keyFilter &&
       keyFilter !== 'all' &&
-      song.originalKey.toLowerCase() !== keyFilter
+      song.originalKey?.toLowerCase() !== keyFilter
     ) {
       return false;
     }

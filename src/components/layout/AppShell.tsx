@@ -16,10 +16,15 @@ import {
   Music2,
   Radio,
   Settings,
+  ShieldCheck,
+  LogIn,
   WifiOff,
   X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
+import { AuthModal } from '@/components/auth/AuthModal';
+import { UserProfileDrawer } from '@/components/auth/UserProfileDrawer';
 import { FloatingVoiceSearchButton } from '@/components/search/FloatingVoiceSearchButton';
 import { ThemeCardTiltEffect } from '@/components/theme/ThemeCardTiltEffect';
 
@@ -36,6 +41,7 @@ const NAV_ITEMS = [
 ] as const;
 
 function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
+  const { isAdmin, pendingApprovalsCount } = useAuth();
   const isActive = (href: string) => {
     if (!pathname) return false;
     if (href === '/') return pathname === '/';
@@ -62,6 +68,28 @@ function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
           </Link>
         );
       })}
+
+      {isAdmin && (
+        <Link
+          href="/admin"
+          aria-current={isActive('/admin') ? 'page' : undefined}
+          className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            isActive('/admin')
+              ? 'bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/40'
+              : 'text-amber-400 hover:bg-amber-500/10'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>Admin Curation</span>
+          </div>
+          {pendingApprovalsCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-400 text-black">
+              {pendingApprovalsCount}
+            </span>
+          )}
+        </Link>
+      )}
     </nav>
   );
 }
@@ -274,12 +302,15 @@ function MobileNavLinksActive() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showProfileDrawer, setShowProfileDrawer] = useState(false);
+
   const {
     effectiveOffline,
     simulateOffline,
     setSimulateOffline,
     offlineEntries,
-    customSongs,
   } = useApp();
 
   return (
@@ -307,16 +338,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <DesktopNavLinksActive />
         </Suspense>
 
-        <div className="p-4 m-3 rounded-lg bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-xs text-[var(--text-secondary)] space-y-1.5">
-          <div className="font-semibold text-[var(--text-primary)] flex items-center justify-between gap-1">
-            <span>Device-Local MVP</span>
-            <span className="px-1.5 py-0.5 rounded bg-[var(--brand-surface)] text-[var(--brand-accent)] text-[0.6875rem] font-semibold">
-              {customSongs.length} Custom · {offlineEntries.length} Offline
-            </span>
-          </div>
-          <p className="leading-relaxed">
-            My Songs, favorites, setlists, and saved charts are stored on this device only.
-          </p>
+        {/* User Account / Profile Card */}
+        <div className="p-3 m-3 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)]">
+          {user ? (
+            <button
+              type="button"
+              onClick={() => setShowProfileDrawer(true)}
+              className="w-full flex items-center justify-between text-left p-2 rounded-xl hover:bg-[var(--bg-hover)] transition-all cursor-pointer group"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-[var(--brand-accent)]/20 text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center font-bold text-xs shrink-0">
+                  {user.displayName.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-[var(--text-primary)] truncate group-hover:text-[var(--brand-accent)] transition-colors">
+                    {user.displayName}
+                  </div>
+                  <div className="text-[10px] text-[var(--text-secondary)] truncate">
+                    {user.role === 'admin' ? 'Curator (Admin)' : user.instrument || 'Musician'}
+                  </div>
+                </div>
+              </div>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" title="Connected to Cloud" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowAuthModal(true)}
+              className="w-full py-2.5 px-3 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:border-[var(--brand-accent)] text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>Sign In / Profile</span>
+            </button>
+          )}
         </div>
       </aside>
 
@@ -330,9 +384,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             Worship Music Companion
           </span>
         </Link>
-        <span className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-full bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
-          v1.0
-        </span>
+        {user ? (
+          <button
+            type="button"
+            onClick={() => setShowProfileDrawer(true)}
+            className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] cursor-pointer"
+          >
+            <div className="w-5 h-5 rounded-md bg-[var(--brand-accent)]/20 text-[var(--brand-accent)] font-bold text-[10px] flex items-center justify-center">
+              {user.displayName.slice(0, 1).toUpperCase()}
+            </div>
+            <span className="truncate max-w-[80px]">{user.displayName.split(' ')[0]}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowAuthModal(true)}
+            className="px-2.5 py-1 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 text-xs font-bold cursor-pointer"
+          >
+            Sign In
+          </button>
+        )}
       </header>
 
       {/* Main Content Area */}
@@ -379,6 +450,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Global 3D Card Tilt & Interactive Mouse Glow Controller */}
       <ThemeCardTiltEffect />
+
+      {/* Authentication and Profile Modals */}
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      <UserProfileDrawer isOpen={showProfileDrawer} onClose={() => setShowProfileDrawer(false)} />
     </div>
   );
 }

@@ -62,6 +62,8 @@ interface AppContextValue {
   effectiveOffline: boolean;
   storageWarning: string | null;
   customSongs: SongRecord[];
+  globalApprovedSongs: SongRecord[];
+  refreshGlobalSongs: () => Promise<void>;
   allAvailableSongs: SongRecord[];
   getSongByIdOrSlug: (idOrSlug: string) => SongRecord | undefined;
   saveCustomSong: (
@@ -256,11 +258,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
   const [customSongs, setCustomSongs] = useState<SongRecord[]>([]);
+  const [globalApprovedSongs, setGlobalApprovedSongs] = useState<SongRecord[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<string[]>([]);
   const [setlists, setSetlists] = useState<PersonalSetlist[]>([]);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [offlineEntries, setOfflineEntries] = useState<OfflineSongEntry[]>([]);
+
+  const refreshGlobalSongs = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cloud/global-songs');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.songs && Array.isArray(data.songs)) {
+          setGlobalApprovedSongs(data.songs);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not refresh global approved songs:', err);
+    }
+  }, []);
 
   // Initial hydration from localStorage & IndexedDB + Service Worker registration
   useEffect(() => {
@@ -321,6 +338,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setOfflineEntries(entries);
       }
     });
+
+    fetch('/api/cloud/global-songs')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.songs && Array.isArray(data.songs)) {
+          setGlobalApprovedSongs(data.songs);
+        }
+      })
+      .catch(() => {});
 
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       if ('caches' in window) {
@@ -648,10 +674,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const allAvailableSongs = useMemo(
-    () => mergeCatalogAndCustomSongs(customSongs, getAllSongs()),
-    [customSongs]
-  );
+  const allAvailableSongs = useMemo(() => {
+    const combinedCatalog = [...getAllSongs()];
+    for (const gSong of globalApprovedSongs) {
+      if (!combinedCatalog.some((c) => c.id === gSong.id || c.slug === gSong.slug)) {
+        combinedCatalog.push(gSong);
+      }
+    }
+    return mergeCatalogAndCustomSongs(customSongs, combinedCatalog);
+  }, [customSongs, globalApprovedSongs]);
 
   const getSongByIdOrSlug = useCallback(
     (idOrSlug: string): SongRecord | undefined => {
@@ -847,6 +878,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       effectiveOffline,
       storageWarning,
       customSongs,
+      globalApprovedSongs,
+      refreshGlobalSongs,
       allAvailableSongs,
       getSongByIdOrSlug,
       saveCustomSong,
@@ -886,6 +919,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       effectiveOffline,
       storageWarning,
       customSongs,
+      globalApprovedSongs,
+      refreshGlobalSongs,
       allAvailableSongs,
       getSongByIdOrSlug,
       saveCustomSong,
