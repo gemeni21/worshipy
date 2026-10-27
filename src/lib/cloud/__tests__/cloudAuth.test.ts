@@ -18,6 +18,9 @@ import {
   restoreSongGlobally,
   getRemovedGlobalSongs,
   getRemovedGlobalSongIds,
+  getAdminNotifications,
+  PRIMARY_ADMIN_EMAIL,
+  PRIMARY_ADMIN_PASSWORD,
 } from '../cloudDb.ts';
 import type { SongRecord } from '../../../types/song.ts';
 
@@ -64,6 +67,20 @@ describe('Cloud Auth, Sync & Global Song Curation Engine', () => {
     const validated = validateSessionToken(authRes.token);
     assert.ok(validated);
     assert.equal(validated.id, admin.id);
+
+    // Verify primary custom admin gray2187@gmail.com
+    const grayAdmin = findUserByEmail(PRIMARY_ADMIN_EMAIL);
+    assert.ok(grayAdmin, 'Primary admin gray2187@gmail.com should be seeded');
+    assert.equal(grayAdmin.role, 'admin');
+    assert.equal(grayAdmin.email, 'gray2187@gmail.com');
+
+    const grayAuthRes = verifyUserLogin(PRIMARY_ADMIN_EMAIL, PRIMARY_ADMIN_PASSWORD);
+    assert.ok(grayAuthRes.token.startsWith('wsess_'));
+    assert.equal(grayAuthRes.profile.role, 'admin');
+
+    const grayValidated = validateSessionToken(grayAuthRes.token);
+    assert.ok(grayValidated);
+    assert.equal(grayValidated.id, grayAdmin.id);
   });
 
   it('2. verifies seeded worship leader credentials', () => {
@@ -194,6 +211,12 @@ describe('Cloud Auth, Sync & Global Song Curation Engine', () => {
     const retrievedSub = getSubmissionById(submission.id);
     assert.ok(retrievedSub);
     assert.equal(retrievedSub.status, 'pending');
+
+    // Verify email notification was dispatched to primary admin gray2187@gmail.com
+    const notifs = getAdminNotifications();
+    const matchNotif = notifs.find((n) => n.to === PRIMARY_ADMIN_EMAIL && n.subject.includes(SAMPLE_SONG.title));
+    assert.ok(matchNotif, 'Email notification should be dispatched to primary admin on song submission');
+    assert.equal(matchNotif.to, 'gray2187@gmail.com');
 
     // Non-admin user cannot approve submission
     assert.throws(() => {

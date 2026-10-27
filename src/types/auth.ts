@@ -21,6 +21,18 @@ export interface UserProfile {
   cloudStorage?: CloudStorageConfig;
 }
 
+export interface EmailNotificationRecord {
+  id: string;
+  to: string;
+  from: string;
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string;
+  sentAt: string;
+  type: 'song_submission' | 'song_resubmission' | 'admin_alert';
+  status: 'sent' | 'queued' | 'simulated';
+}
+
 export type SubmissionStatus = 'pending' | 'approved' | 'rejected' | 'removed';
 
 export interface RemovedGlobalSongRecord {

@@ -8,7 +8,6 @@ import {
   User,
   Church,
   Music2,
-  ShieldCheck,
   AlertCircle,
   Loader2,
   Sparkles,
@@ -74,19 +73,6 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
     }
   };
 
-  const handleQuickLogin = async (demoEmail: string, demoPass: string) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await login(demoEmail, demoPass);
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-md rounded-3xl border border-[var(--border-subtle)] bg-[#101014] p-6 sm:p-8 shadow-2xl shadow-black/90">
@@ -145,32 +131,6 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
             Create Account
           </button>
         </div>
-
-        {/* Quick Demo Credentials */}
-        {mode === 'login' && (
-          <div className="mb-5 p-3 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-xs">
-            <div className="flex items-center gap-1.5 font-semibold text-[var(--text-primary)] mb-2">
-              <ShieldCheck className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
-              <span>Quick Login Options:</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@worshipy.app', 'admin123456')}
-                className="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--brand-accent)] hover:border-[var(--brand-accent)] transition-colors cursor-pointer font-medium"
-              >
-                Sign in as Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('worshipleader@church.com', 'password123')}
-                className="px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--text-secondary)] transition-colors cursor-pointer font-medium"
-              >
-                Sign in as Leader
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* Error Alert */}
         {error && (

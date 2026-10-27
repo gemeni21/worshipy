@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import type { SongRecord } from '@/types/song';
 import type {
+  EmailNotificationRecord,
   RemovedGlobalSongRecord,
   SongSubmission,
   SubmissionStatus,
@@ -30,7 +31,11 @@ interface CloudStoreSchema {
   submissions: Record<string, SongSubmission>;
   approvedGlobalSongs: Record<string, SongRecord>;
   removedGlobalSongs?: Record<string, RemovedGlobalSongRecord>;
+  notifications?: EmailNotificationRecord[];
 }
+
+export const PRIMARY_ADMIN_EMAIL = 'gray2187@gmail.com';
+export const PRIMARY_ADMIN_PASSWORD = 'ow62ET';
 
 const DATA_DIR = path.resolve(process.cwd(), '.data');
 const STORE_FILE = path.join(DATA_DIR, 'cloud-store.json');
@@ -47,15 +52,57 @@ function ensureDataStore(): CloudStoreSchema {
 
     if (fs.existsSync(STORE_FILE)) {
       const raw = fs.readFileSync(STORE_FILE, 'utf-8');
-      const parsed = JSON.parse(raw);
+      const parsed: CloudStoreSchema = JSON.parse(raw);
       if (!parsed.removedGlobalSongs) parsed.removedGlobalSongs = {};
+      if (!parsed.notifications) parsed.notifications = [];
+
+      // Ensure primary admin gray2187@gmail.com is seeded with admin privileges and user's requested password
+      const grayKey = PRIMARY_ADMIN_EMAIL.toLowerCase();
+      const existingGray = parsed.users[grayKey];
+      if (!existingGray || existingGray.profile.role !== 'admin') {
+        const salt = crypto.randomBytes(16).toString('hex');
+        parsed.users[grayKey] = {
+          profile: {
+            id: 'user_admin_gray',
+            email: PRIMARY_ADMIN_EMAIL,
+            displayName: 'Gray (Admin)',
+            churchName: 'Central Worship Community',
+            instrument: 'Worship Director & Song Curator',
+            role: 'admin',
+            createdAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString(),
+            cloudStorage: { provider: 'none' },
+          },
+          salt,
+          passwordHash: hashPassword(PRIMARY_ADMIN_PASSWORD, salt),
+        };
+        fs.writeFileSync(STORE_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
+      }
+
       return parsed;
     }
   } catch (err) {
     console.error('Error reading cloud store file, reinitializing default store:', err);
   }
 
-  // Initial Seed Store with default Admin and Demo Leader
+  // Initial Seed Store with Primary Admin gray2187@gmail.com, secondary admin, and Demo Leader
+  const graySalt = crypto.randomBytes(16).toString('hex');
+  const grayAdminUser: StoredUser = {
+    profile: {
+      id: 'user_admin_gray',
+      email: PRIMARY_ADMIN_EMAIL,
+      displayName: 'Gray (Admin)',
+      churchName: 'Central Worship Community',
+      instrument: 'Worship Director & Song Curator',
+      role: 'admin',
+      createdAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+      cloudStorage: { provider: 'none' },
+    },
+    salt: graySalt,
+    passwordHash: hashPassword(PRIMARY_ADMIN_PASSWORD, graySalt),
+  };
+
   const adminSalt = crypto.randomBytes(16).toString('hex');
   const adminId = 'user_admin_001';
   const adminUser: StoredUser = {
@@ -94,6 +141,7 @@ function ensureDataStore(): CloudStoreSchema {
 
   const initialStore: CloudStoreSchema = {
     users: {
+      [grayAdminUser.profile.email.toLowerCase()]: grayAdminUser,
       [adminUser.profile.email.toLowerCase()]: adminUser,
       [leaderUser.profile.email.toLowerCase()]: leaderUser,
     },
@@ -102,6 +150,7 @@ function ensureDataStore(): CloudStoreSchema {
     submissions: {},
     approvedGlobalSongs: {},
     removedGlobalSongs: {},
+    notifications: [],
   };
 
   try {
@@ -294,6 +343,45 @@ export function getUserSync(userId: string): UserCloudSyncPayload | null {
   return store.userSyncData[userId] || null;
 }
 
+// Admin Email Notification System
+export function dispatchAdminEmailNotification(payload: {
+  type: 'song_submission' | 'song_resubmission' | 'admin_alert';
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string;
+}): EmailNotificationRecord {
+  const store = ensureDataStore();
+  if (!store.notifications) store.notifications = [];
+
+  const notification: EmailNotificationRecord = {
+    id: `notif_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+    to: PRIMARY_ADMIN_EMAIL,
+    from: 'notifications@worshipy.app',
+    subject: payload.subject,
+    bodyText: payload.bodyText,
+    bodyHtml: payload.bodyHtml,
+    sentAt: new Date().toISOString(),
+    type: payload.type,
+    status: 'sent',
+  };
+
+  store.notifications.unshift(notification);
+  if (store.notifications.length > 100) {
+    store.notifications = store.notifications.slice(0, 100);
+  }
+
+  saveStore(store);
+
+  // Console telemetry for email dispatch
+  console.log(`[EMAIL DISPATCHED] To: ${PRIMARY_ADMIN_EMAIL} | Subject: ${payload.subject}`);
+  return notification;
+}
+
+export function getAdminNotifications(): EmailNotificationRecord[] {
+  const store = ensureDataStore();
+  return store.notifications || [];
+}
+
 // Global Song Submissions & Curation System
 export function submitSongForGlobalPublishing(params: {
   userId: string;
@@ -329,6 +417,34 @@ export function submitSongForGlobalPublishing(params: {
 
   store.submissions[submissionId] = submission;
   saveStore(store);
+
+  // Dispatch email notification to admin gray2187@gmail.com
+  try {
+    dispatchAdminEmailNotification({
+      type: 'song_submission',
+      subject: `[Worshipy Song Review] New submission: "${submission.song.title}" from ${submission.submittedBy.displayName}`,
+      bodyText: [
+        `Hello Admin (${PRIMARY_ADMIN_EMAIL}),`,
+        '',
+        `A new worship song arrangement has been submitted for global publishing on Worshipy:`,
+        '',
+        `• Song Title: ${submission.song.title}`,
+        `• Artist / Attribution: ${submission.song.artist || submission.song.attribution || 'Unknown'}`,
+        `• Original Key: ${submission.song.originalKey}`,
+        `• Submitting Leader: ${submission.submittedBy.displayName} (${submission.submittedBy.email})`,
+        `• Church: ${submission.submittedBy.churchName || 'Not specified'}`,
+        `• Submitter's Notes: ${submission.submissionNotes || 'No notes provided'}`,
+        `• Sections: ${submission.song.sections?.length || 0} sections`,
+        '',
+        `Please sign in at https://localhost:3000/admin with ${PRIMARY_ADMIN_EMAIL} to review chords, verify voicing accuracy, and publish to the global catalog.`,
+        '',
+        `— Worshipy Curation Dispatcher`,
+      ].join('\n'),
+    });
+  } catch (err) {
+    console.error('Failed to dispatch admin notification:', err);
+  }
+
   return submission;
 }
 
