@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { leaveWorshipGroup, validateSessionToken } from '@/lib/cloud/cloudDb';
+import { generateUserSessionToken, leaveWorshipGroup, validateSessionToken } from '@/lib/cloud/cloudDb';
 
 export async function POST(req: NextRequest) {
   try {
@@ -21,7 +21,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true });
+    // Generate fresh HMAC session token with cleared groupId
+    const updatedToken = generateUserSessionToken(user.id);
+
+    return NextResponse.json({ success: true, token: updatedToken });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to leave group';
     return NextResponse.json({ error: msg }, { status: 500 });

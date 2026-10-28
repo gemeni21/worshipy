@@ -315,6 +315,11 @@ export function verifyUserLogin(email: string, password: string): { profile: Use
   return { profile: stored.profile, token };
 }
 
+export function generateUserSessionToken(userId: string): string {
+  const store = ensureDataStore();
+  return createSessionForUser(store, userId);
+}
+
 function createSessionForUser(store: CloudStoreSchema, userId: string): string {
   const user = findUserById(userId);
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();

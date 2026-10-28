@@ -17,6 +17,7 @@ import {
   Radio,
   Settings,
   ShieldCheck,
+  Users,
   LogIn,
   WifiOff,
   X,
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/songs', label: 'Songs', icon: BookOpen },
   { href: '/my-songs', label: 'My Songs', icon: FolderHeart },
+  { href: '/team', label: 'Worship Team', icon: Users },
   { href: '/practice', label: 'Practice Takes', icon: Mic },
   { href: '/tuner', label: 'Tuner', icon: Gauge },
   { href: '/live', label: 'Live Sync', icon: Radio },
@@ -41,7 +43,7 @@ const NAV_ITEMS = [
 ] as const;
 
 function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
-  const { isAdmin, pendingApprovalsCount } = useAuth();
+  const { isAdmin, pendingApprovalsCount, activeGroup, onlineMembersCount } = useAuth();
   const isActive = (href: string) => {
     if (!pathname) return false;
     if (href === '/') return pathname === '/';
@@ -52,19 +54,31 @@ function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
     <nav className="flex-1 px-3 py-4 space-y-1">
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const active = isActive(href);
+        const displayLabel = href === '/team' && activeGroup?.name ? activeGroup.name : label;
+        const isTeam = href === '/team';
+
         return (
           <Link
             key={href}
             href={href}
             aria-current={active ? 'page' : undefined}
-            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors ${
               active
                 ? 'bg-[var(--brand-surface)] text-[var(--brand-accent)] font-semibold'
                 : 'text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]'
             }`}
           >
-            <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
-            <span>{label}</span>
+            <div className="flex items-center gap-3 min-w-0">
+              <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span className="truncate">{displayLabel}</span>
+            </div>
+
+            {isTeam && activeGroup && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{onlineMembersCount > 0 ? `${onlineMembersCount} online` : 'Team'}</span>
+              </span>
+            )}
           </Link>
         );
       })}
@@ -100,6 +114,7 @@ function DesktopNavLinksActive() {
 }
 
 function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
+  const { activeGroup, onlineMembersCount } = useAuth();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [prevPathname, setPrevPathname] = useState(pathname);
 
@@ -115,6 +130,7 @@ function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
   };
 
   const isMoreActive =
+    isActive('/team') ||
     isActive('/my-songs') ||
     isActive('/favorites') ||
     isActive('/settings') ||
@@ -129,6 +145,13 @@ function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
   ] as const;
 
   const MORE_ITEMS = [
+    {
+      href: '/team',
+      label: activeGroup?.name || 'Worship Team',
+      sublabel: onlineMembersCount > 0 ? `${onlineMembersCount} members online now` : 'Band roster & shared practice',
+      icon: Users,
+      active: isActive('/team'),
+    },
     {
       href: '/practice',
       label: 'Practice Takes',

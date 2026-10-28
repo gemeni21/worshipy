@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createWorshipGroup, validateSessionToken } from '@/lib/cloud/cloudDb';
+import { createWorshipGroup, generateUserSessionToken, validateSessionToken } from '@/lib/cloud/cloudDb';
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,7 +24,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
 
-    return NextResponse.json({ group: result.group });
+    // Generate fresh HMAC session token containing newly bound groupId
+    const updatedToken = generateUserSessionToken(user.id);
+
+    return NextResponse.json({ group: result.group, token: updatedToken });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to create group';
     return NextResponse.json({ error: msg }, { status: 500 });

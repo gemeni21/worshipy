@@ -1,0 +1,853 @@
+'use client';
+
+import React, { useState, useEffect, useRef, useTransition } from 'react';
+import QRCode from 'qrcode';
+import {
+  Users,
+  Copy,
+  Check,
+  QrCode,
+  LogOut,
+  Crown,
+  Church,
+  Mic,
+  Play,
+  Pause,
+  Download,
+  Trash2,
+  Share2,
+  Sparkles,
+  Music2,
+  Loader2,
+  AlertCircle,
+  Plus,
+  Radio,
+} from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { AuthModal } from '@/components/auth/AuthModal';
+import {
+  subscribeToSharedPracticeTakes,
+  sharePracticeTakeToTeam,
+  deleteSharedPracticeTake,
+  getCachedTeam,
+} from '@/lib/team/teamService';
+import type { TeamPracticeTake } from '@/types/auth';
+
+export default function TeamHubPage() {
+  const {
+    user,
+    activeGroup,
+    teamPresence,
+    onlineMembersCount,
+    createGroup,
+    joinGroup,
+    leaveGroup,
+  } = useAuth();
+
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+
+  // Create / Join State (when not in a team)
+  const [mode, setMode] = useState<'create' | 'join'>('create');
+  const [teamNameInput, setTeamNameInput] = useState('');
+  const [churchNameInput, setChurchNameInput] = useState(user?.churchName || '');
+  const [inviteCodeInput, setInviteCodeInput] = useState('');
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Shared Practice Takes State
+  const [sharedTakes, setSharedTakes] = useState<TeamPracticeTake[]>([]);
+  const [playingTakeId, setPlayingTakeId] = useState<string | null>(null);
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Upload Rehearsal Take Modal
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadSongTitle, setUploadSongTitle] = useState('');
+  const [uploadTakeTitle, setUploadTakeTitle] = useState('');
+  const [uploadAudioUrl, setUploadAudioUrl] = useState('');
+  const [uploadNotes, setUploadNotes] = useState('');
+  const [uploadInstrument, setUploadInstrument] = useState(user?.instrument || 'Band Take');
+  const [isUploadingTake, setIsUploadingTake] = useState(false);
+
+  const [, startTransition] = useTransition();
+
+  const currentTeam = activeGroup || getCachedTeam();
+
+  // Subscribe to shared practice takes
+  useEffect(() => {
+    if (!currentTeam?.id) {
+      setSharedTakes([]);
+      return;
+    }
+
+    const unsub = subscribeToSharedPracticeTakes(currentTeam.id, (takes) => {
+      setSharedTakes(takes);
+    });
+
+    return () => unsub();
+  }, [currentTeam?.id]);
+
+  // Generate QR Code when QR modal opens
+  useEffect(() => {
+    if (showQrModal && currentTeam?.inviteCode) {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const inviteUrl = `${origin}/team?joinCode=${currentTeam.inviteCode}`;
+      QRCode.toDataURL(inviteUrl, { width: 300, margin: 2 })
+        .then((url) => setQrDataUrl(url))
+        .catch(() => {});
+    }
+  }, [showQrModal, currentTeam?.inviteCode]);
+
+  // Audio Playback handler
+  const handleTogglePlay = (take: TeamPracticeTake) => {
+    if (!take.audioUrl) return;
+
+    if (playingTakeId === take.id) {
+      audioRef.current?.pause();
+      setPlayingTakeId(null);
+    } else {
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+      }
+      audioRef.current.src = take.audioUrl;
+      audioRef.current.playbackRate = playbackSpeed;
+      audioRef.current.play().catch(() => {});
+      setPlayingTakeId(take.id);
+
+      audioRef.current.onended = () => {
+        setPlayingTakeId(null);
+      };
+    }
+  };
+
+  const handleSpeedChange = (speed: number) => {
+    setPlaybackSpeed(speed);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = speed;
+    }
+  };
+
+  const copyCode = async () => {
+    if (!currentTeam?.inviteCode) return;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(currentTeam.inviteCode);
+      }
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2000);
+    } catch {}
+  };
+
+  const copyLink = async () => {
+    if (!currentTeam?.inviteCode) return;
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const link = `${origin}/team?joinCode=${currentTeam.inviteCode}`;
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(link);
+      }
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {}
+  };
+
+  const handleCreateTeamSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teamNameInput.trim()) return;
+    setFormLoading(true);
+    setFormError(null);
+    try {
+      await createGroup(teamNameInput, churchNameInput);
+      setTeamNameInput('');
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to create team');
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleJoinTeamSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteCodeInput.trim()) return;
+    setFormLoading(true);
+    setFormError(null);
+    try {
+      await joinGroup(inviteCodeInput);
+      setInviteCodeInput('');
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to join team');
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleConfirmLeave = async () => {
+    setFormLoading(true);
+    try {
+      await leaveGroup();
+      setShowLeaveConfirm(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Failed to leave team');
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleSaveSharedTake = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentTeam || !user || !uploadSongTitle.trim() || !uploadTakeTitle.trim()) return;
+
+    setIsUploadingTake(true);
+    try {
+      const newTake: TeamPracticeTake = {
+        id: `take_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        songId: uploadSongTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        songTitle: uploadSongTitle.trim(),
+        title: uploadTakeTitle.trim(),
+        authorName: user.displayName || user.email.split('@')[0],
+        authorId: user.id,
+        createdAt: new Date().toISOString(),
+        durationSeconds: 180,
+        audioUrl: uploadAudioUrl.trim() || undefined,
+        notes: uploadNotes.trim() || undefined,
+        instrumentTag: uploadInstrument,
+        isLeaderTake: currentTeam.ownerId === user.id,
+      };
+
+      await sharePracticeTakeToTeam(currentTeam.id, newTake);
+      setShowUploadModal(false);
+      setUploadSongTitle('');
+      setUploadTakeTitle('');
+      setUploadAudioUrl('');
+      setUploadNotes('');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to share take');
+    } finally {
+      setIsUploadingTake(false);
+    }
+  };
+
+  const handleDeleteTake = async (takeId: string) => {
+    if (!currentTeam) return;
+    if (confirm('Delete this shared rehearsal take from the team?')) {
+      await deleteSharedPracticeTake(currentTeam.id, takeId);
+    }
+  };
+
+  // If not signed in at all
+  if (!user) {
+    return (
+      <div className="max-w-4xl mx-auto p-4 sm:p-8 space-y-6">
+        <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-8 text-center space-y-4">
+          <div className="w-16 h-16 mx-auto rounded-3xl bg-[var(--brand-accent)]/15 border border-[var(--brand-accent)]/30 text-[var(--brand-accent)] flex items-center justify-center">
+            <Users className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-black text-[var(--text-primary)]">Worship Team Hub</h2>
+          <p className="text-sm text-[var(--text-secondary)] max-w-md mx-auto leading-relaxed">
+            Collaborate with your church musicians. Share chord arrangements, see who is practicing in real-time, and access shared rehearsal takes.
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsAuthModalOpen(true)}
+            className="py-3 px-6 rounded-xl bg-[var(--brand-accent)] text-black font-bold text-sm hover:brightness-110 active:scale-98 transition-all cursor-pointer shadow-lg"
+          >
+            Sign In with Google or Email
+          </button>
+        </div>
+        <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      </div>
+    );
+  }
+
+  // If signed in but NOT in a team
+  if (!currentTeam) {
+    return (
+      <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-6">
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-[var(--brand-accent)]/15 border border-[var(--brand-accent)]/30 text-[var(--brand-accent)] flex items-center justify-center">
+            <Users className="w-6 h-6" />
+          </div>
+          <h1 className="text-2xl font-black text-[var(--text-primary)]">Connect with Your Worship Team</h1>
+          <p className="text-xs text-[var(--text-secondary)]">
+            Create a team for your church or enter an invite code to join your band.
+          </p>
+        </div>
+
+        {formError && (
+          <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+            <span>{formError}</span>
+          </div>
+        )}
+
+        <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 sm:p-8 space-y-6">
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)]">
+            <button
+              type="button"
+              onClick={() => setMode('create')}
+              className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                mode === 'create'
+                  ? 'bg-[var(--brand-accent)] text-black shadow-sm'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              Create New Team
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('join')}
+              className={`py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                mode === 'join'
+                  ? 'bg-[var(--brand-accent)] text-black shadow-sm'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              Join with Invite Code
+            </button>
+          </div>
+
+          {mode === 'create' ? (
+            <form onSubmit={handleCreateTeamSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Worship Team / Band Name <span className="text-[var(--brand-accent)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={teamNameInput}
+                  onChange={(e) => setTeamNameInput(e.target.value)}
+                  placeholder="e.g. Grace Worship Band / Main Sunday Team"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Church / Ministry Name <span className="text-[var(--text-secondary)] font-normal">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={churchNameInput}
+                  onChange={(e) => setChurchNameInput(e.target.value)}
+                  placeholder="e.g. Central Worship Community"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={!teamNameInput.trim() || formLoading}
+                className="w-full py-3 px-4 rounded-xl bg-[var(--brand-accent)] text-black text-xs sm:text-sm font-bold hover:brightness-110 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-md"
+              >
+                {formLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                <span>Create Worship Team &amp; Get Invite Code</span>
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleJoinTeamSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  6-Letter Invite Code <span className="text-[var(--brand-accent)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={10}
+                  value={inviteCodeInput}
+                  onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
+                  placeholder="e.g. D7FLWV"
+                  className="w-full font-mono text-center tracking-widest text-lg py-3 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-[var(--brand-accent)] placeholder-[var(--text-secondary)]/40 focus:outline-none focus:border-[var(--brand-accent)] uppercase"
+                />
+                <p className="text-[11px] text-[var(--text-secondary)] mt-1.5 text-center">
+                  Ask your worship leader for the 6-character team code.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!inviteCodeInput.trim() || formLoading}
+                className="w-full py-3 px-4 rounded-xl bg-[var(--brand-accent)] text-black text-xs sm:text-sm font-bold hover:brightness-110 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-md"
+              >
+                {formLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                <span>Join Team</span>
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Active Team Hub
+  const isLeader = currentTeam.ownerId === user.id;
+
+  return (
+    <div className="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+      {/* Top Banner */}
+      <div className="relative overflow-hidden rounded-3xl border border-[var(--border-subtle)] bg-linear-to-b from-[#14141c] to-[#0c0c10] p-6 sm:p-8 shadow-2xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-[var(--text-primary)]">
+                {currentTeam.name}
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center gap-1">
+                {isLeader ? (
+                  <>
+                    <Crown className="w-3 h-3 text-amber-400" />
+                    <span>Team Leader</span>
+                  </>
+                ) : (
+                  <span>Band Member</span>
+                )}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{onlineMembersCount > 0 ? `${onlineMembersCount} Online Now` : '1 Online'}</span>
+              </span>
+            </div>
+
+            {currentTeam.churchName && (
+              <p className="text-xs text-[var(--text-secondary)] mt-1 flex items-center gap-1.5">
+                <Church className="w-3.5 h-3.5" />
+                <span>{currentTeam.churchName}</span>
+              </p>
+            )}
+          </div>
+
+          {/* Quick Invite Actions */}
+          <div className="flex items-center gap-2">
+            <div className="px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center gap-2">
+              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)]">Code:</span>
+              <span className="font-mono text-sm font-black text-[var(--brand-accent)]">
+                {currentTeam.inviteCode}
+              </span>
+              <button
+                type="button"
+                onClick={copyCode}
+                className="p-1 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                title="Copy Code"
+              >
+                {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={copyLink}
+              className="px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--brand-surface)] flex items-center gap-1.5 cursor-pointer transition-all"
+            >
+              <Share2 className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+              <span>{copiedLink ? 'Link Copied!' : 'Invite Link'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowQrModal(true)}
+              className="p-2 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] text-[var(--text-secondary)] hover:text-[var(--brand-accent)] cursor-pointer transition-all"
+              title="Show QR Code"
+            >
+              <QrCode className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Grid: Roster on Left, Shared Practice Takes on Right */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column: Live Member Roster */}
+        <div className="lg:col-span-1 space-y-4">
+          <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-[var(--brand-accent)]" />
+                <h3 className="font-bold text-sm text-[var(--text-primary)]">Band Roster</h3>
+              </div>
+              <span className="text-xs text-[var(--text-secondary)]">
+                {currentTeam.members.length} {currentTeam.members.length === 1 ? 'member' : 'members'}
+              </span>
+            </div>
+
+            <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+              {currentTeam.members.map((m) => {
+                const presence = teamPresence[m.userId];
+                const isOnline = presence?.online ?? (m.userId === user.id);
+                const currentSong = presence?.currentSong;
+
+                return (
+                  <div
+                    key={m.userId}
+                    className="p-3 rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] space-y-1.5 transition-all"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative">
+                          <div className="w-8 h-8 rounded-full bg-[var(--bg-subtle)] text-[var(--text-primary)] font-bold text-xs flex items-center justify-center border border-[var(--border-subtle)]">
+                            {m.displayName?.[0]?.toUpperCase() || 'M'}
+                          </div>
+                          <span
+                            className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[#101014] ${
+                              isOnline ? 'bg-emerald-400 ring-2 ring-emerald-400/20' : 'bg-neutral-600'
+                            }`}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-semibold text-xs text-[var(--text-primary)] block truncate">
+                            {m.displayName} {m.userId === user.id ? '(You)' : ''}
+                          </span>
+                          <span className="text-[10px] text-[var(--text-secondary)] truncate block">
+                            {m.instrument || 'Musician'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {m.role === 'leader' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/15 text-amber-300 border border-amber-400/30 flex items-center gap-1 shrink-0">
+                          <Crown className="w-2.5 h-2.5" />
+                          <span>Leader</span>
+                        </span>
+                      ) : (
+                        <span
+                          className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${
+                            isOnline ? 'text-emerald-400 bg-emerald-500/10' : 'text-neutral-500 bg-neutral-800/40'
+                          }`}
+                        >
+                          {isOnline ? 'Online' : 'Offline'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Active song status */}
+                    {isOnline && currentSong && (
+                      <div className="text-[10px] text-[var(--brand-accent)] bg-[var(--brand-surface)] px-2 py-0.5 rounded-md flex items-center gap-1 truncate">
+                        <Music2 className="w-3 h-3 shrink-0" />
+                        <span className="truncate">Practicing: {currentSong}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Leave Team Button */}
+            <div className="pt-2 border-t border-[var(--border-subtle)]">
+              {showLeaveConfirm ? (
+                <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs space-y-2">
+                  <p className="font-semibold text-[11px]">
+                    Leave {currentTeam.name}? You will lose access to team takes.
+                  </p>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowLeaveConfirm(false)}
+                      className="px-2.5 py-1 rounded-lg text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmLeave}
+                      disabled={formLoading}
+                      className="px-3 py-1 rounded-lg bg-rose-500 text-white font-bold text-[11px] hover:bg-rose-600 cursor-pointer disabled:opacity-50"
+                    >
+                      {formLoading ? 'Leaving...' : 'Confirm'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowLeaveConfirm(true)}
+                  className="w-full py-2 px-3 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Leave Team</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Shared Team Practice Takes */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+              <div className="flex items-center gap-2">
+                <Mic className="w-4 h-4 text-[var(--brand-accent)]" />
+                <h3 className="font-bold text-sm text-[var(--text-primary)]">Shared Team Rehearsal Takes</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(true)}
+                className="py-1.5 px-3 rounded-xl bg-[var(--brand-accent)] text-black text-xs font-bold hover:brightness-110 active:scale-98 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Share New Take</span>
+              </button>
+            </div>
+
+            {/* Playback Speed Controls */}
+            {playingTakeId && (
+              <div className="flex items-center justify-between p-3 rounded-2xl bg-[var(--brand-surface)] border border-[var(--brand-accent)]/30 text-xs">
+                <span className="font-semibold text-[var(--brand-accent)] flex items-center gap-1.5">
+                  <Radio className="w-4 h-4 animate-pulse" />
+                  <span>Now Playing Rehearsal Audio</span>
+                </span>
+                <div className="flex items-center gap-1">
+                  {[0.75, 0.9, 1.0, 1.1, 1.25].map((speed) => (
+                    <button
+                      key={speed}
+                      type="button"
+                      onClick={() => handleSpeedChange(speed)}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer ${
+                        playbackSpeed === speed
+                          ? 'bg-[var(--brand-accent)] text-black'
+                          : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                      }`}
+                    >
+                      {speed}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Shared Takes List */}
+            {sharedTakes.length === 0 ? (
+              <div className="py-12 text-center space-y-3">
+                <div className="w-12 h-12 mx-auto rounded-2xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] flex items-center justify-center">
+                  <Mic className="w-6 h-6" />
+                </div>
+                <h4 className="font-bold text-sm text-[var(--text-primary)]">No Rehearsal Takes Shared Yet</h4>
+                <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto">
+                  Leaders and musicians can upload practice recordings or stems so everyone in the team can rehearse their instruments with the exact take.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(true)}
+                  className="py-2 px-4 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--brand-surface)] inline-flex items-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                  <span>Upload or Share First Take</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sharedTakes.map((take) => {
+                  const isPlaying = playingTakeId === take.id;
+                  const canDelete = isLeader || take.authorId === user.id;
+
+                  return (
+                    <div
+                      key={take.id}
+                      className="p-4 rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] space-y-2.5 transition-all hover:border-[var(--border-subtle)]/80"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-[var(--text-primary)] truncate">
+                              {take.songTitle}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
+                              {take.title}
+                            </span>
+                            {take.isLeaderTake && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/15 text-amber-300 border border-amber-400/30 flex items-center gap-1">
+                                <Crown className="w-2.5 h-2.5" />
+                                <span>Official Rehearsal</span>
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                            Recorded by <span className="font-semibold text-[var(--text-primary)]">{take.authorName}</span> ({take.instrumentTag || 'Band'}) • {new Date(take.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {take.audioUrl && (
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePlay(take)}
+                              className={`p-2 rounded-xl cursor-pointer transition-all ${
+                                isPlaying
+                                  ? 'bg-[var(--brand-accent)] text-black'
+                                  : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:brightness-110'
+                              }`}
+                              title={isPlaying ? 'Pause' : 'Play Take'}
+                            >
+                              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                            </button>
+                          )}
+
+                          {take.audioUrl && (
+                            <a
+                              href={take.audioUrl}
+                              download={`${take.songTitle}-${take.title}.mp3`}
+                              className="p-2 rounded-xl border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                              title="Download Take Audio"
+                            >
+                              <Download className="w-4 h-4" />
+                            </a>
+                          )}
+
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTake(take.id)}
+                              className="p-2 rounded-xl text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer transition-colors"
+                              title="Delete Take"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {take.notes && (
+                        <p className="text-xs text-[var(--text-secondary)] bg-[var(--bg-surface)] p-2.5 rounded-xl border border-[var(--border-subtle)] leading-relaxed">
+                          {take.notes}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* QR Code Modal for In-Person Practice */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-sm rounded-3xl border border-[var(--border-subtle)] bg-[#101014] p-6 text-center space-y-4 shadow-2xl">
+            <h3 className="text-lg font-bold text-[var(--text-primary)]">Scan to Join {currentTeam.name}</h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Ask musicians to open their phone camera and point at this screen.
+            </p>
+            {qrDataUrl && (
+              <div className="p-4 bg-white rounded-2xl w-fit mx-auto shadow-inner">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={qrDataUrl} alt="Team QR Code" className="w-48 h-48 mx-auto" />
+              </div>
+            )}
+            <div className="font-mono text-sm font-black text-[var(--brand-accent)] tracking-widest">
+              CODE: {currentTeam.inviteCode}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowQrModal(false)}
+              className="w-full py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Share / Upload Take Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-md rounded-3xl border border-[var(--border-subtle)] bg-[#101014] p-6 sm:p-7 space-y-4 shadow-2xl">
+            <h3 className="text-lg font-bold text-[var(--text-primary)]">Share Rehearsal Take with Team</h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Add audio links (Google Drive, Dropbox, or public audio URLs) so your whole band can practice before Sunday.
+            </p>
+
+            <form onSubmit={handleSaveSharedTake} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Song Title <span className="text-[var(--brand-accent)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={uploadSongTitle}
+                  onChange={(e) => setUploadSongTitle(e.target.value)}
+                  placeholder="e.g. Goodness of God"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Take Description / Version <span className="text-[var(--brand-accent)]">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={uploadTakeTitle}
+                  onChange={(e) => setUploadTakeTitle(e.target.value)}
+                  placeholder="e.g. Full Band Rehearsal Run 1, Vocal Harmony Guide"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Audio URL (Google Drive, Dropbox, or Direct Link)
+                </label>
+                <input
+                  type="url"
+                  value={uploadAudioUrl}
+                  onChange={(e) => setUploadAudioUrl(e.target.value)}
+                  placeholder="e.g. https://drive.google.com/file/d/.../view"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Instrument / Stem Tag
+                </label>
+                <input
+                  type="text"
+                  value={uploadInstrument}
+                  onChange={(e) => setUploadInstrument(e.target.value)}
+                  placeholder="e.g. Full Band, Acoustic Guitar, Piano Only"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Notes for the Band
+                </label>
+                <textarea
+                  rows={2}
+                  value={uploadNotes}
+                  onChange={(e) => setUploadNotes(e.target.value)}
+                  placeholder="e.g. Watch the transition between Bridge 2 and Chorus at 2:15"
+                  className="w-full px-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)] resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(false)}
+                  className="px-3 py-2 rounded-xl text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUploadingTake}
+                  className="px-4 py-2 rounded-xl bg-[var(--brand-accent)] text-black text-xs font-bold hover:brightness-110 active:scale-98 cursor-pointer disabled:opacity-50"
+                >
+                  {isUploadingTake ? 'Saving...' : 'Share with Band'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

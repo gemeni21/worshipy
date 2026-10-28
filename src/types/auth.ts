@@ -13,8 +13,35 @@ export interface GroupMember {
   userId: string;
   email: string;
   displayName: string;
+  instrument?: string;
+  photoURL?: string;
   role: 'leader' | 'member';
   joinedAt: string;
+}
+
+export interface TeamPresenceRecord {
+  userId: string;
+  displayName: string;
+  instrument?: string;
+  photoURL?: string;
+  online: boolean;
+  lastSeen: string;
+  currentSong?: string;
+}
+
+export interface TeamPracticeTake {
+  id: string;
+  songId: string;
+  songTitle: string;
+  title: string;
+  authorName: string;
+  authorId: string;
+  createdAt: string;
+  durationSeconds: number;
+  audioUrl?: string;
+  notes?: string;
+  instrumentTag?: string;
+  isLeaderTake?: boolean;
 }
 
 export interface WorshipGroup {
@@ -25,6 +52,7 @@ export interface WorshipGroup {
   ownerId: string;
   createdAt: string;
   members: GroupMember[];
+  practiceTakes?: TeamPracticeTake[];
 }
 
 export interface UserProfile {

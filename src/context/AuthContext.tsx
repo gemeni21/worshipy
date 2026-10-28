@@ -12,6 +12,7 @@ import type { SongRecord } from '@/types/song';
 import type {
   CloudStorageConfig,
   SongSubmission,
+  TeamPresenceRecord,
   UserCloudSyncPayload,
   UserProfile,
   WorshipGroup,
@@ -19,6 +20,16 @@ import type {
 import { apiUrl } from '@/lib/api/apiClient';
 import { promptGoogleSignInPopup } from '@/lib/firebase/firebaseClient';
 import { promptGoogleAccountPicker } from '@/lib/auth/googleOAuth';
+import {
+  createTeam,
+  getCachedTeam,
+  joinTeamByInviteCode,
+  leaveTeam,
+  sendTeamHeartbeat,
+  setCachedTeam,
+  subscribeToTeam,
+  subscribeToTeamPresence,
+} from '@/lib/team/teamService';
 
 interface AuthContextValue {
   user: UserProfile | null;
@@ -52,6 +63,9 @@ interface AuthContextValue {
   connectCloudStorage: (config: CloudStorageConfig) => Promise<void>;
   // Group / Worship Team Collaboration
   activeGroup: WorshipGroup | null;
+  teamPresence: Record<string, TeamPresenceRecord>;
+  onlineMembersCount: number;
+  broadcastSongActivity: (songTitle: string) => void;
   createGroup: (name: string, churchName?: string) => Promise<WorshipGroup>;
   joinGroup: (inviteCode: string) => Promise<WorshipGroup>;
   leaveGroup: () => Promise<void>;
@@ -386,100 +400,137 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   // Group / Worship Team Collaboration
-  const [activeGroup, setActiveGroup] = useState<WorshipGroup | null>(null);
+  const [activeGroup, setActiveGroup] = useState<WorshipGroup | null>(() => getCachedTeam());
+  const [teamPresence, setTeamPresence] = useState<Record<string, TeamPresenceRecord>>({});
+
+  const onlineMembersCount = useMemo(() => {
+    return Object.values(teamPresence).filter((p) => p.online).length;
+  }, [teamPresence]);
 
   const refreshActiveGroup = useCallback(async () => {
     if (!user?.groupId) {
       setActiveGroup(null);
+      setCachedTeam(null);
       return;
     }
     try {
       const res = await authFetch(`/api/groups/${user.groupId}`);
       if (res.ok) {
         const data = await res.json();
-        setActiveGroup(data.group || null);
+        if (data.group) {
+          setActiveGroup(data.group);
+          setCachedTeam(data.group);
+        }
       }
     } catch {
       // ignore
     }
   }, [user?.groupId, authFetch]);
 
+  // Real-time listener for group and member presence
   useEffect(() => {
-    refreshActiveGroup();
-  }, [refreshActiveGroup]);
+    if (!user?.groupId) {
+      setActiveGroup(null);
+      setTeamPresence({});
+      setCachedTeam(null);
+      return;
+    }
+
+    // 1. Subscribe to real-time group changes
+    const unsubGroup = subscribeToTeam(user.groupId, (group) => {
+      if (group) {
+        setActiveGroup(group);
+        setCachedTeam(group);
+      }
+    });
+
+    // 2. Subscribe to real-time member presence
+    const unsubPresence = subscribeToTeamPresence(user.groupId, (presence) => {
+      setTeamPresence(presence);
+    });
+
+    // 3. Send initial heartbeat
+    sendTeamHeartbeat(user.groupId, user).catch(() => {});
+
+    // 4. Heartbeat loop while tab is open
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        sendTeamHeartbeat(user.groupId!, user).catch(() => {});
+      }
+    }, 20000);
+
+    return () => {
+      unsubGroup();
+      unsubPresence();
+      clearInterval(interval);
+    };
+  }, [user]);
+
+  const broadcastSongActivity = useCallback(
+    (songTitle: string) => {
+      if (user?.groupId) {
+        sendTeamHeartbeat(user.groupId, user, songTitle).catch(() => {});
+      }
+    },
+    [user]
+  );
 
   const createGroup = useCallback(
     async (name: string, churchName?: string): Promise<WorshipGroup> => {
-      const res = await authFetch('/api/groups/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, churchName }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to create group.');
-      }
-      setActiveGroup(data.group);
-      if (user) {
-        const updatedUser: UserProfile = {
-          ...user,
-          groupId: data.group.id,
-          groupName: data.group.name,
-          groupRole: 'leader',
-        };
-        setUser(updatedUser);
-        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
-      }
-      return data.group;
+      if (!user) throw new Error('Please sign in to create a worship team.');
+      const group = await createTeam(user, name, churchName);
+      setActiveGroup(group);
+      setCachedTeam(group);
+      const updatedUser: UserProfile = {
+        ...user,
+        groupId: group.id,
+        groupName: group.name,
+        groupRole: 'leader',
+      };
+      setUser(updatedUser);
+      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
+      return group;
     },
-    [authFetch, user]
+    [user]
   );
 
   const joinGroup = useCallback(
     async (inviteCode: string): Promise<WorshipGroup> => {
-      const res = await authFetch('/api/groups/join', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inviteCode }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to join group.');
-      }
-      setActiveGroup(data.group);
-      if (user) {
-        const updatedUser: UserProfile = {
-          ...user,
-          groupId: data.group.id,
-          groupName: data.group.name,
-          groupRole: 'member',
-        };
-        setUser(updatedUser);
-        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
-      }
-      return data.group;
-    },
-    [authFetch, user]
-  );
-
-  const leaveGroup = useCallback(async (): Promise<void> => {
-    const res = await authFetch('/api/groups/leave', { method: 'POST' });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Failed to leave group.');
-    }
-    setActiveGroup(null);
-    if (user) {
+      if (!user) throw new Error('Please sign in to join a worship team.');
+      const group = await joinTeamByInviteCode(user, inviteCode);
+      setActiveGroup(group);
+      setCachedTeam(group);
       const updatedUser: UserProfile = {
         ...user,
-        groupId: undefined,
-        groupName: undefined,
-        groupRole: undefined,
+        groupId: group.id,
+        groupName: group.name,
+        groupRole: 'member',
       };
       setUser(updatedUser);
       localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
+      return group;
+    },
+    [user]
+  );
+
+  const leaveGroup = useCallback(async (): Promise<void> => {
+    if (!user) return;
+    const currentGroupId = user.groupId || activeGroup?.id;
+    if (currentGroupId) {
+      await leaveTeam(currentGroupId, user.id);
     }
-  }, [authFetch, user]);
+    setActiveGroup(null);
+    setTeamPresence({});
+    setCachedTeam(null);
+    const updatedUser: UserProfile = {
+      ...user,
+      groupId: undefined,
+      groupName: undefined,
+      groupRole: undefined,
+    };
+    setUser(updatedUser);
+    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
+  }, [user, activeGroup]);
 
   // Submit song for Global Publishing
   const submitSongForGlobal = useCallback(
@@ -629,6 +680,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateProfile,
       connectCloudStorage,
       activeGroup,
+      teamPresence,
+      onlineMembersCount,
+      broadcastSongActivity,
       createGroup,
       joinGroup,
       leaveGroup,
@@ -657,6 +711,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateProfile,
       connectCloudStorage,
       activeGroup,
+      teamPresence,
+      onlineMembersCount,
+      broadcastSongActivity,
       createGroup,
       joinGroup,
       leaveGroup,

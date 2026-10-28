@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import {
   Users,
   UserPlus,
@@ -13,8 +14,10 @@ import {
   Loader2,
   Crown,
   Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { getCachedTeam } from '@/lib/team/teamService';
 
 interface WorshipTeamSectionProps {
   onRequireAuth?: () => void;
@@ -22,7 +25,9 @@ interface WorshipTeamSectionProps {
 }
 
 export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: WorshipTeamSectionProps) {
-  const { user, activeGroup, createGroup, joinGroup, leaveGroup } = useAuth();
+  const { user, activeGroup, teamPresence, createGroup, joinGroup, leaveGroup } = useAuth();
+
+  const currentTeam = activeGroup || getCachedTeam();
 
   const [mode, setMode] = useState<'create' | 'join'>(initialInviteCode ? 'join' : 'create');
   const [teamNameInput, setTeamNameInput] = useState('');
@@ -108,13 +113,7 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
 
   const copyCode = async (code: string) => {
     try {
-      const desktopBridge =
-        typeof window !== 'undefined'
-          ? (window as unknown as { electronAPI?: { writeClipboardText?: (text: string) => boolean } })
-          : undefined;
-      if (desktopBridge?.electronAPI?.writeClipboardText) {
-        desktopBridge.electronAPI.writeClipboardText(code);
-      } else if (navigator.clipboard) {
+      if (navigator.clipboard) {
         await navigator.clipboard.writeText(code);
       }
       setCopiedCode(true);
@@ -125,14 +124,8 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
   const copyLink = async (code: string) => {
     try {
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const link = `${origin}/settings?teamCode=${code}`;
-      const desktopBridge =
-        typeof window !== 'undefined'
-          ? (window as unknown as { electronAPI?: { writeClipboardText?: (text: string) => boolean } })
-          : undefined;
-      if (desktopBridge?.electronAPI?.writeClipboardText) {
-        desktopBridge.electronAPI.writeClipboardText(link);
-      } else if (navigator.clipboard) {
+      const link = `${origin}/team?joinCode=${code}`;
+      if (navigator.clipboard) {
         await navigator.clipboard.writeText(link);
       }
       setCopiedLink(true);
@@ -141,8 +134,17 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
   };
 
   // State A: User is in an active group
-  if (user.groupId && activeGroup) {
-    const isOwner = activeGroup.ownerId === user.id;
+  if (user.groupId || currentTeam) {
+    if (!currentTeam) {
+      return (
+        <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-xs flex items-center justify-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-[var(--brand-accent)]" />
+          <span>Syncing worship team data...</span>
+        </div>
+      );
+    }
+
+    const isOwner = currentTeam.ownerId === user.id;
 
     return (
       <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-xs space-y-4">
@@ -151,23 +153,32 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
           <div>
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4 text-[var(--brand-accent)]" />
-              <h4 className="font-extrabold text-sm text-[var(--text-primary)]">{activeGroup.name}</h4>
+              <h4 className="font-extrabold text-sm text-[var(--text-primary)]">{currentTeam.name}</h4>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
                 {isOwner ? 'Team Leader' : 'Band Member'}
               </span>
             </div>
-            {activeGroup.churchName && (
+            {currentTeam.churchName && (
               <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 flex items-center gap-1">
                 <Church className="w-3 h-3 text-neutral-400" />
-                <span>{activeGroup.churchName}</span>
+                <span>{currentTeam.churchName}</span>
               </p>
             )}
           </div>
 
           <span className="text-[11px] text-[var(--text-secondary)] font-medium">
-            {activeGroup.members.length} {activeGroup.members.length === 1 ? 'member' : 'members'}
+            {currentTeam.members.length} {currentTeam.members.length === 1 ? 'member' : 'members'}
           </span>
         </div>
+
+        {/* Link to Full Hub */}
+        <Link
+          href="/team"
+          className="w-full py-2 px-3 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-black font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+        >
+          <span>Open Full Team Hub &amp; Shared Takes</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
 
         {/* Invite Code & Share Banner */}
         <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-2">
@@ -180,12 +191,12 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
 
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono text-base font-extrabold tracking-widest text-[var(--brand-accent)]">
-              {activeGroup.inviteCode}
+              {currentTeam.inviteCode}
             </span>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => copyCode(activeGroup.inviteCode)}
+                onClick={() => copyCode(currentTeam.inviteCode)}
                 className="px-2.5 py-1 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-[11px] font-bold inline-flex items-center gap-1 transition-all cursor-pointer"
               >
                 {copiedCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -193,7 +204,7 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
               </button>
               <button
                 type="button"
-                onClick={() => copyLink(activeGroup.inviteCode)}
+                onClick={() => copyLink(currentTeam.inviteCode)}
                 className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] text-[11px] font-semibold text-[var(--text-primary)] hover:bg-[var(--brand-surface)] inline-flex items-center gap-1 transition-all cursor-pointer"
               >
                 {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <UserPlus className="w-3 h-3" />}
@@ -203,39 +214,58 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
           </div>
         </div>
 
-        {/* Members Roster */}
+        {/* Members Roster with Presence */}
         <div className="space-y-2">
           <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-secondary)] block">
             Team Members
           </span>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {activeGroup.members.map((m) => (
-              <div
-                key={m.userId}
-                className="flex items-center justify-between p-2 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px]"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-6 h-6 rounded-full bg-[var(--bg-subtle)] text-[var(--text-primary)] font-bold text-[10px] flex items-center justify-center shrink-0">
-                    {m.displayName[0]?.toUpperCase() || 'M'}
+            {currentTeam.members.map((m) => {
+              const presence = teamPresence[m.userId];
+              const isOnline = presence?.online ?? (m.userId === user.id);
+
+              return (
+                <div
+                  key={m.userId}
+                  className="flex items-center justify-between p-2 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px]"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="relative">
+                      <div className="w-6 h-6 rounded-full bg-[var(--bg-subtle)] text-[var(--text-primary)] font-bold text-[10px] flex items-center justify-center shrink-0">
+                        {m.displayName?.[0]?.toUpperCase() || 'M'}
+                      </div>
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-[#101014] ${
+                          isOnline ? 'bg-emerald-400' : 'bg-neutral-600'
+                        }`}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="font-semibold text-[var(--text-primary)] block truncate">
+                        {m.displayName} {m.userId === user.id ? '(You)' : ''}
+                      </span>
+                      <span className="text-[10px] text-[var(--text-secondary)] truncate block">{m.email}</span>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <span className="font-semibold text-[var(--text-primary)] block truncate">
-                      {m.displayName} {m.userId === user.id ? '(You)' : ''}
-                    </span>
-                    <span className="text-[10px] text-[var(--text-secondary)] truncate block">{m.email}</span>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isOnline && (
+                      <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded-full">
+                        Online
+                      </span>
+                    )}
+                    {m.role === 'leader' ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full shrink-0">
+                        <Crown className="w-3 h-3" />
+                        <span>Leader</span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-[var(--text-secondary)] shrink-0">{m.instrument || 'Musician'}</span>
+                    )}
                   </div>
                 </div>
-
-                {m.role === 'leader' ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full shrink-0">
-                    <Crown className="w-3 h-3" />
-                    <span>Leader</span>
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-[var(--text-secondary)] shrink-0">Musician</span>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -250,7 +280,7 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
         {showLeaveConfirm ? (
           <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 space-y-2">
             <p className="text-[11px] font-semibold">
-              Are you sure you want to leave {activeGroup.name}? You will lose access to team setlists and rehearsal takes.
+              Are you sure you want to leave {currentTeam.name}? You will lose access to team setlists and rehearsal takes.
             </p>
             <div className="flex items-center justify-end gap-2">
               <button
@@ -278,7 +308,7 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
             className="w-full py-2 px-3 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Leave {activeGroup.name}</span>
+            <span>Leave {currentTeam.name}</span>
           </button>
         )}
       </div>

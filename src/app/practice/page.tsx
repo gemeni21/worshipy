@@ -16,8 +16,12 @@ import {
   Check,
   AlertCircle,
   Building2,
+  Share2,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { sharePracticeTakeToTeam } from '@/lib/team/teamService';
+import type { TeamPracticeTake } from '@/types/auth';
 import {
   PracticeTake,
   getAllPracticeTakes,
@@ -30,8 +34,35 @@ import { getAllSongs } from '@/lib/catalog/songCatalog';
 import { PracticeWaveformPlayer } from '@/components/practice/PracticeWaveformPlayer';
 
 export default function PracticeStudioPage() {
-  const { user } = useAuth();
+  const { user, activeGroup } = useAuth();
   const [takes, setTakes] = useState<PracticeTake[]>([]);
+  const [sharedNotice, setSharedNotice] = useState<string | null>(null);
+
+  const handleShareWithTeam = async (take: PracticeTake) => {
+    if (!activeGroup || !user) return;
+    const title = take.fileName || `${take.songTitle} Practice Run`;
+    try {
+      const teamTake: TeamPracticeTake = {
+        id: `take_${Date.now()}_${take.id}`,
+        songId: take.songSlug,
+        songTitle: take.songTitle,
+        title,
+        authorName: user.displayName || user.email.split('@')[0],
+        authorId: user.id,
+        createdAt: new Date().toISOString(),
+        durationSeconds: Math.round(take.durationSeconds || 180),
+        audioUrl: take.audioUrl || undefined,
+        notes: take.notes || undefined,
+        instrumentTag: user.instrument || 'Band Take',
+        isLeaderTake: activeGroup.ownerId === user.id,
+      };
+      await sharePracticeTakeToTeam(activeGroup.id, teamTake);
+      setSharedNotice(`Take "${title}" shared with ${activeGroup.name}!`);
+      setTimeout(() => setSharedNotice(null), 3000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to share take');
+    }
+  };
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSongFilter, setSelectedSongFilter] = useState<string>('all');
@@ -381,6 +412,33 @@ export default function PracticeStudioPage() {
         </div>
       )}
 
+      {/* Shared Notice Toast */}
+      {sharedNotice && (
+        <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+          <Check className="w-4 h-4 shrink-0 text-emerald-400" />
+          <span>{sharedNotice}</span>
+        </div>
+      )}
+
+      {/* Team Rehearsal Takes Link Banner */}
+      {activeGroup && (
+        <div className="p-3.5 rounded-2xl bg-[var(--brand-surface)] border border-[var(--brand-accent)]/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <Users className="w-4 h-4 text-[var(--brand-accent)] shrink-0" />
+            <span>
+              Connected to <strong className="text-[var(--text-primary)]">{activeGroup.name}</strong>. Rehearsal recordings can be shared with all band members!
+            </span>
+          </div>
+          <Link
+            href="/team"
+            className="px-3 py-1.5 rounded-xl bg-[var(--brand-accent)] text-black font-bold text-xs hover:brightness-110 shrink-0 inline-flex items-center gap-1 transition-all"
+          >
+            <span>Open Team Hub</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
       {/* Takes List / Empty State */}
       {isLoading ? (
         <div className="p-12 text-center text-sm text-[var(--text-secondary)]">
@@ -440,7 +498,19 @@ export default function PracticeStudioPage() {
                 onNotesUpdated={refreshTakes}
                 onTitleUpdated={refreshTakes}
               />
-              <div className="mt-1 flex items-center justify-end px-2">
+              <div className="mt-1 flex items-center justify-between px-2 text-xs">
+                {activeGroup ? (
+                  <button
+                    type="button"
+                    onClick={() => handleShareWithTeam(take)}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[var(--brand-accent)] hover:underline cursor-pointer"
+                  >
+                    <Share2 className="w-3 h-3" />
+                    <span>Share with {activeGroup.name}</span>
+                  </button>
+                ) : (
+                  <div />
+                )}
                 <Link
                   href={`/songs/${take.songSlug}`}
                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--brand-accent)] hover:underline"
