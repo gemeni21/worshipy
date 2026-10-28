@@ -649,6 +649,8 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
   return updatedGroup;
 }
 
+export const clearTeamActiveSetlist = clearTeamSetlist;
+
 export async function setTeamActiveLiveSession(
   groupId: string,
   sessionInfo: {
@@ -675,6 +677,7 @@ export async function setTeamActiveLiveSession(
     activeLiveSessionJoinCode: sessionInfo.joinCode,
     activeLiveSessionExpiresAt: sessionInfo.expiresAt,
     activeLiveSessionLeaderName: sessionInfo.leaderName,
+    activeSetlist: current?.activeSetlist,
   };
 
   setCachedTeam(updatedGroup);
@@ -692,6 +695,7 @@ export async function setTeamActiveLiveSession(
         activeLiveSessionJoinCode: sessionInfo.joinCode,
         activeLiveSessionExpiresAt: sessionInfo.expiresAt,
         activeLiveSessionLeaderName: sessionInfo.leaderName,
+        activeSetlist: current?.activeSetlist,
         groupName: current?.name,
         inviteCode: current?.inviteCode,
         members: current?.members,
@@ -700,8 +704,12 @@ export async function setTeamActiveLiveSession(
     if (res.ok) {
       const data = await res.json();
       if (data.group) {
-        setCachedTeam(data.group);
-        broadcastTeamSync(data.group);
+        const mergedGroup = {
+          ...data.group,
+          activeSetlist: data.group.activeSetlist || current?.activeSetlist,
+        };
+        setCachedTeam(mergedGroup);
+        broadcastTeamSync(mergedGroup);
       }
     }
   } catch (err) {
@@ -722,29 +730,51 @@ export async function setTeamActiveLiveSession(
         durationSeconds: 0,
         notes: JSON.stringify(sessionInfo),
       };
-      const existingTakes = (current?.practiceTakes || []).filter(
-        (t) => t.id !== LIVE_SESSION_META_TAKE_ID
+
+      // Ensure SETLIST_META_TAKE_ID is preserved
+      let cleanSetlistMeta = (current?.practiceTakes || []).find(
+        (t) => t.id === SETLIST_META_TAKE_ID
       );
-      const combinedTakes = [metaTake, ...existingTakes].slice(0, 50);
+      if (!cleanSetlistMeta && current?.activeSetlist) {
+        cleanSetlistMeta = {
+          id: SETLIST_META_TAKE_ID,
+          songId: '__system_meta__',
+          songTitle: 'Upcoming Setlist Lineup',
+          title: current.activeSetlist.name,
+          authorName: current.activeSetlist.publishedByName || 'Leader',
+          authorId: current.activeSetlist.publishedBy,
+          createdAt: current.activeSetlist.publishedAt,
+          durationSeconds: 0,
+          notes: JSON.stringify(current.activeSetlist),
+        };
+      }
+
+      const existingTakes = (current?.practiceTakes || []).filter(
+        (t) => t.id !== LIVE_SESSION_META_TAKE_ID && t.id !== SETLIST_META_TAKE_ID
+      );
+      const combinedTakes = [
+        metaTake,
+        ...(cleanSetlistMeta ? [cleanSetlistMeta] : []),
+        ...existingTakes,
+      ].slice(0, 50);
+
+      const firestorePayload: any = {
+        activeLiveSessionId: sessionInfo.sessionId,
+        activeLiveSessionJoinCode: sessionInfo.joinCode,
+        activeLiveSessionExpiresAt: sessionInfo.expiresAt,
+        activeLiveSessionLeaderName: sessionInfo.leaderName,
+        practiceTakes: combinedTakes,
+      };
+      if (current?.activeSetlist) {
+        firestorePayload.activeSetlist = current.activeSetlist;
+      }
 
       try {
-        await setDoc(
-          groupRef,
-          {
-            activeLiveSessionId: sessionInfo.sessionId,
-            activeLiveSessionJoinCode: sessionInfo.joinCode,
-            activeLiveSessionExpiresAt: sessionInfo.expiresAt,
-            activeLiveSessionLeaderName: sessionInfo.leaderName,
-            practiceTakes: combinedTakes,
-          },
-          { merge: true }
-        );
+        await setDoc(groupRef, firestorePayload, { merge: true });
       } catch (err) {
         console.warn('Firestore set live session primary write note:', err);
         try {
-          await updateDoc(groupRef, {
-            practiceTakes: combinedTakes,
-          });
+          await updateDoc(groupRef, firestorePayload);
         } catch (fallbackErr) {
           console.warn('Firestore set live session fallback note:', fallbackErr);
         }
@@ -773,6 +803,7 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
     activeLiveSessionJoinCode: undefined,
     activeLiveSessionExpiresAt: undefined,
     activeLiveSessionLeaderName: undefined,
+    activeSetlist: current?.activeSetlist,
   };
 
   setCachedTeam(updatedGroup);
@@ -790,6 +821,7 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
         activeLiveSessionJoinCode: null,
         activeLiveSessionExpiresAt: null,
         activeLiveSessionLeaderName: null,
+        activeSetlist: current?.activeSetlist,
         groupName: current?.name,
         inviteCode: current?.inviteCode,
         members: current?.members,
@@ -798,8 +830,12 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
     if (res.ok) {
       const data = await res.json();
       if (data.group) {
-        setCachedTeam(data.group);
-        broadcastTeamSync(data.group);
+        const mergedGroup = {
+          ...data.group,
+          activeSetlist: data.group.activeSetlist || current?.activeSetlist,
+        };
+        setCachedTeam(mergedGroup);
+        broadcastTeamSync(mergedGroup);
       }
     }
   } catch {}
@@ -810,14 +846,18 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
       const cleanTakes = (current?.practiceTakes || []).filter(
         (t) => t.id !== LIVE_SESSION_META_TAKE_ID
       );
+      const firestorePayload: any = {
+        activeLiveSessionId: null,
+        activeLiveSessionJoinCode: null,
+        activeLiveSessionExpiresAt: null,
+        activeLiveSessionLeaderName: null,
+        practiceTakes: cleanTakes,
+      };
+      if (current?.activeSetlist) {
+        firestorePayload.activeSetlist = current.activeSetlist;
+      }
       try {
-        await updateDoc(groupRef, {
-          activeLiveSessionId: null,
-          activeLiveSessionJoinCode: null,
-          activeLiveSessionExpiresAt: null,
-          activeLiveSessionLeaderName: null,
-          practiceTakes: cleanTakes,
-        });
+        await updateDoc(groupRef, firestorePayload);
       } catch (err) {
         console.warn('Firestore clear live session primary write note:', err);
         try {
@@ -868,9 +908,18 @@ export function subscribeToTeam(
       }
     }
 
+    // CRITICAL SETLIST PRESERVATION:
+    // If incoming update omitted activeSetlist (e.g. from an endpoint or Firestore event that only touched live sessions or presence),
+    // NEVER drop the active setlist! Only clear it if fresh.activeSetlist is explicitly null.
+    let effectiveSetlist = fresh.activeSetlist;
+    if (effectiveSetlist === undefined && currentCached?.id === fresh.id && currentCached.activeSetlist) {
+      effectiveSetlist = currentCached.activeSetlist;
+    }
+
     const mergedGroup: WorshipGroup = {
       ...fresh,
       members: mergedMembers,
+      activeSetlist: effectiveSetlist,
     };
 
     const serialized = JSON.stringify(mergedGroup);

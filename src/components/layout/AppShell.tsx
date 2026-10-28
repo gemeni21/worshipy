@@ -338,6 +338,7 @@ function MobileNavLinksActive() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, activeGroup } = useAuth();
+  const pathname = usePathname();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
 
@@ -505,6 +506,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Exit Offline Simulation
               </button>
             )}
+          </div>
+        )}
+
+        {activeGroup?.activeLiveSessionId && pathname !== '/live' && (
+          <div
+            role="status"
+            className="bg-emerald-500/15 border-b border-emerald-500/30 px-4 py-2.5 text-sm flex items-center justify-between gap-3 shadow-xs animate-in fade-in"
+          >
+            <div className="flex items-center gap-2.5 text-emerald-400 font-semibold min-w-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+              <Radio className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span className="truncate text-xs sm:text-sm">
+                Live Sync Active: <strong>{activeGroup.activeLiveSessionLeaderName || 'Leader'}</strong> is live in {activeGroup.name}
+              </span>
+            </div>
+            <Link
+              href="/live"
+              className="py-1 px-3 rounded-lg bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all shrink-0 flex items-center gap-1.5 shadow-xs"
+            >
+              <span>Return to Stage</span>
+              <span>→</span>
+            </Link>
           </div>
         )}
 

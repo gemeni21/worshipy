@@ -507,4 +507,118 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     assert.ok(ben);
     assert.equal(ben.instrument, 'bass');
   });
+
+  it('11. leader live sync reclaim: leader retains primary leadership without duplication when returning from other pages', () => {
+    // 1. Leader starts a session
+    const createRes = createLiveSession({
+      title: 'Sunday Service',
+      leaderName: 'Pastor John',
+      initialSongId: 'goodness-of-god',
+      initialSemitones: 0,
+    });
+    assert.ok(createRes.session);
+    const sessionId = createRes.session.sessionId;
+    const originalLeaderId = createRes.participantId;
+    assert.equal(createRes.session.leaderId, originalLeaderId);
+
+    // 2. A band member joins
+    const memberJoin = joinLiveSession({
+      sessionId,
+      participantName: 'Drummer Dave',
+      instrument: 'general',
+    });
+    assert.equal(memberJoin.session.participants.length, 2);
+
+    // 3. Leader navigates to Home then returns to /live. Re-joins session with leader reclaim
+    const leaderReclaim = joinLiveSession({
+      sessionId,
+      participantName: 'Pastor John',
+      isLeader: true,
+    });
+
+    // Verify leader reclaimed their original leader participantId rather than creating a duplicate member
+    assert.equal(leaderReclaim.participantId, originalLeaderId);
+    assert.equal(leaderReclaim.session.leaderId, originalLeaderId);
+    // Participant count must still be 2 (Pastor John + Drummer Dave), NOT 3
+    assert.equal(leaderReclaim.session.participants.length, 2);
+
+    const leaderRecord = leaderReclaim.session.participants.find((p) => p.id === originalLeaderId);
+    assert.ok(leaderRecord);
+    assert.equal(leaderRecord.role, 'leader');
+    assert.equal(leaderRecord.connectionState, 'connected');
+
+    // 4. Verify leader can authoritatively update musical state after reclaiming
+    const updated = updateLiveSessionState(sessionId, leaderReclaim.participantToken, {
+      songId: 'way-maker',
+      officialSemitones: 2,
+    });
+    // 'way-maker' slug maps to canonical ID 'song-02'
+    assert.equal(updated.sharedState.songId, 'song-02');
+    assert.equal(updated.sharedState.officialSemitones, 2);
+  });
+
+  it('12. active setlist preservation: setlist persists across live sync start/stop and is only removed by manual clear', async () => {
+    const leader = registerUser({
+      email: `leader_${Date.now()}_setlist@example.com`,
+      password: 'Password123!',
+      displayName: 'Leader David',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Praise Team', 'Grace Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    // 1. Publish active setlist
+    const setlistPayload: TeamActiveSetlist = {
+      id: 'setlist_sunday_praise',
+      name: 'Sunday Morning Lineup',
+      publishedAt: new Date().toISOString(),
+      publishedBy: leader.profile.id,
+      publishedByName: 'Leader David',
+      items: [
+        { songId: 'goodness-of-god', addedAt: new Date().toISOString() },
+        { songId: 'way-maker', addedAt: new Date().toISOString() },
+      ],
+    };
+
+    const update1 = updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeSetlist: setlistPayload,
+    });
+    assert.ok(update1.ok);
+    assert.ok(update1.group?.activeSetlist);
+    assert.equal(update1.group.activeSetlist.name, 'Sunday Morning Lineup');
+
+    // 2. Leader starts live sync — setlist MUST NOT be removed or flickered away
+    const liveUpdate = updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeLiveSessionId: 'live_sess_123',
+      activeLiveSessionJoinCode: '7K9M2P',
+      activeLiveSessionExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+      activeLiveSessionLeaderName: 'Leader David',
+      // Notice activeSetlist is preserved
+      activeSetlist: setlistPayload,
+    });
+    assert.ok(liveUpdate.ok);
+    assert.ok(liveUpdate.group?.activeSetlist);
+    assert.equal(liveUpdate.group.activeSetlist.name, 'Sunday Morning Lineup');
+    assert.equal(liveUpdate.group.activeLiveSessionId, 'live_sess_123');
+
+    // 3. Leader stops live sync — setlist MUST STILL persist
+    const stopLiveUpdate = updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeLiveSessionId: null,
+      activeLiveSessionJoinCode: null,
+      activeLiveSessionExpiresAt: null,
+      activeLiveSessionLeaderName: null,
+      activeSetlist: setlistPayload,
+    });
+    assert.ok(stopLiveUpdate.ok);
+    assert.ok(stopLiveUpdate.group?.activeSetlist);
+    assert.equal(stopLiveUpdate.group.activeSetlist.name, 'Sunday Morning Lineup');
+    assert.equal(stopLiveUpdate.group.activeLiveSessionId, undefined);
+
+    // 4. Leader manually clears the lineup — ONLY NOW is it removed
+    const manualClear = updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeSetlist: null,
+    });
+    assert.ok(manualClear.ok);
+    assert.equal(manualClear.group?.activeSetlist, undefined);
+  });
 });

@@ -554,29 +554,81 @@ export function joinLiveSession(
   }
 
   const nowIso = new Date().toISOString();
-  const participantId = `usr-${crypto.randomBytes(5).toString('hex')}`;
-  const newParticipant: LiveParticipant = {
-    id: participantId,
-    name: participantName,
-    role: 'member',
-    instrument: input.instrument ?? 'general',
-    connectionState: 'connected',
-    joinedAt: nowIso,
-    lastSeenAt: nowIso,
-  };
+  const cleanName = participantName.trim();
+  const isLeaderMatch =
+    Boolean(input.isLeader) ||
+    cleanName.toLowerCase() === targetSession.leaderName.trim().toLowerCase();
 
-  targetSession.participants.push(newParticipant);
+  let effectiveParticipantId: string;
+  let effectiveParticipant: LiveParticipant;
+
+  if (isLeaderMatch && targetSession.leaderId) {
+    // 1. Leader Reconnect / Reclaim
+    const existingLeader = targetSession.participants.find(
+      (p) => p.id === targetSession.leaderId
+    );
+    if (existingLeader) {
+      effectiveParticipantId = existingLeader.id;
+      existingLeader.connectionState = 'connected';
+      existingLeader.lastSeenAt = nowIso;
+      if (input.instrument) {
+        existingLeader.instrument = input.instrument;
+      }
+      effectiveParticipant = existingLeader;
+    } else {
+      effectiveParticipantId = targetSession.leaderId;
+      effectiveParticipant = {
+        id: effectiveParticipantId,
+        name: cleanName,
+        role: 'leader',
+        instrument: input.instrument ?? 'general',
+        connectionState: 'connected',
+        joinedAt: nowIso,
+        lastSeenAt: nowIso,
+      };
+      targetSession.participants.push(effectiveParticipant);
+    }
+  } else {
+    // 2. Member Reconnect by Name or Fresh Join
+    const existingMember = targetSession.participants.find(
+      (p) =>
+        p.id !== targetSession.leaderId &&
+        p.name.trim().toLowerCase() === cleanName.toLowerCase()
+    );
+    if (existingMember) {
+      effectiveParticipantId = existingMember.id;
+      existingMember.connectionState = 'connected';
+      existingMember.lastSeenAt = nowIso;
+      if (input.instrument) {
+        existingMember.instrument = input.instrument;
+      }
+      effectiveParticipant = existingMember;
+    } else {
+      effectiveParticipantId = `usr-${crypto.randomBytes(5).toString('hex')}`;
+      effectiveParticipant = {
+        id: effectiveParticipantId,
+        name: cleanName,
+        role: 'member',
+        instrument: input.instrument ?? 'general',
+        connectionState: 'connected',
+        joinedAt: nowIso,
+        lastSeenAt: nowIso,
+      };
+      targetSession.participants.push(effectiveParticipant);
+    }
+  }
+
   persistStoreToDisk();
   broadcastSessionEvent(targetSession.sessionId, 'presence_updated');
 
   const participantToken = createParticipantToken(
     targetSession.sessionId,
-    participantId
+    effectiveParticipantId
   );
 
   return {
     session: sanitizeSnapshot(targetSession),
-    participantId,
+    participantId: effectiveParticipantId,
     participantToken,
   };
 }

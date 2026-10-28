@@ -254,13 +254,13 @@ function LiveSyncWorkspace({
   const sectionElementsRef = useRef<Record<string, HTMLElement | null>>({});
   const latestRevisionRef = useRef<number>(0);
 
-  // Restore active session credentials from sessionStorage if present and no explicit join URL
+  // Restore active session credentials from sessionStorage or localStorage if present and no explicit join URL
   useEffect(() => {
     if (initialJoinCode || initialInviteToken) return;
     try {
-      const raw = window.sessionStorage.getItem(
-        SESSION_CREDENTIALS_STORAGE_KEY
-      );
+      const raw =
+        window.sessionStorage.getItem(SESSION_CREDENTIALS_STORAGE_KEY) ||
+        window.localStorage.getItem(SESSION_CREDENTIALS_STORAGE_KEY);
       if (!raw) return;
       const stored = JSON.parse(raw) as StoredLiveCredentials;
       if (stored.sessionId && stored.participantToken) {
@@ -273,7 +273,11 @@ function LiveSyncWorkspace({
         )
           .then(async (res) => {
             if (!res.ok) {
-              window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
+              const errData = await res.json().catch(() => null);
+              if (res.status === 410 || errData?.code === 'SESSION_ENDED') {
+                window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
+                window.localStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
+              }
               return;
             }
             const data = (await res.json()) as {
@@ -361,7 +365,12 @@ function LiveSyncWorkspace({
 
   // Unified join helper for automatic and 1-click stage connection
   const performJoinLiveSession = useCallback(
-    async (target: { sessionId?: string; joinCode?: string; isAuto?: boolean }) => {
+    async (target: {
+      sessionId?: string;
+      joinCode?: string;
+      isAuto?: boolean;
+      isLeader?: boolean;
+    }) => {
       if (autoJoinInFlightRef.current) return;
       autoJoinInFlightRef.current = true;
       if (target.isAuto) {
@@ -382,6 +391,7 @@ function LiveSyncWorkspace({
             joinCode: target.joinCode || undefined,
             participantName: effectiveName,
             instrument: (user?.instrument as any) || 'general',
+            isLeader: target.isLeader || undefined,
           }),
         });
 
@@ -400,6 +410,10 @@ function LiveSyncWorkspace({
             participantToken: data.participantToken,
           };
           window.sessionStorage.setItem(
+            SESSION_CREDENTIALS_STORAGE_KEY,
+            JSON.stringify(creds)
+          );
+          window.localStorage.setItem(
             SESSION_CREDENTIALS_STORAGE_KEY,
             JSON.stringify(creds)
           );
@@ -432,17 +446,15 @@ function LiveSyncWorkspace({
     [user?.displayName, user?.email, user?.instrument]
   );
 
-  // 2. Auto-connect team members if their worship team leader is currently live
+  // 2. Auto-connect team members and re-connect leader if their worship team leader is currently live
   useEffect(() => {
     if (session) return;
     const currentGrp = activeGroup || getCachedTeam();
     if (!currentGrp?.id) return;
 
-    // Do not force auto-join on the leader/creator
     const isLeader = Boolean(
       user && (currentGrp.ownerId === user.id || user.groupRole === 'leader')
     );
-    if (isLeader) return;
 
     async function checkAndAutoJoin() {
       const grp = activeGroup || getCachedTeam();
@@ -486,6 +498,7 @@ function LiveSyncWorkspace({
         sessionId: liveId || undefined,
         joinCode: joinCode || undefined,
         isAuto: true,
+        isLeader,
       });
     }
 
@@ -698,6 +711,10 @@ function LiveSyncWorkspace({
           SESSION_CREDENTIALS_STORAGE_KEY,
           JSON.stringify(creds)
         );
+        window.localStorage.setItem(
+          SESSION_CREDENTIALS_STORAGE_KEY,
+          JSON.stringify(creds)
+        );
       } catch {
         // ignore
       }
@@ -772,6 +789,10 @@ function LiveSyncWorkspace({
           participantToken: data.participantToken,
         };
         window.sessionStorage.setItem(
+          SESSION_CREDENTIALS_STORAGE_KEY,
+          JSON.stringify(creds)
+        );
+        window.localStorage.setItem(
           SESSION_CREDENTIALS_STORAGE_KEY,
           JSON.stringify(creds)
         );
@@ -955,6 +976,7 @@ function LiveSyncWorkspace({
         clearTeamActiveLiveSession(grpId).catch(() => {});
       }
       window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
+      window.localStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
     } catch {
       // ignore
     }
@@ -971,6 +993,7 @@ function LiveSyncWorkspace({
     }
     autoJoinAttemptedIdRef.current = null;
     window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
+    window.localStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
     setSession(null);
     setParticipantId('');
     setParticipantToken('');
@@ -1320,16 +1343,18 @@ function LiveSyncWorkspace({
                     <button
                       type="button"
                       onClick={() => {
-                        if (effectiveGroup.activeLiveSessionJoinCode) {
-                          setJoinCodeInput(effectiveGroup.activeLiveSessionJoinCode);
-                          setMemberNameInput(user?.displayName || leaderName || 'Leader');
-                          const form = document.querySelector('form');
-                          if (form) form.requestSubmit();
-                        }
+                        autoJoinAttemptedIdRef.current = null;
+                        performJoinLiveSession({
+                          sessionId: effectiveGroup.activeLiveSessionId,
+                          joinCode: effectiveGroup.activeLiveSessionJoinCode,
+                          isAuto: false,
+                          isLeader: true,
+                        });
                       }}
-                      className="w-full py-2.5 rounded-lg bg-amber-400 text-black font-bold text-xs hover:bg-amber-300 transition-all cursor-pointer"
+                      disabled={isSubmitting || isAutoConnecting}
+                      className="w-full py-2.5 rounded-lg bg-amber-400 text-black font-bold text-xs hover:bg-amber-300 transition-all cursor-pointer disabled:opacity-50"
                     >
-                      ⚡ Re-enter Active Leader Stage
+                      ⚡ {isSubmitting ? 'Connecting...' : 'Re-enter Active Leader Stage'}
                     </button>
                   </div>
                 )}

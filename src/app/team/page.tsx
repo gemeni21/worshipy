@@ -40,6 +40,7 @@ import {
   sharePracticeTakeToTeam,
   deleteSharedPracticeTake,
   getCachedTeam,
+  clearTeamActiveSetlist,
 } from '@/lib/team/teamService';
 import type { TeamPracticeTake, GroupMember } from '@/types/auth';
 import { PracticeWaveformPlayer } from '@/components/practice/PracticeWaveformPlayer';
@@ -102,10 +103,31 @@ export default function TeamHubPage() {
   const [isSavingBranding, setIsSavingBranding] = useState(false);
   const [brandingSuccessMsg, setBrandingSuccessMsg] = useState(false);
   const [brandingError, setBrandingError] = useState<string | null>(null);
+  const [isClearingSetlist, setIsClearingSetlist] = useState(false);
 
   const [, startTransition] = useTransition();
 
   const currentTeam = activeGroup || getCachedTeam();
+
+  const handleClearActiveSetlist = async () => {
+    if (!currentTeam?.id || !currentTeam.activeSetlist) return;
+    if (
+      !window.confirm(
+        `Remove "${currentTeam.activeSetlist.name}" from Worship Team? The setlist in your personal library will not be affected.`
+      )
+    ) {
+      return;
+    }
+    setIsClearingSetlist(true);
+    try {
+      await clearTeamActiveSetlist(currentTeam.id);
+      refreshActiveGroup();
+    } catch (err) {
+      console.warn('Error clearing active setlist:', err);
+    } finally {
+      setIsClearingSetlist(false);
+    }
+  };
 
   // Active member roster computed with presence fallback to guarantee no online musician is ever hidden
   const rosterMembers = useMemo(() => {
@@ -933,6 +955,18 @@ export default function TeamHubPage() {
                     <Edit3 className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
                     <span>{currentTeam.activeSetlist ? 'Change Lineup' : 'Set Lineup'}</span>
                   </Link>
+                )}
+                {isLeader && currentTeam.activeSetlist && (
+                  <button
+                    type="button"
+                    onClick={handleClearActiveSetlist}
+                    disabled={isClearingSetlist}
+                    className="py-1.5 px-3 rounded-xl border border-red-500/30 hover:border-red-500/60 text-xs font-semibold text-red-400 hover:bg-red-500/10 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                    title="Remove this lineup from Worship Team"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isClearingSetlist ? 'Clearing...' : 'Clear Lineup'}</span>
+                  </button>
                 )}
               </div>
             </div>

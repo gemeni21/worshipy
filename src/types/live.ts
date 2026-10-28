@@ -86,6 +86,7 @@ export interface JoinLiveSessionInput {
   inviteToken?: string;
   participantName: string;
   instrument?: InstrumentViewMode;
+  isLeader?: boolean;
 }
 
 export interface JoinLiveSessionResponse {
