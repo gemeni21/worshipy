@@ -36,6 +36,7 @@ import type { TeamPracticeTake } from '@/types/auth';
 export default function TeamHubPage() {
   const {
     user,
+    isAuthLoading,
     activeGroup,
     teamPresence,
     onlineMembersCount,
@@ -239,8 +240,18 @@ export default function TeamHubPage() {
     }
   };
 
+  // If still checking session and no local team yet
+  if (isAuthLoading && !user && !currentTeam) {
+    return (
+      <div className="max-w-4xl mx-auto p-12 text-center flex flex-col items-center justify-center min-h-[50vh] space-y-3">
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--brand-accent)]" />
+        <p className="text-xs text-[var(--text-secondary)] font-medium">Connecting to your worship team...</p>
+      </div>
+    );
+  }
+
   // If not signed in at all
-  if (!user) {
+  if (!user && !currentTeam) {
     return (
       <div className="max-w-4xl mx-auto p-4 sm:p-8 space-y-6">
         <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-8 text-center space-y-4">
@@ -260,6 +271,16 @@ export default function TeamHubPage() {
           </button>
         </div>
         <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      </div>
+    );
+  }
+
+  // If resolving user's team in background
+  if (user?.groupId && !currentTeam) {
+    return (
+      <div className="max-w-4xl mx-auto p-12 text-center flex flex-col items-center justify-center min-h-[50vh] space-y-3">
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--brand-accent)]" />
+        <p className="text-xs text-[var(--text-secondary)] font-medium">Loading your team roster...</p>
       </div>
     );
   }
@@ -385,7 +406,7 @@ export default function TeamHubPage() {
   }
 
   // Active Team Hub
-  const isLeader = currentTeam.ownerId === user.id;
+  const isLeader = Boolean(user && currentTeam.ownerId === user.id);
 
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
@@ -477,7 +498,7 @@ export default function TeamHubPage() {
             <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
               {currentTeam.members.map((m) => {
                 const presence = teamPresence[m.userId];
-                const isOnline = presence?.online ?? (m.userId === user.id);
+                const isOnline = presence?.online ?? Boolean(user && m.userId === user.id);
                 const currentSong = presence?.currentSong;
 
                 return (
@@ -499,7 +520,7 @@ export default function TeamHubPage() {
                         </div>
                         <div className="min-w-0">
                           <span className="font-semibold text-xs text-[var(--text-primary)] block truncate">
-                            {m.displayName} {m.userId === user.id ? '(You)' : ''}
+                            {m.displayName} {user && m.userId === user.id ? '(You)' : ''}
                           </span>
                           <span className="text-[10px] text-[var(--text-secondary)] truncate block">
                             {m.instrument || 'Musician'}
@@ -641,7 +662,7 @@ export default function TeamHubPage() {
               <div className="space-y-3">
                 {sharedTakes.map((take) => {
                   const isPlaying = playingTakeId === take.id;
-                  const canDelete = isLeader || take.authorId === user.id;
+                  const canDelete = isLeader || Boolean(user && take.authorId === user.id);
 
                   return (
                     <div

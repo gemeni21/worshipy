@@ -25,7 +25,7 @@ interface WorshipTeamSectionProps {
 }
 
 export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: WorshipTeamSectionProps) {
-  const { user, activeGroup, teamPresence, createGroup, joinGroup, leaveGroup } = useAuth();
+  const { user, isAuthLoading, activeGroup, teamPresence, createGroup, joinGroup, leaveGroup } = useAuth();
 
   const currentTeam = activeGroup || getCachedTeam();
 
@@ -47,8 +47,18 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
   const [copiedLink, setCopiedLink] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
+  // If loading session
+  if (isAuthLoading && !user && !currentTeam) {
+    return (
+      <div className="p-4 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-center py-6">
+        <Loader2 className="w-5 h-5 animate-spin mx-auto text-[var(--brand-accent)] mb-2" />
+        <p className="text-[11px] text-[var(--text-secondary)]">Connecting to worship team...</p>
+      </div>
+    );
+  }
+
   // If not logged in, prompt sign in
-  if (!user) {
+  if (!user && !currentTeam) {
     return (
       <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-xs space-y-3">
         <div className="flex items-center gap-2 font-bold text-[var(--text-primary)]">
@@ -134,7 +144,7 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
   };
 
   // State A: User is in an active group
-  if (user.groupId || currentTeam) {
+  if (user?.groupId || currentTeam) {
     if (!currentTeam) {
       return (
         <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-xs flex items-center justify-center gap-2">
@@ -144,7 +154,7 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
       );
     }
 
-    const isOwner = currentTeam.ownerId === user.id;
+    const isOwner = Boolean(user && currentTeam.ownerId === user.id);
 
     return (
       <div className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-subtle)] border border-[var(--border-subtle)] text-xs space-y-4">
@@ -222,7 +232,7 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
             {currentTeam.members.map((m) => {
               const presence = teamPresence[m.userId];
-              const isOnline = presence?.online ?? (m.userId === user.id);
+              const isOnline = presence?.online ?? Boolean(user && m.userId === user.id);
 
               return (
                 <div
@@ -242,7 +252,7 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
                     </div>
                     <div className="min-w-0">
                       <span className="font-semibold text-[var(--text-primary)] block truncate">
-                        {m.displayName} {m.userId === user.id ? '(You)' : ''}
+                        {m.displayName} {user && m.userId === user.id ? '(You)' : ''}
                       </span>
                       <span className="text-[10px] text-[var(--text-secondary)] truncate block">{m.email}</span>
                     </div>

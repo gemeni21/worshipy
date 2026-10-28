@@ -501,3 +501,45 @@ export async function deleteSharedPracticeTake(
   const takeRef = doc(db, 'groups', groupId, 'practiceTakes', takeId);
   await deleteDoc(takeRef);
 }
+
+/**
+ * Automatically restores a user's team from Firestore if local cache is absent or out of sync
+ */
+export async function findUserTeamInFirestore(userId: string): Promise<WorshipGroup | null> {
+  const db = getFirebaseFirestore();
+  if (!db || !userId) return null;
+
+  try {
+    // 1. Check if user is in any team's memberIds array
+    const q1 = query(
+      collection(db, 'groups'),
+      where('memberIds', 'array-contains', userId),
+      limit(1)
+    );
+    const snap1 = await getDocs(q1);
+    if (!snap1.empty) {
+      const docSnap = snap1.docs[0];
+      const group = { id: docSnap.id, ...docSnap.data() } as WorshipGroup;
+      setCachedTeam(group);
+      return group;
+    }
+
+    // 2. Fallback: check if user is the owner of a team
+    const q2 = query(
+      collection(db, 'groups'),
+      where('ownerId', '==', userId),
+      limit(1)
+    );
+    const snap2 = await getDocs(q2);
+    if (!snap2.empty) {
+      const docSnap = snap2.docs[0];
+      const group = { id: docSnap.id, ...docSnap.data() } as WorshipGroup;
+      setCachedTeam(group);
+      return group;
+    }
+  } catch (err) {
+    console.warn('Firestore user team lookup note:', err);
+  }
+
+  return null;
+}

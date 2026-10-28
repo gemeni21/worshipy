@@ -24,7 +24,15 @@ export async function POST(req: NextRequest) {
     // Generate fresh HMAC session token with cleared groupId
     const updatedToken = generateUserSessionToken(user.id);
 
-    return NextResponse.json({ success: true, token: updatedToken });
+    const res = NextResponse.json({ success: true, token: updatedToken });
+    res.cookies.set('worshipy_token', updatedToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30, // 30 days
+    });
+    return res;
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to leave group';
     return NextResponse.json({ error: msg }, { status: 500 });

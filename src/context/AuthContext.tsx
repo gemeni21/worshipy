@@ -22,6 +22,7 @@ import { promptGoogleSignInPopup } from '@/lib/firebase/firebaseClient';
 import { promptGoogleAccountPicker } from '@/lib/auth/googleOAuth';
 import {
   createTeam,
+  findUserTeamInFirestore,
   getCachedTeam,
   joinTeamByInviteCode,
   leaveTeam,
@@ -96,7 +97,15 @@ const TOKEN_KEY = 'worshipy_auth_token_v1';
 const USER_CACHE_KEY = 'worshipy_user_cache_v1';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const cached = localStorage.getItem(USER_CACHE_KEY);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [submissions, setSubmissions] = useState<SongSubmission[]>([]);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
@@ -145,8 +154,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           if (!cancelled && data.user) {
-            setUser(data.user);
-            localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.user));
+            // CRITICAL: Preserve existing groupId, groupName, and groupRole from local cache or current state
+            const cachedGroup = getCachedTeam();
+            const existingGroupId = data.user.groupId || user?.groupId || cachedGroup?.id;
+            const existingGroupName = data.user.groupName || user?.groupName || cachedGroup?.name;
+            const existingGroupRole =
+              data.user.groupRole ||
+              user?.groupRole ||
+              (cachedGroup && cachedGroup.ownerId === data.user.id ? 'leader' : (cachedGroup ? 'member' : undefined));
+
+            const fullUser: UserProfile = {
+              ...data.user,
+              groupId: existingGroupId,
+              groupName: existingGroupName,
+              groupRole: existingGroupRole,
+            };
+
+            setUser(fullUser);
+            try {
+              localStorage.setItem(USER_CACHE_KEY, JSON.stringify(fullUser));
+            } catch {}
+
+            if (cachedGroup) {
+              setActiveGroup(cachedGroup);
+            } else if (fullUser.id && !fullUser.groupId) {
+              // Automatically check Firestore in background if not found locally
+              findUserTeamInFirestore(fullUser.id)
+                .then((foundTeam) => {
+                  if (!cancelled && foundTeam) {
+                    setActiveGroup(foundTeam);
+                    const withTeam: UserProfile = {
+                      ...fullUser,
+                      groupId: foundTeam.id,
+                      groupName: foundTeam.name,
+                      groupRole: foundTeam.ownerId === fullUser.id ? 'leader' : 'member',
+                    };
+                    setUser(withTeam);
+                    try {
+                      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(withTeam));
+                    } catch {}
+                  }
+                })
+                .catch(() => {});
+            }
           }
         } else {
           // If server responded with error (e.g. temporary serverless hiccup), preserve cached session
@@ -408,13 +458,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [teamPresence]);
 
   const refreshActiveGroup = useCallback(async () => {
-    if (!user?.groupId) {
-      setActiveGroup(null);
-      setCachedTeam(null);
-      return;
-    }
+    const targetGroupId = user?.groupId || activeGroup?.id || getCachedTeam()?.id;
+    if (!targetGroupId) return;
+
     try {
-      const res = await authFetch(`/api/groups/${user.groupId}`);
+      const res = await authFetch(`/api/groups/${targetGroupId}`);
       if (res.ok) {
         const data = await res.json();
         if (data.group) {
@@ -425,19 +473,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
-  }, [user?.groupId, authFetch]);
+  }, [user?.groupId, activeGroup?.id, authFetch]);
+
+  // Derive authoritative team ID from state or localStorage
+  const effectiveGroupId = user?.groupId || activeGroup?.id || getCachedTeam()?.id;
 
   // Real-time listener for group and member presence
   useEffect(() => {
-    if (!user?.groupId) {
-      setActiveGroup(null);
+    if (!effectiveGroupId) {
       setTeamPresence({});
-      setCachedTeam(null);
       return;
     }
 
-    // 1. Subscribe to real-time group changes
-    const unsubGroup = subscribeToTeam(user.groupId, (group) => {
+    // Keep user state in sync with effectiveGroupId if not set
+    if (user && !user.groupId) {
+      const cached = getCachedTeam();
+      const isLeader = cached ? cached.ownerId === user.id : false;
+      const syncedUser: UserProfile = {
+        ...user,
+        groupId: effectiveGroupId,
+        groupName: cached?.name || user.groupName,
+        groupRole: isLeader ? 'leader' : (user.groupRole || 'member'),
+      };
+      setUser(syncedUser);
+      try {
+        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(syncedUser));
+      } catch {}
+    }
+
+    // 1. Subscribe to real-time group changes from Firestore
+    const unsubGroup = subscribeToTeam(effectiveGroupId, (group) => {
       if (group) {
         setActiveGroup(group);
         setCachedTeam(group);
@@ -445,17 +510,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // 2. Subscribe to real-time member presence
-    const unsubPresence = subscribeToTeamPresence(user.groupId, (presence) => {
+    const unsubPresence = subscribeToTeamPresence(effectiveGroupId, (presence) => {
       setTeamPresence(presence);
     });
 
     // 3. Send initial heartbeat
-    sendTeamHeartbeat(user.groupId, user).catch(() => {});
+    if (user) {
+      sendTeamHeartbeat(effectiveGroupId, user).catch(() => {});
+    }
 
     // 4. Heartbeat loop while tab is open
     const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        sendTeamHeartbeat(user.groupId!, user).catch(() => {});
+      if (user && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        sendTeamHeartbeat(effectiveGroupId, user).catch(() => {});
       }
     }, 20000);
 
@@ -464,15 +531,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubPresence();
       clearInterval(interval);
     };
-  }, [user]);
+  }, [effectiveGroupId, user]);
 
   const broadcastSongActivity = useCallback(
     (songTitle: string) => {
-      if (user?.groupId) {
-        sendTeamHeartbeat(user.groupId, user, songTitle).catch(() => {});
+      const targetId = user?.groupId || effectiveGroupId;
+      if (targetId && user) {
+        sendTeamHeartbeat(targetId, user, songTitle).catch(() => {});
       }
     },
-    [user]
+    [user, effectiveGroupId]
   );
 
   const createGroup = useCallback(
