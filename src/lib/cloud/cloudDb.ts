@@ -1112,6 +1112,8 @@ export function updateWorshipGroupBranding(
 
   const isLeader =
     group.ownerId === userId ||
+    user?.profile.role === 'admin' ||
+    user?.profile.groupRole === 'leader' ||
     group.members.some((m) => m.userId === userId && m.role === 'leader');
 
   if (!isLeader) {
@@ -1190,6 +1192,7 @@ export function suggestSetlistForGroup(
   const user = Object.values(store.users).find((u) => u.profile.id === userId);
   const isMember =
     group.ownerId === userId ||
+    user?.profile.groupId === groupId ||
     group.members.some((m) => m.userId === userId);
 
   if (!isMember) {
@@ -1201,6 +1204,16 @@ export function suggestSetlistForGroup(
   }
 
   const now = new Date().toISOString();
+
+  if (!group.members.some((m) => m.userId === userId)) {
+    group.members.push({
+      userId,
+      email: user?.profile.email || '',
+      displayName: user?.profile.displayName || 'Musician',
+      role: user?.profile.groupRole === 'leader' ? 'leader' : 'member',
+      joinedAt: now,
+    });
+  }
   const suggestionId = `sugg_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
 
   const memberEntry = group.members.find((m) => m.userId === userId);
@@ -1254,6 +1267,8 @@ export function reviewSetlistSuggestion(
   const user = Object.values(store.users).find((u) => u.profile.id === userId);
   const isLeader =
     group.ownerId === userId ||
+    user?.profile.role === 'admin' ||
+    user?.profile.groupRole === 'leader' ||
     group.members.some((m) => m.userId === userId && m.role === 'leader');
 
   if (!isLeader) {
@@ -1327,8 +1342,11 @@ export function deleteSetlistSuggestion(
     return { ok: false, error: 'Suggestion not found.' };
   }
 
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
   const isLeader =
     group.ownerId === userId ||
+    user?.profile.role === 'admin' ||
+    user?.profile.groupRole === 'leader' ||
     group.members.some((m) => m.userId === userId && m.role === 'leader');
   const isSubmitter = suggestion.suggestedBy === userId;
 

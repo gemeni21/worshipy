@@ -15,6 +15,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { getFirebaseFirestore } from '../firebase/firebaseClient.ts';
+import { apiUrl } from '../api/apiClient.ts';
 import type {
   GroupMember,
   TeamPracticeTake,
@@ -94,7 +95,7 @@ export async function createTeam(
 
   // 1. Sync with server to get canonical group and update HMAC session token
   try {
-    const res = await fetch('/api/groups/create', {
+    const res = await fetch(apiUrl('/api/groups/create'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -211,7 +212,7 @@ export async function joinTeamByInviteCode(
 
   // 2. Sync with server API to update user session token and resolve server store
   try {
-    const res = await fetch('/api/groups/join', {
+    const res = await fetch(apiUrl('/api/groups/join'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -268,7 +269,7 @@ export async function joinTeamByInviteCode(
       }
 
       // Sync full member roster with server API so polling keeps everyone
-      fetch(`/api/groups/${foundGroup.id}`, {
+      fetch(apiUrl(`/api/groups/${foundGroup.id}`), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -341,7 +342,7 @@ export async function leaveTeam(groupId: string, userId: string): Promise<void> 
 
   // Sync with server API
   try {
-    const res = await fetch('/api/groups/leave', {
+    const res = await fetch(apiUrl('/api/groups/leave'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -430,7 +431,7 @@ export async function updateTeamBranding(
 
   // 3. Sync to server API
   try {
-    const res = await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -487,7 +488,7 @@ export async function publishTeamSetlist(
 
   // 2. Sync to authoritative server API first
   try {
-    const res = await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -600,7 +601,7 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
   broadcastTeamSync(updatedGroup);
 
   try {
-    const res = await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -663,7 +664,7 @@ export async function proposeTeamSetlist(
   const db = getFirebaseFirestore();
 
   try {
-    const res = await fetch(`/api/groups/${groupId}/suggestions`, {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}/suggestions`), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -743,7 +744,9 @@ export async function reviewTeamSetlistSuggestion(
   const db = getFirebaseFirestore();
 
   try {
-    const res = await fetch(`/api/groups/${groupId}/suggestions/${encodeURIComponent(suggestionId)}`, {
+    const res = await fetch(
+      apiUrl(`/api/groups/${groupId}/suggestions/${encodeURIComponent(suggestionId)}`),
+      {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -838,7 +841,9 @@ export async function deleteTeamSetlistSuggestion(
   const db = getFirebaseFirestore();
 
   try {
-    const res = await fetch(`/api/groups/${groupId}/suggestions/${encodeURIComponent(suggestionId)}`, {
+    const res = await fetch(
+      apiUrl(`/api/groups/${groupId}/suggestions/${encodeURIComponent(suggestionId)}`),
+      {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
@@ -934,7 +939,7 @@ export async function setTeamActiveLiveSession(
   broadcastTeamSync(updatedGroup);
 
   try {
-    const res = await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1060,7 +1065,7 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
   broadcastTeamSync(updatedGroup);
 
   try {
-    const res = await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -1196,7 +1201,7 @@ export function subscribeToTeam(
   const fetchServerGroup = async () => {
     if (isDisposed || !groupId) return;
     try {
-      const res = await fetch(`/api/groups/${groupId}`, {
+      const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
         cache: 'no-store',
       });
       if (res.ok) {

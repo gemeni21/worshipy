@@ -1029,4 +1029,63 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     assert.ok(deleteRes.ok);
     assert.equal(deleteRes.group?.suggestedSetlists?.length, 0);
   });
+
+  it('21. leader can propose a setlist for co-leader review or testing, preserving transpositions and audio links', () => {
+    const leader = registerUser({
+      email: `lead_co_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Worship Pastor Mike',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'East Campus Team', 'Grace Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    // Leader submits a proposal (testing or co-leading flow)
+    const proposeRes = suggestSetlistForGroup(leader.profile.id, groupId, {
+      setlist: {
+        id: 'setlist_easter',
+        name: 'Easter Celebration 2026',
+        publishedAt: new Date().toISOString(),
+        publishedBy: leader.profile.id,
+        items: [
+          {
+            songId: 'song-way-maker',
+            addedAt: new Date().toISOString(),
+            preferredSemitones: 3,
+            notes: 'Sing key of Eb for soprano lead',
+            referenceAudioUrl: 'https://www.youtube.com/watch?v=iJCV_2H9xD0',
+          },
+        ],
+      },
+      targetServiceDate: 'Easter Sunday',
+      note: 'Arranged in Eb with modulation on bridge 2.',
+    });
+
+    assert.ok(proposeRes.ok && proposeRes.suggestion);
+    assert.equal(proposeRes.suggestion.status, 'pending');
+    assert.equal(proposeRes.suggestion.targetServiceDate, 'Easter Sunday');
+    assert.equal(proposeRes.suggestion.setlist.items[0].preferredSemitones, 3);
+    assert.equal(proposeRes.suggestion.setlist.items[0].referenceAudioUrl, 'https://www.youtube.com/watch?v=iJCV_2H9xD0');
+
+    // Leader approves the proposal
+    const approveRes = reviewSetlistSuggestion(
+      leader.profile.id,
+      groupId,
+      proposeRes.suggestion.id,
+      'approve'
+    );
+
+    assert.ok(approveRes.ok && approveRes.group);
+    assert.ok(approveRes.group.activeSetlist);
+    assert.equal(approveRes.group.activeSetlist.name, 'Easter Celebration 2026');
+    assert.equal(approveRes.group.activeSetlist.items[0].preferredSemitones, 3);
+    assert.equal(approveRes.group.activeSetlist.items[0].referenceAudioUrl, 'https://www.youtube.com/watch?v=iJCV_2H9xD0');
+    assert.equal(approveRes.group.activeSetlist.items[0].notes, 'Sing key of Eb for soprano lead');
+
+    const approvedSugg = approveRes.group.suggestedSetlists?.find(
+      (s) => s.id === proposeRes.suggestion!.id
+    );
+    assert.ok(approvedSugg);
+    assert.equal(approvedSugg.status, 'approved');
+  });
 });

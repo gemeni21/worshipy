@@ -21,6 +21,7 @@ import {
   Music2,
   Loader2,
   AlertCircle,
+  Info,
   Plus,
   Radio,
   Palette,
@@ -663,7 +664,13 @@ export default function TeamHubPage() {
   }
 
   // Active Team Hub
-  const isLeader = Boolean(user && currentTeam.ownerId === user.id);
+  const isLeader = Boolean(
+    user &&
+      (currentTeam.ownerId === user.id ||
+        user.groupRole === 'leader' ||
+        user.role === 'admin' ||
+        currentTeam.members?.some((m) => m.userId === user.id && m.role === 'leader'))
+  );
 
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
@@ -1004,235 +1011,303 @@ export default function TeamHubPage() {
           )}
 
           {/* Leader Review Card for Pending Lineup Suggestions */}
-          {isLeader && pendingSuggestions.length > 0 && (
-            <div className="rounded-3xl border border-amber-500/30 bg-amber-500/5 p-5 sm:p-6 space-y-4 shadow-sm animate-in fade-in">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
-                        Lineup Suggestions from Team
-                      </h3>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs">
-                        {pendingSuggestions.length} PENDING REVIEW
-                      </span>
+          {isLeader && (
+            pendingSuggestions.length > 0 ? (
+              <div className="rounded-3xl border border-amber-500/30 bg-amber-500/5 p-5 sm:p-6 space-y-4 shadow-sm animate-in fade-in">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-5 h-5" />
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)]">
-                      Singers and song leaders proposing service lineups for your approval
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                          Lineup Suggestions from Team
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs">
+                          {pendingSuggestions.length} PENDING REVIEW
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Singers and song leaders proposing service lineups for your approval
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {pendingSuggestions.map((sug) => {
+                    const isExpanded = expandedSuggestionId === sug.id;
+                    const isReviewingThis = reviewingSuggestionId === sug.id;
+
+                    return (
+                      <div
+                        key={sug.id}
+                        className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-amber-500/25 hover:border-amber-500/40 transition-all space-y-3 shadow-xs"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-sm text-[var(--text-primary)] truncate">
+                                {sug.setlist.name}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
+                                {sug.setlist.items.length}{' '}
+                                {sug.setlist.items.length === 1 ? 'song' : 'songs'}
+                              </span>
+                              {sug.targetServiceDate && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+                                  {sug.targetServiceDate}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                              <span className="font-semibold text-[var(--text-primary)]">
+                                Suggested by {sug.suggestedByName}
+                              </span>
+                              {sug.suggestedByRole && (
+                                <span>• {sug.suggestedByRole}</span>
+                              )}
+                            </div>
+
+                            {sug.note && (
+                              <div className="mt-1.5 p-2.5 rounded-xl bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] italic">
+                                &ldquo;{sug.note}&rdquo;
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedSuggestionId(isExpanded ? null : sug.id)
+                              }
+                              className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <span>{isExpanded ? 'Hide Songs' : 'Preview Songs'}</span>
+                              {isExpanded ? (
+                                <ChevronUp className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isReviewingAction}
+                              onClick={() => handleReviewSuggestion(sug.id, 'approve')}
+                              className="py-1.5 px-3 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Approve & Set Lineup</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isReviewingAction}
+                              onClick={() => {
+                                if (isReviewingThis) {
+                                  setReviewingSuggestionId(null);
+                                } else {
+                                  setReviewingSuggestionId(sug.id);
+                                  setDeclineNote('');
+                                }
+                              }}
+                              className="py-1.5 px-2.5 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Decline</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Inline Decline Note Input */}
+                        {isReviewingThis && (
+                          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2 animate-in fade-in">
+                            <label className="block text-xs font-semibold text-rose-300">
+                              Reason or note for {sug.suggestedByName} (optional):
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={declineNote}
+                                onChange={(e) => setDeclineNote(e.target.value)}
+                                placeholder="e.g. Let's do this next Sunday instead so the band has more rehearsal time."
+                                className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-rose-400"
+                              />
+                              <button
+                                type="button"
+                                disabled={isReviewingAction}
+                                onClick={() => handleReviewSuggestion(sug.id, 'decline')}
+                                className="px-3 py-1.5 rounded-lg bg-rose-500 text-white font-bold text-xs hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-50"
+                              >
+                                Confirm Decline
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setReviewingSuggestionId(null)}
+                                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Expanded Songs List Preview */}
+                        {isExpanded && (
+                          <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1.5 animate-in fade-in">
+                            <div className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
+                              Proposed Songs & Keys ({sug.setlist.items.length})
+                            </div>
+                            {sug.setlist.items.map((item, idx) => {
+                              const song = getSongByIdOrSlug(item.songId);
+                              const targetKey = item.preferredSemitones
+                                ? transposeKey(song?.originalKey || 'C', item.preferredSemitones, 'auto')
+                                : song?.originalKey || 'C';
+
+                              return (
+                                <div
+                                  key={`${item.songId}_${idx}`}
+                                  className="p-2.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 text-xs"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <span className="w-5 h-5 rounded-full font-mono text-[10px] font-bold bg-[var(--bg-subtle)] text-[var(--brand-accent)] flex items-center justify-center shrink-0">
+                                      {idx + 1}
+                                    </span>
+                                    <span className="font-semibold text-[var(--text-primary)] truncate">
+                                      {song?.title || item.songId}
+                                    </span>
+                                    {song?.artist && (
+                                      <span className="text-[11px] text-[var(--text-secondary)] truncate hidden sm:inline">
+                                        by {song.artist}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
+                                      Key: {targetKey}
+                                    </span>
+                                    {item.referenceAudioUrl && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
+                                        <Headphones className="w-3 h-3" />
+                                        <span>Audio</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-3 shadow-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/25 flex items-center justify-center shrink-0">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                          Team Lineup Suggestions
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+                          0 PENDING
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Singers and band members can propose service lineups for your approval
+                      </p>
+                    </div>
+                  </div>
+                  <Link
+                    href="/setlists"
+                    className="px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] hover:border-amber-500/40 text-xs font-semibold text-[var(--text-secondary)] hover:text-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <ListMusic className="w-3.5 h-3.5 text-amber-400" />
+                    <span>View / Manage Setlists</span>
+                  </Link>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-[var(--bg-subtle)]/50 border border-[var(--border-subtle)] flex items-start gap-3 text-xs text-[var(--text-secondary)]">
+                  <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-[var(--text-primary)]">
+                      How Lineup Suggestions Work:
+                    </p>
+                    <p>
+                      Band members assigned to lead worship can select a setlist in <strong>My Setlists</strong> and click <strong>Suggest to Team</strong>. Once submitted, proposals appear right here with a 1-click <strong>Approve & Set Lineup</strong> button.
                     </p>
                   </div>
                 </div>
               </div>
-
-              <div className="space-y-3">
-                {pendingSuggestions.map((sug) => {
-                  const isExpanded = expandedSuggestionId === sug.id;
-                  const isReviewingThis = reviewingSuggestionId === sug.id;
-
-                  return (
-                    <div
-                      key={sug.id}
-                      className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-amber-500/25 hover:border-amber-500/40 transition-all space-y-3 shadow-xs"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1 min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-sm text-[var(--text-primary)] truncate">
-                              {sug.setlist.name}
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
-                              {sug.setlist.items.length}{' '}
-                              {sug.setlist.items.length === 1 ? 'song' : 'songs'}
-                            </span>
-                            {sug.targetServiceDate && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
-                                {sug.targetServiceDate}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                            <span className="font-semibold text-[var(--text-primary)]">
-                              Suggested by {sug.suggestedByName}
-                            </span>
-                            {sug.suggestedByRole && (
-                              <span>• {sug.suggestedByRole}</span>
-                            )}
-                          </div>
-
-                          {sug.note && (
-                            <div className="mt-1.5 p-2.5 rounded-xl bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] italic">
-                              &ldquo;{sug.note}&rdquo;
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedSuggestionId(isExpanded ? null : sug.id)
-                            }
-                            className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1 cursor-pointer transition-colors"
-                          >
-                            <span>{isExpanded ? 'Hide Songs' : 'Preview Songs'}</span>
-                            {isExpanded ? (
-                              <ChevronUp className="w-3.5 h-3.5" />
-                            ) : (
-                              <ChevronDown className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isReviewingAction}
-                            onClick={() => handleReviewSuggestion(sug.id, 'approve')}
-                            className="py-1.5 px-3 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Approve & Set Lineup</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={isReviewingAction}
-                            onClick={() => {
-                              if (isReviewingThis) {
-                                setReviewingSuggestionId(null);
-                              } else {
-                                setReviewingSuggestionId(sug.id);
-                                setDeclineNote('');
-                              }
-                            }}
-                            className="py-1.5 px-2.5 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            <span>Decline</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Inline Decline Note Input */}
-                      {isReviewingThis && (
-                        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2 animate-in fade-in">
-                          <label className="block text-xs font-semibold text-rose-300">
-                            Reason or note for {sug.suggestedByName} (optional):
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={declineNote}
-                              onChange={(e) => setDeclineNote(e.target.value)}
-                              placeholder="e.g. Let's do this next Sunday instead so the band has more rehearsal time."
-                              className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-rose-400"
-                            />
-                            <button
-                              type="button"
-                              disabled={isReviewingAction}
-                              onClick={() => handleReviewSuggestion(sug.id, 'decline')}
-                              className="px-3 py-1.5 rounded-lg bg-rose-500 text-white font-bold text-xs hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-50"
-                            >
-                              Confirm Decline
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setReviewingSuggestionId(null)}
-                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Expanded Songs List Preview */}
-                      {isExpanded && (
-                        <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1.5 animate-in fade-in">
-                          <div className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
-                            Proposed Songs & Keys ({sug.setlist.items.length})
-                          </div>
-                          {sug.setlist.items.map((item, idx) => {
-                            const song = getSongByIdOrSlug(item.songId);
-                            const targetKey = item.preferredSemitones
-                              ? transposeKey(song?.originalKey || 'C', item.preferredSemitones, 'auto')
-                              : song?.originalKey || 'C';
-
-                            return (
-                              <div
-                                key={`${item.songId}_${idx}`}
-                                className="p-2.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 text-xs"
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                  <span className="w-5 h-5 rounded-full font-mono text-[10px] font-bold bg-[var(--bg-subtle)] text-[var(--brand-accent)] flex items-center justify-center shrink-0">
-                                    {idx + 1}
-                                  </span>
-                                  <span className="font-semibold text-[var(--text-primary)] truncate">
-                                    {song?.title || item.songId}
-                                  </span>
-                                  {song?.artist && (
-                                    <span className="text-[11px] text-[var(--text-secondary)] truncate hidden sm:inline">
-                                      by {song.artist}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
-                                    Key: {targetKey}
-                                  </span>
-                                  {item.referenceAudioUrl && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
-                                      <Headphones className="w-3 h-3" />
-                                      <span>Audio</span>
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            )
           )}
 
           {/* Member Status Card when they have a pending proposal */}
-          {!isLeader && userPendingSuggestion && (
-            <div className="rounded-3xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 animate-in fade-in">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
-                  <Clock className="w-5 h-5 animate-pulse" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-xs sm:text-sm text-[var(--text-primary)] truncate">
-                      Your Lineup Proposal is Under Review
-                    </h4>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black">
-                      PENDING APPROVAL
-                    </span>
+          {!isLeader && (
+            userPendingSuggestion ? (
+              <div className="rounded-3xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 animate-in fade-in">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5 animate-pulse" />
                   </div>
-                  <p className="text-xs text-[var(--text-secondary)] truncate">
-                    You suggested &ldquo;{userPendingSuggestion.setlist.name}&rdquo; ({userPendingSuggestion.setlist.items.length} songs) for{' '}
-                    {userPendingSuggestion.targetServiceDate || 'upcoming service'}. The worship leader will review and approve it.
-                  </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-xs sm:text-sm text-[var(--text-primary)] truncate">
+                        Your Lineup Proposal is Under Review
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black">
+                        PENDING APPROVAL
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)] truncate">
+                      You suggested &ldquo;{userPendingSuggestion.setlist.name}&rdquo; ({userPendingSuggestion.setlist.items.length} songs) for{' '}
+                      {userPendingSuggestion.targetServiceDate || 'upcoming service'}. The worship leader will review and approve it.
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <button
-                type="button"
-                onClick={() => handleWithdrawSuggestion(userPendingSuggestion.id)}
-                className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-semibold shrink-0 cursor-pointer transition-colors"
-              >
-                Withdraw Proposal
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => handleWithdrawSuggestion(userPendingSuggestion.id)}
+                  className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-semibold shrink-0 cursor-pointer transition-colors"
+                >
+                  Withdraw Proposal
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 sm:p-5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 shadow-xs">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-xs sm:text-sm text-[var(--text-primary)]">
+                      Leading Worship for an Upcoming Service?
+                    </h4>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Pick your songs in <strong>My Setlists</strong> and click <strong>Suggest to Team</strong> to submit your service lineup for leader review.
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  href="/setlists"
+                  className="py-1.5 px-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500 hover:text-black text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Propose a Lineup</span>
+                </Link>
+              </div>
+            )
           )}
 
           {/* Section: Upcoming Service Lineup (Team Setlist) */}

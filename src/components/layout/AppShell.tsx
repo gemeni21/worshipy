@@ -17,6 +17,7 @@ import {
   Radio,
   Settings,
   ShieldCheck,
+  Sparkles,
   Square,
   Users,
   LogIn,
@@ -47,12 +48,26 @@ const NAV_ITEMS = [
 ] as const;
 
 function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
-  const { isAdmin, pendingApprovalsCount, activeGroup, onlineMembersCount } = useAuth();
+  const { user, isAdmin, pendingApprovalsCount, activeGroup, onlineMembersCount } = useAuth();
   const isActive = (href: string) => {
     if (!pathname) return false;
     if (href === '/') return pathname === '/';
     return pathname === href || pathname.startsWith(`${href}/`);
   };
+
+  const isLeader = Boolean(
+    user &&
+      activeGroup &&
+      (activeGroup.ownerId === user.id ||
+        user.groupRole === 'leader' ||
+        user.role === 'admin' ||
+        activeGroup.members?.some((m) => m.userId === user.id && m.role === 'leader'))
+  );
+
+  const pendingSuggestionsCount =
+    isLeader && activeGroup?.suggestedSetlists
+      ? activeGroup.suggestedSetlists.filter((s) => s.status === 'pending').length
+      : 0;
 
   return (
     <nav className="flex-1 px-3 py-4 space-y-1">
@@ -78,9 +93,25 @@ function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
             </div>
 
             {isTeam && activeGroup && (
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>{onlineMembersCount > 0 ? `${onlineMembersCount} online` : 'Team'}</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {pendingSuggestionsCount > 0 ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs animate-pulse">
+                    <Sparkles className="w-3 h-3" />
+                    <span>{pendingSuggestionsCount} Proposal{pendingSuggestionsCount === 1 ? '' : 's'}</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>{onlineMembersCount > 0 ? `${onlineMembersCount} online` : 'Team'}</span>
+                  </span>
+                )}
+              </div>
+            )}
+
+            {href === '/setlists' && pendingSuggestionsCount > 0 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs shrink-0 animate-pulse">
+                <Sparkles className="w-2.5 h-2.5" />
+                <span>{pendingSuggestionsCount}</span>
               </span>
             )}
 
@@ -125,9 +156,23 @@ function DesktopNavLinksActive() {
 }
 
 function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
-  const { activeGroup, onlineMembersCount } = useAuth();
+  const { user, activeGroup, onlineMembersCount } = useAuth();
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [prevPathname, setPrevPathname] = useState(pathname);
+
+  const isLeader = Boolean(
+    user &&
+      activeGroup &&
+      (activeGroup.ownerId === user.id ||
+        user.groupRole === 'leader' ||
+        user.role === 'admin' ||
+        activeGroup.members?.some((m) => m.userId === user.id && m.role === 'leader'))
+  );
+
+  const pendingSuggestionsCount =
+    isLeader && activeGroup?.suggestedSetlists
+      ? activeGroup.suggestedSetlists.filter((s) => s.status === 'pending').length
+      : 0;
 
   if (prevPathname !== pathname) {
     setPrevPathname(pathname);
@@ -159,7 +204,12 @@ function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
     {
       href: '/team',
       label: activeGroup?.name || 'Worship Team',
-      sublabel: onlineMembersCount > 0 ? `${onlineMembersCount} members online now` : 'Band roster & shared practice',
+      sublabel:
+        pendingSuggestionsCount > 0
+          ? `${pendingSuggestionsCount} lineup proposal${pendingSuggestionsCount === 1 ? '' : 's'} waiting for approval`
+          : onlineMembersCount > 0
+          ? `${onlineMembersCount} members online now`
+          : 'Band roster & shared practice',
       icon: Users,
       active: isActive('/team'),
     },
@@ -290,6 +340,11 @@ function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
                 <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               )}
 
+              {/* If there are pending lineup suggestions waiting for leader review */}
+              {href === '/setlists' && pendingSuggestionsCount > 0 && !active && (
+                <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              )}
+
               {/* Glowing active indicator dot */}
               {active && (
                 <span
@@ -326,6 +381,13 @@ function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
           {(isMoreActive || isMoreOpen) && (
             <span
               className="w-1.5 h-1.5 rounded-full bg-[var(--brand-accent)] shadow-[0_0_8px_var(--brand-accent)] mt-0.5 animate-pulse"
+              aria-hidden="true"
+            />
+          )}
+
+          {pendingSuggestionsCount > 0 && !isMoreActive && !isMoreOpen && (
+            <span
+              className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-amber-400 animate-pulse"
               aria-hidden="true"
             />
           )}
