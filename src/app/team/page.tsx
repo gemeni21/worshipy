@@ -1183,9 +1183,16 @@ export default function TeamHubPage() {
               </div>
 
               {brandingError && (
-                <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                  <span>{brandingError}</span>
+                <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{brandingError}</span>
+                  </div>
+                  {brandingError.toLowerCase().includes('firebase security rules') && (
+                    <div className="pt-1.5 border-t border-rose-500/20 text-[11px] text-rose-200 leading-relaxed">
+                      Your logo is saved locally on this device. To allow all band members on other phones and computers to see your church logo, publish the updated security rules in your Firebase Console.
+                    </div>
+                  )}
                 </div>
               )}
 

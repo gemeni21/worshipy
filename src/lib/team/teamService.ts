@@ -373,6 +373,7 @@ export async function updateTeamBranding(
   };
 
   // 1. Write to Cloud Firestore (authoritative real-time database across all devices)
+  let firestoreWriteSucceeded = false;
   if (db && groupId) {
     try {
       const groupRef = doc(db, 'groups', groupId);
@@ -385,8 +386,24 @@ export async function updateTeamBranding(
         },
         { merge: true }
       );
-    } catch (firestoreErr) {
+      firestoreWriteSucceeded = true;
+    } catch (firestoreErr: unknown) {
       console.warn('Firestore branding update note:', firestoreErr);
+      const isPermissionDenied =
+        Boolean(firestoreErr && typeof firestoreErr === 'object' && (
+          ('code' in (firestoreErr as Record<string, unknown>) && (firestoreErr as Record<string, unknown>).code === 'permission-denied') ||
+          ('message' in (firestoreErr as Record<string, unknown>) && typeof (firestoreErr as Record<string, unknown>).message === 'string' && ((firestoreErr as Record<string, unknown>).message as string).toLowerCase().includes('permission'))
+        ));
+
+      // Always save to local cache so leader sees their changes immediately
+      setCachedTeam(updatedGroup);
+
+      if (isPermissionDenied) {
+        throw new Error(
+          'Firebase Security Rules in your Firebase Console need to be updated to allow church logo & title to sync to other members. Please publish the updated firestore.rules.'
+        );
+      }
+      throw firestoreErr;
     }
   }
 
@@ -443,7 +460,28 @@ export function subscribeToTeam(
     groupRef,
     (snap) => {
       if (snap.exists()) {
-        const group = { id: snap.id, ...snap.data() } as WorshipGroup;
+        const firestoreData = snap.data();
+        const cached = getCachedTeam();
+
+        // Preserve cached branding if Firestore document hasn't populated customAppLogoUrl/customAppTitle
+        // (e.g. while rules are being published or during cold network propagation)
+        const group: WorshipGroup = {
+          id: snap.id,
+          ...firestoreData,
+          customAppTitle:
+            firestoreData.customAppTitle !== undefined
+              ? (firestoreData.customAppTitle || undefined)
+              : cached?.customAppTitle,
+          customAppLogoUrl:
+            firestoreData.customAppLogoUrl !== undefined
+              ? (firestoreData.customAppLogoUrl || undefined)
+              : cached?.customAppLogoUrl,
+          churchName:
+            firestoreData.churchName !== undefined
+              ? (firestoreData.churchName || undefined)
+              : cached?.churchName,
+        } as WorshipGroup;
+
         setCachedTeam(group);
         onUpdate(group);
       } else {
