@@ -79,6 +79,13 @@ function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
                 <span>{onlineMembersCount > 0 ? `${onlineMembersCount} online` : 'Team'}</span>
               </span>
             )}
+
+            {href === '/live' && activeGroup?.activeLiveSessionId && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-black shadow-xs shrink-0 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-black" />
+                <span>LIVE</span>
+              </span>
+            )}
           </Link>
         );
       })}
@@ -273,6 +280,11 @@ function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
               <span className="text-[0.6875rem] leading-tight mt-0.5 font-medium tracking-tight">
                 {label}
               </span>
+
+              {/* If team leader is currently live on stage */}
+              {href === '/live' && activeGroup?.activeLiveSessionId && !active && (
+                <span className="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              )}
 
               {/* Glowing active indicator dot */}
               {active && (

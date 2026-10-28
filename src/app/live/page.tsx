@@ -56,6 +56,8 @@ import { ReferenceAudioPlayer } from '@/components/audio/ReferenceAudioPlayer';
 import {
   setTeamActiveLiveSession,
   clearTeamActiveLiveSession,
+  getCachedTeam,
+  setCachedTeam,
 } from '@/lib/team/teamService';
 import type {
   CreateLiveSessionResponse,
@@ -130,8 +132,16 @@ function LiveSyncWorkspace({
   const [selectedCapoFret, setSelectedCapoFret] = useState<number>(0);
 
   // Authenticated user & team state
-  const { user, activeGroup } = useAuth();
+  const { user, activeGroup, refreshActiveGroup } = useAuth();
   const [showLiveAudioPlayer, setShowLiveAudioPlayer] = useState(false);
+  const [showManualJoinForm, setShowManualJoinForm] = useState(false);
+
+  const effectiveGroup = activeGroup || getCachedTeam();
+  const targetGroupId = effectiveGroup?.id || user?.groupId;
+  const isTeamMember = Boolean(targetGroupId);
+  const isOwnerLeader = Boolean(
+    user && (effectiveGroup?.ownerId === user.id || user.groupRole === 'leader')
+  );
 
   // Start Session Form State
   const [leaderName, setLeaderName] = useState(user?.displayName || 'Worship Leader');
@@ -276,30 +286,74 @@ function LiveSyncWorkspace({
     []
   );
 
-  // Auto-connect team members if their worship team leader is currently live
+  // 1. Periodically refresh active group state while on /live so leader going live triggers instantly
   useEffect(() => {
-    if (session || isSubmitting || !activeGroup) return;
+    if (!targetGroupId || session) return;
+    refreshActiveGroup();
+    const interval = setInterval(() => {
+      refreshActiveGroup();
+    }, 2000);
 
-    const teamLiveId = activeGroup.activeLiveSessionId;
-    const teamJoinCode = activeGroup.activeLiveSessionJoinCode;
-    const teamExpiresAt = activeGroup.activeLiveSessionExpiresAt;
+    const onFocus = () => refreshActiveGroup();
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('visibilitychange', onFocus);
 
-    if (!teamLiveId && !teamJoinCode) return;
-    if (teamExpiresAt && new Date(teamExpiresAt).getTime() <= Date.now()) return;
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [targetGroupId, session, refreshActiveGroup]);
 
-    // Do not force auto-join on the owner/creator so they can choose to start or resume
-    const isOwnerLeader = Boolean(user && activeGroup.ownerId === user.id);
-    if (isOwnerLeader) return;
+  // 2. Auto-connect team members if their worship team leader is currently live
+  useEffect(() => {
+    if (session || isSubmitting) return;
+    const currentGrp = activeGroup || getCachedTeam();
+    if (!currentGrp?.id) return;
 
-    // Check if user previously dismissed this session in this browser session
-    try {
-      const dismissed = window.sessionStorage.getItem('wmc_dismissed_team_live_session');
-      if (dismissed === (teamLiveId || teamJoinCode)) return;
-    } catch {}
+    // Do not force auto-join on the leader/creator
+    const isLeader = Boolean(
+      user && (currentGrp.ownerId === user.id || user.groupRole === 'leader')
+    );
+    if (isLeader) return;
 
     let cancelled = false;
 
-    async function autoJoinTeamLive() {
+    async function checkAndAutoJoin() {
+      const grp = activeGroup || getCachedTeam();
+      if (!grp?.id) return;
+
+      // 1. If activeLiveSessionId is already on group
+      let liveId = grp.activeLiveSessionId;
+      let joinCode = grp.activeLiveSessionJoinCode;
+      let expiresAt = grp.activeLiveSessionExpiresAt;
+
+      // 2. If not on group, fetch directly from server API
+      if (!liveId && !joinCode) {
+        try {
+          const res = await fetch(`/api/groups/${grp.id}`, { cache: 'no-store' });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.group?.activeLiveSessionId) {
+              liveId = data.group.activeLiveSessionId;
+              joinCode = data.group.activeLiveSessionJoinCode;
+              expiresAt = data.group.activeLiveSessionExpiresAt;
+              setCachedTeam(data.group);
+            }
+          }
+        } catch {}
+      }
+
+      if (cancelled) return;
+      if (!liveId && !joinCode) return;
+      if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) return;
+
+      // Check if user previously dismissed this session in this browser session
+      try {
+        const dismissed = window.sessionStorage.getItem('wmc_dismissed_team_live_session');
+        if (dismissed === (liveId || joinCode)) return;
+      } catch {}
+
       setIsSubmitting(true);
       try {
         const effectiveName = user?.displayName || user?.email?.split('@')[0] || 'Musician';
@@ -307,8 +361,8 @@ function LiveSyncWorkspace({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            sessionId: teamLiveId || undefined,
-            joinCode: teamJoinCode || undefined,
+            sessionId: liveId || undefined,
+            joinCode: joinCode || undefined,
             participantName: effectiveName,
             instrument: (user?.instrument as any) || 'general',
           }),
@@ -341,19 +395,22 @@ function LiveSyncWorkspace({
       }
     }
 
-    autoJoinTeamLive();
+    checkAndAutoJoin();
 
     return () => {
       cancelled = true;
     };
   }, [
+    activeGroup?.id,
     activeGroup?.activeLiveSessionId,
     activeGroup?.activeLiveSessionJoinCode,
     activeGroup?.activeLiveSessionExpiresAt,
     session,
     isSubmitting,
-    user,
-    activeGroup?.ownerId,
+    user?.id,
+    user?.displayName,
+    user?.instrument,
+    user?.groupRole,
   ]);
 
   const activeSessionId = session?.sessionId;
@@ -528,9 +585,10 @@ function LiveSyncWorkspace({
       setInstrumentView(starterInstrument);
       setViewMode('follow');
 
-      // If user is in a worship team, broadcast active live session to team in Firestore
-      if (activeGroup?.id) {
-        setTeamActiveLiveSession(activeGroup.id, {
+      // If user is in a worship team, broadcast active live session to team across server, Firestore, and tabs
+      const grpId = activeGroup?.id || user?.groupId || getCachedTeam()?.id;
+      if (grpId) {
+        setTeamActiveLiveSession(grpId, {
           sessionId: data.session.sessionId,
           joinCode: data.session.joinCode,
           expiresAt: data.session.expiresAt,
@@ -801,8 +859,9 @@ function LiveSyncWorkspace({
         setSession(data.session);
         setStreamStatus('ended');
       }
-      if (activeGroup?.id) {
-        clearTeamActiveLiveSession(activeGroup.id).catch(() => {});
+      const grpId = activeGroup?.id || user?.groupId || getCachedTeam()?.id;
+      if (grpId) {
+        clearTeamActiveLiveSession(grpId).catch(() => {});
       }
       window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
     } catch {
@@ -934,140 +993,224 @@ function LiveSyncWorkspace({
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Card 1: Join a Live Session (Member) */}
-          <section
-            aria-label="Join an active live session"
-            className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 space-y-5 shadow-xs"
-          >
-            <div className="space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand-accent)]">
-                Team Member
-              </span>
-              <h2 className="text-xl font-bold">Join a Live Session</h2>
-              <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
-                Enter the 6-character join code shared by your worship leader to
-                follow the chart in real time.
-              </p>
-            </div>
-
-            {activeGroup && (
-              <div className="p-3.5 rounded-xl bg-[var(--brand-surface)] border border-[var(--brand-accent)]/30 text-xs text-[var(--text-primary)] space-y-1">
-                <div className="flex items-center gap-1.5 font-bold text-[var(--brand-accent)]">
-                  <Radio className="w-3.5 h-3.5 animate-pulse" />
-                  <span>Team Member Auto-Sync Active</span>
+        {isTeamMember && !isOwnerLeader && !showManualJoinForm ? (
+          /* Member View: Automatic 1-Click Sync Standby */
+          <div className="max-w-md mx-auto space-y-4">
+            {isSubmitting ? (
+              <section className="theme-card rounded-2xl border border-[var(--brand-accent)]/30 bg-[var(--bg-surface)] p-8 text-center space-y-4 shadow-sm">
+                <div className="w-14 h-14 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] flex items-center justify-center mx-auto">
+                  <Radio className="w-7 h-7 animate-pulse" />
                 </div>
-                <p className="text-[11px] text-[var(--text-secondary)]">
-                  You are connected to <strong>{activeGroup.name}</strong>. Whenever your leader starts a Live Rehearsal, this page will connect automatically without typing any code. (Visiting musicians can enter the 6-character code below).
+                <div className="space-y-1.5">
+                  <h2 className="text-xl font-bold">Connecting to Live Stage...</h2>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    {effectiveGroup?.activeLiveSessionLeaderName || 'Leader'} is live. Auto-connecting your chart with zero codes...
+                  </p>
+                </div>
+              </section>
+            ) : (
+              <section
+                aria-label="Live Worship Standby"
+                className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-8 text-center space-y-5 shadow-xs"
+              >
+                <div className="w-16 h-16 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] mx-auto flex items-center justify-center">
+                  <Radio className="w-8 h-8 opacity-80" />
+                </div>
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                    Connected to {effectiveGroup?.name || 'Worship Team'}
+                  </div>
+                  <h2 className="text-xl font-bold">Waiting for Worship Leader to Go Live</h2>
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
+                    You are logged in as a band member (<strong>{user?.displayName || 'Musician'}</strong> · {user?.instrument || 'Band'}). You don&apos;t need to enter any code—your screen will automatically sync with the leader the moment they start the live service!
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-[var(--border-subtle)]/60 flex flex-col items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowManualJoinForm(true)}
+                    className="text-xs text-[var(--brand-accent)] hover:underline cursor-pointer"
+                  >
+                    Visiting another church or have a separate join code?
+                  </button>
+                </div>
+              </section>
+            )}
+          </div>
+        ) : (
+          /* Leader or Guest View: Form Grid */
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Card 1: Join a Live Session (Member or Guest) */}
+            <section
+              aria-label="Join an active live session"
+              className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 space-y-5 shadow-xs"
+            >
+              <div className="space-y-1">
+                {isTeamMember && !isOwnerLeader && (
+                  <button
+                    type="button"
+                    onClick={() => setShowManualJoinForm(false)}
+                    className="text-xs text-[var(--brand-accent)] hover:underline cursor-pointer mb-1 block"
+                  >
+                    ← Back to Automatic Stage Sync
+                  </button>
+                )}
+                <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand-accent)]">
+                  {isTeamMember ? 'Band Member' : 'Guest / Visitor'}
+                </span>
+                <h2 className="text-xl font-bold">Join a Live Session</h2>
+                <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+                  Enter the 6-character join code shared by the worship leader to follow the chart in real time.
                 </p>
               </div>
-            )}
 
-            <form onSubmit={handleJoinSession} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="join-code-input"
-                  className="block text-xs font-semibold text-[var(--text-secondary)] mb-1"
-                >
-                  6-Character Join Code
-                </label>
-                <input
-                  id="join-code-input"
-                  type="text"
-                  value={joinCodeInput}
-                  onChange={(e) => {
-                    setJoinCodeInput(e.target.value.toUpperCase());
-                    if (joinInviteTokenInput) setJoinInviteTokenInput('');
-                  }}
-                  placeholder="e.g. 7K9M2P"
-                  maxLength={12}
-                  className="w-full h-12 px-4 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] font-mono font-bold text-lg uppercase tracking-widest focus:bg-[var(--bg-surface)]"
-                />
-                {joinInviteTokenInput && (
-                  <p className="text-xs text-[var(--brand-accent)] mt-1 flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Signed invitation token pre-filled from link.</span>
+              {effectiveGroup && (
+                <div className="p-3.5 rounded-xl bg-[var(--brand-surface)] border border-[var(--brand-accent)]/30 text-xs text-[var(--text-primary)] space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-[var(--brand-accent)]">
+                    <Radio className="w-3.5 h-3.5 animate-pulse" />
+                    <span>Connected to {effectiveGroup.name}</span>
+                  </div>
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    Whenever your leader starts Live Rehearsal, you will connect automatically without typing any code.
                   </p>
+                </div>
+              )}
+
+              <form onSubmit={handleJoinSession} className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="join-code-input"
+                    className="block text-xs font-semibold text-[var(--text-secondary)] mb-1"
+                  >
+                    6-Character Join Code
+                  </label>
+                  <input
+                    id="join-code-input"
+                    type="text"
+                    value={joinCodeInput}
+                    onChange={(e) => {
+                      setJoinCodeInput(e.target.value.toUpperCase());
+                      if (joinInviteTokenInput) setJoinInviteTokenInput('');
+                    }}
+                    placeholder="e.g. 7K9M2P"
+                    maxLength={12}
+                    className="w-full h-12 px-4 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] font-mono font-bold text-lg uppercase tracking-widest focus:bg-[var(--bg-surface)]"
+                  />
+                  {joinInviteTokenInput && (
+                    <p className="text-xs text-[var(--brand-accent)] mt-1 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Signed invitation token pre-filled from link.</span>
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="member-name-input"
+                    className="block text-xs font-semibold text-[var(--text-secondary)] mb-1"
+                  >
+                    Your Display Name
+                  </label>
+                  <input
+                    id="member-name-input"
+                    type="text"
+                    value={memberNameInput}
+                    onChange={(e) => setMemberNameInput(e.target.value)}
+                    placeholder={
+                      user?.displayName || 'e.g. Carlo (Acoustic Guitar)'
+                    }
+                    className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm focus:bg-[var(--bg-surface)]"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="member-instrument-select"
+                    className="block text-xs font-semibold text-[var(--text-secondary)] mb-1"
+                  >
+                    Instrument Guidance View
+                  </label>
+                  <select
+                    id="member-instrument-select"
+                    value={memberInstrument}
+                    onChange={(e) =>
+                      setMemberInstrument(e.target.value as InstrumentViewMode)
+                    }
+                    className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm font-medium cursor-pointer"
+                  >
+                    <option value="general">General Chord & Lyric Chart</option>
+                    <option value="guitar">
+                      Guitar View (with Capo & Shape Guidance)
+                    </option>
+                    <option value="keyboard">
+                      Keyboard View (with LH Bass & RH Voicings)
+                    </option>
+                    <option value="bass">
+                      Bass View (with Slash-Bass Pedals & 5ths)
+                    </option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={
+                    isSubmitting ||
+                    (!joinCodeInput.trim() && !joinInviteTokenInput.trim())
+                  }
+                  className="w-full h-12 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm sm:text-base shadow-sm transition-all disabled:opacity-40 cursor-pointer"
+                >
+                  {isSubmitting ? 'Joining Session...' : 'Join Live Session'}
+                </button>
+              </form>
+            </section>
+
+            {/* Card 2: Start a Live Session (Leader) */}
+            <section
+              aria-label="Start a new leader-led live session"
+              className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 space-y-5 shadow-xs"
+            >
+              <div className="space-y-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand-accent)]">
+                  Worship Leader
+                </span>
+                <h2 className="text-xl font-bold">Start a Live Session</h2>
+                <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+                  Launch an authoritative session from a song or setlist and
+                  generate a join code for your band.
+                </p>
+              </div>
+
+              {effectiveGroup?.activeLiveSessionId &&
+                (!effectiveGroup.activeLiveSessionExpiresAt ||
+                  new Date(effectiveGroup.activeLiveSessionExpiresAt).getTime() > Date.now()) && (
+                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-sm">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                      <span>Active Live Session Running</span>
+                    </div>
+                    <p className="text-[11px] text-white/70">
+                      Join Code: <strong className="text-white tracking-widest">{effectiveGroup.activeLiveSessionJoinCode}</strong> • Leader: {effectiveGroup.activeLiveSessionLeaderName}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (effectiveGroup.activeLiveSessionJoinCode) {
+                          setJoinCodeInput(effectiveGroup.activeLiveSessionJoinCode);
+                          setMemberNameInput(user?.displayName || leaderName || 'Leader');
+                          const form = document.querySelector('form');
+                          if (form) form.requestSubmit();
+                        }
+                      }}
+                      className="w-full py-2.5 rounded-lg bg-amber-400 text-black font-bold text-xs hover:bg-amber-300 transition-all cursor-pointer"
+                    >
+                      ⚡ Re-enter Active Leader Stage
+                    </button>
+                  </div>
                 )}
-              </div>
 
-              <div>
-                <label
-                  htmlFor="member-name-input"
-                  className="block text-xs font-semibold text-[var(--text-secondary)] mb-1"
-                >
-                  Your Display Name
-                </label>
-                <input
-                  id="member-name-input"
-                  type="text"
-                  value={memberNameInput}
-                  onChange={(e) => setMemberNameInput(e.target.value)}
-                  placeholder={
-                    user?.displayName || 'e.g. Carlo (Acoustic Guitar)'
-                  }
-                  className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm focus:bg-[var(--bg-surface)]"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="member-instrument-select"
-                  className="block text-xs font-semibold text-[var(--text-secondary)] mb-1"
-                >
-                  Instrument Guidance View
-                </label>
-                <select
-                  id="member-instrument-select"
-                  value={memberInstrument}
-                  onChange={(e) =>
-                    setMemberInstrument(e.target.value as InstrumentViewMode)
-                  }
-                  className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm font-medium cursor-pointer"
-                >
-                  <option value="general">General Chord & Lyric Chart</option>
-                  <option value="guitar">
-                    Guitar View (with Capo & Shape Guidance)
-                  </option>
-                  <option value="keyboard">
-                    Keyboard View (with LH Bass & RH Voicings)
-                  </option>
-                  <option value="bass">
-                    Bass View (with Slash-Bass Pedals & 5ths)
-                  </option>
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                disabled={
-                  isSubmitting ||
-                  (!joinCodeInput.trim() && !joinInviteTokenInput.trim())
-                }
-                className="w-full h-12 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold text-sm sm:text-base shadow-sm transition-all disabled:opacity-40 cursor-pointer"
-              >
-                {isSubmitting ? 'Joining Session...' : 'Join Live Session'}
-              </button>
-            </form>
-          </section>
-
-          {/* Card 2: Start a Live Session (Leader) */}
-          <section
-            aria-label="Start a new leader-led live session"
-            className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-6 space-y-5 shadow-xs"
-          >
-            <div className="space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-[var(--brand-accent)]">
-                Worship Leader
-              </span>
-              <h2 className="text-xl font-bold">Start a Live Session</h2>
-              <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
-                Launch an authoritative session from a song or setlist and
-                generate a join code for your band.
-              </p>
-            </div>
-
-            <form onSubmit={handleStartSession} className="space-y-4">
+              <form onSubmit={handleStartSession} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label
@@ -1186,6 +1329,7 @@ function LiveSyncWorkspace({
             </form>
           </section>
         </div>
+        )}
       </div>
     );
   }

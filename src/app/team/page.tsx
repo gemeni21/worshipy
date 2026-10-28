@@ -56,6 +56,7 @@ export default function TeamHubPage() {
     joinGroup,
     leaveGroup,
     updateTeamBranding,
+    refreshActiveGroup,
   } = useAuth();
 
   const { getSongByIdOrSlug } = useApp();
@@ -105,6 +106,24 @@ export default function TeamHubPage() {
   const [, startTransition] = useTransition();
 
   const currentTeam = activeGroup || getCachedTeam();
+
+  // Actively synchronize team state (lineup & live status) across devices and tabs
+  useEffect(() => {
+    refreshActiveGroup();
+    const interval = setInterval(() => {
+      refreshActiveGroup();
+    }, 2500);
+
+    const onFocus = () => refreshActiveGroup();
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('visibilitychange', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [refreshActiveGroup]);
 
   // Subscribe to shared practice takes
   useEffect(() => {

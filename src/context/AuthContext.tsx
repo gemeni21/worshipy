@@ -188,6 +188,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (cachedGroup) {
               setActiveGroup(cachedGroup);
+            }
+
+            const targetGrpId = fullUser.groupId || cachedGroup?.id;
+            if (targetGrpId) {
+              fetch(`/api/groups/${targetGrpId}`, { cache: 'no-store' })
+                .then((r) => (r.ok ? r.json() : null))
+                .then((data) => {
+                  if (!cancelled && data?.group) {
+                    setActiveGroup(data.group);
+                    setCachedTeam(data.group);
+                  }
+                })
+                .catch(() => {});
             } else if (fullUser.id && !fullUser.groupId) {
               // Automatically check Firestore in background if not found locally
               findUserTeamInFirestore(fullUser.id)
@@ -473,7 +486,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!targetGroupId) return;
 
     try {
-      const res = await authFetch(`/api/groups/${targetGroupId}`);
+      const res = await authFetch(`/api/groups/${targetGroupId}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         if (data.group) {

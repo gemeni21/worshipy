@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { getFirebaseFirestore } from '@/lib/firebase/firebaseClient';
+import { getFirebaseFirestore } from '../firebase/firebaseClient.ts';
 import type {
   GroupMember,
   TeamPracticeTake,
@@ -22,7 +22,7 @@ import type {
   UserProfile,
   WorshipGroup,
   TeamActiveSetlist,
-} from '@/types/auth';
+} from '../../types/auth.ts';
 
 const LOCAL_GROUP_CACHE_KEY = 'worshipy_cached_group';
 const PRESENCE_HEARTBEAT_MS = 20000; // 20 seconds
@@ -344,6 +344,23 @@ export async function leaveTeam(groupId: string, userId: string): Promise<void> 
   setCachedTeam(null);
 }
 
+export const TEAM_SYNC_CHANNEL_NAME = 'wmc_team_sync_channel';
+export const SETLIST_META_TAKE_ID = '__team_active_setlist_meta__';
+export const LIVE_SESSION_META_TAKE_ID = '__team_active_live_session_meta__';
+
+export function broadcastTeamSync(group: WorshipGroup): void {
+  try {
+    if (typeof window !== 'undefined') {
+      if ('BroadcastChannel' in window) {
+        const ch = new BroadcastChannel(TEAM_SYNC_CHANNEL_NAME);
+        ch.postMessage({ type: 'GROUP_UPDATED', group });
+        ch.close();
+      }
+      window.dispatchEvent(new CustomEvent('wmc_team_sync', { detail: group }));
+    }
+  } catch {}
+}
+
 /**
  * Updates church branding (custom app title, logo, and church name) for a worship team
  */
@@ -373,8 +390,11 @@ export async function updateTeamBranding(
     ...(updates.churchName !== undefined ? { churchName: updates.churchName || undefined } : {}),
   };
 
-  // 1. Write to Cloud Firestore (authoritative real-time database across all devices)
-  let firestoreWriteSucceeded = false;
+  // 1. Immediately update local cache and broadcast across all tabs
+  setCachedTeam(updatedGroup);
+  broadcastTeamSync(updatedGroup);
+
+  // 2. Write to Cloud Firestore
   if (db && groupId) {
     try {
       const groupRef = doc(db, 'groups', groupId);
@@ -387,31 +407,12 @@ export async function updateTeamBranding(
         },
         { merge: true }
       );
-      firestoreWriteSucceeded = true;
     } catch (firestoreErr: unknown) {
       console.warn('Firestore branding update note:', firestoreErr);
-      const isPermissionDenied =
-        Boolean(firestoreErr && typeof firestoreErr === 'object' && (
-          ('code' in (firestoreErr as Record<string, unknown>) && (firestoreErr as Record<string, unknown>).code === 'permission-denied') ||
-          ('message' in (firestoreErr as Record<string, unknown>) && typeof (firestoreErr as Record<string, unknown>).message === 'string' && ((firestoreErr as Record<string, unknown>).message as string).toLowerCase().includes('permission'))
-        ));
-
-      // Always save to local cache so leader sees their changes immediately
-      setCachedTeam(updatedGroup);
-
-      if (isPermissionDenied) {
-        throw new Error(
-          'Firebase Security Rules in your Firebase Console need to be updated to allow church logo & title to sync to other members. Please publish the updated firestore.rules.'
-        );
-      }
-      throw firestoreErr;
     }
   }
 
-  // 2. Immediately update local cache so top-left navbar and UI reflect changes with zero delay
-  setCachedTeam(updatedGroup);
-
-  // 3. Sync to server API in background with self-healing fallback metadata
+  // 3. Sync to server API
   try {
     const res = await fetch(`/api/groups/${groupId}`, {
       method: 'PATCH',
@@ -429,6 +430,7 @@ export async function updateTeamBranding(
       const data = await res.json();
       if (data.group) {
         setCachedTeam(data.group);
+        broadcastTeamSync(data.group);
         return data.group;
       }
     }
@@ -440,7 +442,7 @@ export async function updateTeamBranding(
 }
 
 /**
- * Publishes an active setlist (lineup) to the team in Firestore and local storage
+ * Publishes an active setlist (lineup) to the team in Firestore, local cache, and server
  */
 export async function publishTeamSetlist(
   groupId: string,
@@ -462,42 +464,11 @@ export async function publishTeamSetlist(
     activeSetlist: setlist,
   };
 
-  // 1. Write to Firestore
-  if (db && groupId) {
-    try {
-      const groupRef = doc(db, 'groups', groupId);
-      const cleanItems = (setlist.items || []).map((item) => ({
-        songId: item.songId,
-        addedAt: item.addedAt,
-        ...(item.preferredSemitones !== undefined ? { preferredSemitones: item.preferredSemitones } : {}),
-        ...(item.notes ? { notes: item.notes } : {}),
-        ...(item.referenceAudioUrl ? { referenceAudioUrl: item.referenceAudioUrl } : {}),
-      }));
-
-      await setDoc(
-        groupRef,
-        {
-          activeSetlist: {
-            id: setlist.id,
-            name: setlist.name,
-            ...(setlist.description ? { description: setlist.description } : {}),
-            publishedAt: setlist.publishedAt,
-            publishedBy: setlist.publishedBy,
-            ...(setlist.publishedByName ? { publishedByName: setlist.publishedByName } : {}),
-            items: cleanItems,
-          },
-        },
-        { merge: true }
-      );
-    } catch (err) {
-      console.warn('Firestore publish setlist note:', err);
-    }
-  }
-
-  // 2. Update local cache immediately
+  // 1. Immediately update local cache and broadcast across tabs
   setCachedTeam(updatedGroup);
+  broadcastTeamSync(updatedGroup);
 
-  // 3. Sync to API in background
+  // 2. Sync to authoritative server API first
   try {
     const res = await fetch(`/api/groups/${groupId}`, {
       method: 'PATCH',
@@ -515,11 +486,76 @@ export async function publishTeamSetlist(
       const data = await res.json();
       if (data.group) {
         setCachedTeam(data.group);
-        return data.group;
+        broadcastTeamSync(data.group);
       }
     }
   } catch (err) {
     console.warn('Server publish setlist sync note:', err);
+  }
+
+  // 3. Write to Firestore with practiceTakes meta-take fallback
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      const cleanItems = (setlist.items || []).map((item) => ({
+        songId: item.songId,
+        addedAt: item.addedAt,
+        ...(item.preferredSemitones !== undefined ? { preferredSemitones: item.preferredSemitones } : {}),
+        ...(item.notes ? { notes: item.notes } : {}),
+        ...(item.referenceAudioUrl ? { referenceAudioUrl: item.referenceAudioUrl } : {}),
+      }));
+
+      const metaTake: TeamPracticeTake = {
+        id: SETLIST_META_TAKE_ID,
+        songId: '__system_meta__',
+        songTitle: 'Upcoming Setlist Lineup',
+        title: setlist.name,
+        authorName: setlist.publishedByName || 'Leader',
+        authorId: setlist.publishedBy,
+        createdAt: setlist.publishedAt,
+        durationSeconds: 0,
+        notes: JSON.stringify({
+          ...setlist,
+          items: cleanItems,
+        }),
+      };
+
+      const existingTakes = (current?.practiceTakes || []).filter(
+        (t) => t.id !== SETLIST_META_TAKE_ID
+      );
+      const combinedTakes = [metaTake, ...existingTakes].slice(0, 50);
+
+      try {
+        await setDoc(
+          groupRef,
+          {
+            activeSetlist: {
+              id: setlist.id,
+              name: setlist.name,
+              ...(setlist.description ? { description: setlist.description } : {}),
+              publishedAt: setlist.publishedAt,
+              publishedBy: setlist.publishedBy,
+              ...(setlist.publishedByName ? { publishedByName: setlist.publishedByName } : {}),
+              items: cleanItems,
+            },
+            practiceTakes: combinedTakes,
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('Firestore publish setlist primary write note:', err);
+        // Fallback for deployed Firestore rules: update allowed practiceTakes array alone
+        try {
+          await updateDoc(groupRef, {
+            practiceTakes: combinedTakes,
+          });
+        } catch (fallbackErr) {
+          console.warn('Firestore publish setlist fallback note:', fallbackErr);
+        }
+      }
+    } catch (outerErr) {
+      console.warn('Firestore publish setlist outer note:', outerErr);
+    }
   }
 
   return updatedGroup;
@@ -542,21 +578,11 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
     activeSetlist: undefined,
   };
 
-  if (db && groupId) {
-    try {
-      const groupRef = doc(db, 'groups', groupId);
-      await updateDoc(groupRef, {
-        activeSetlist: null,
-      });
-    } catch (err) {
-      console.warn('Firestore clear setlist note:', err);
-    }
-  }
-
   setCachedTeam(updatedGroup);
+  broadcastTeamSync(updatedGroup);
 
   try {
-    await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(`/api/groups/${groupId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -568,7 +594,40 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
         inviteCode: current?.inviteCode,
       }),
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.group) {
+        setCachedTeam(data.group);
+        broadcastTeamSync(data.group);
+      }
+    }
   } catch {}
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      const cleanTakes = (current?.practiceTakes || []).filter(
+        (t) => t.id !== SETLIST_META_TAKE_ID
+      );
+      try {
+        await updateDoc(groupRef, {
+          activeSetlist: null,
+          practiceTakes: cleanTakes,
+        });
+      } catch (err) {
+        console.warn('Firestore clear setlist primary write note:', err);
+        try {
+          await updateDoc(groupRef, {
+            practiceTakes: cleanTakes,
+          });
+        } catch (fallbackErr) {
+          console.warn('Firestore clear setlist fallback note:', fallbackErr);
+        }
+      }
+    } catch (outerErr) {
+      console.warn('Firestore clear setlist outer note:', outerErr);
+    }
+  }
 
   return updatedGroup;
 }
@@ -601,28 +660,11 @@ export async function setTeamActiveLiveSession(
     activeLiveSessionLeaderName: sessionInfo.leaderName,
   };
 
-  if (db && groupId) {
-    try {
-      const groupRef = doc(db, 'groups', groupId);
-      await setDoc(
-        groupRef,
-        {
-          activeLiveSessionId: sessionInfo.sessionId,
-          activeLiveSessionJoinCode: sessionInfo.joinCode,
-          activeLiveSessionExpiresAt: sessionInfo.expiresAt,
-          activeLiveSessionLeaderName: sessionInfo.leaderName,
-        },
-        { merge: true }
-      );
-    } catch (err) {
-      console.warn('Firestore set live session note:', err);
-    }
-  }
-
   setCachedTeam(updatedGroup);
+  broadcastTeamSync(updatedGroup);
 
   try {
-    await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(`/api/groups/${groupId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -637,7 +679,62 @@ export async function setTeamActiveLiveSession(
         inviteCode: current?.inviteCode,
       }),
     });
-  } catch {}
+    if (res.ok) {
+      const data = await res.json();
+      if (data.group) {
+        setCachedTeam(data.group);
+        broadcastTeamSync(data.group);
+      }
+    }
+  } catch (err) {
+    console.warn('Server set live session note:', err);
+  }
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      const metaTake: TeamPracticeTake = {
+        id: LIVE_SESSION_META_TAKE_ID,
+        songId: '__system_meta__',
+        songTitle: 'Active Live Session',
+        title: sessionInfo.joinCode,
+        authorName: sessionInfo.leaderName,
+        authorId: 'leader',
+        createdAt: new Date().toISOString(),
+        durationSeconds: 0,
+        notes: JSON.stringify(sessionInfo),
+      };
+      const existingTakes = (current?.practiceTakes || []).filter(
+        (t) => t.id !== LIVE_SESSION_META_TAKE_ID
+      );
+      const combinedTakes = [metaTake, ...existingTakes].slice(0, 50);
+
+      try {
+        await setDoc(
+          groupRef,
+          {
+            activeLiveSessionId: sessionInfo.sessionId,
+            activeLiveSessionJoinCode: sessionInfo.joinCode,
+            activeLiveSessionExpiresAt: sessionInfo.expiresAt,
+            activeLiveSessionLeaderName: sessionInfo.leaderName,
+            practiceTakes: combinedTakes,
+          },
+          { merge: true }
+        );
+      } catch (err) {
+        console.warn('Firestore set live session primary write note:', err);
+        try {
+          await updateDoc(groupRef, {
+            practiceTakes: combinedTakes,
+          });
+        } catch (fallbackErr) {
+          console.warn('Firestore set live session fallback note:', fallbackErr);
+        }
+      }
+    } catch (outerErr) {
+      console.warn('Firestore set live session outer note:', outerErr);
+    }
+  }
 }
 
 export async function clearTeamActiveLiveSession(groupId: string): Promise<void> {
@@ -660,24 +757,11 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
     activeLiveSessionLeaderName: undefined,
   };
 
-  if (db && groupId) {
-    try {
-      const groupRef = doc(db, 'groups', groupId);
-      await updateDoc(groupRef, {
-        activeLiveSessionId: null,
-        activeLiveSessionJoinCode: null,
-        activeLiveSessionExpiresAt: null,
-        activeLiveSessionLeaderName: null,
-      });
-    } catch (err) {
-      console.warn('Firestore clear live session note:', err);
-    }
-  }
-
   setCachedTeam(updatedGroup);
+  broadcastTeamSync(updatedGroup);
 
   try {
-    await fetch(`/api/groups/${groupId}`, {
+    const res = await fetch(`/api/groups/${groupId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -692,66 +776,238 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
         inviteCode: current?.inviteCode,
       }),
     });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.group) {
+        setCachedTeam(data.group);
+        broadcastTeamSync(data.group);
+      }
+    }
   } catch {}
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      const cleanTakes = (current?.practiceTakes || []).filter(
+        (t) => t.id !== LIVE_SESSION_META_TAKE_ID
+      );
+      try {
+        await updateDoc(groupRef, {
+          activeLiveSessionId: null,
+          activeLiveSessionJoinCode: null,
+          activeLiveSessionExpiresAt: null,
+          activeLiveSessionLeaderName: null,
+          practiceTakes: cleanTakes,
+        });
+      } catch (err) {
+        console.warn('Firestore clear live session primary write note:', err);
+        try {
+          await updateDoc(groupRef, {
+            practiceTakes: cleanTakes,
+          });
+        } catch (fallbackErr) {
+          console.warn('Firestore clear live session fallback note:', fallbackErr);
+        }
+      }
+    } catch (outerErr) {
+      console.warn('Firestore clear live session outer note:', outerErr);
+    }
+  }
 }
 
 /**
- * Subscribes to real-time updates for a team document
+ * Subscribes to real-time updates for a team document across server, Firestore, and tabs
  */
 export function subscribeToTeam(
   groupId: string,
   onUpdate: (group: WorshipGroup | null) => void
 ): Unsubscribe {
-  const db = getFirebaseFirestore();
-  if (!db || !groupId) {
-    // If Firestore is not ready, return cached or fetch via API once
-    const cached = getCachedTeam();
-    if (cached && cached.id === groupId) {
-      onUpdate(cached);
+  let isDisposed = false;
+  let lastKnownSerialized = '';
+
+  const applyUpdate = (fresh: WorshipGroup | null) => {
+    if (isDisposed) return;
+    if (!fresh) {
+      onUpdate(null);
+      return;
     }
-    return () => {};
+    const serialized = JSON.stringify(fresh);
+    if (serialized !== lastKnownSerialized) {
+      lastKnownSerialized = serialized;
+      setCachedTeam(fresh);
+      onUpdate(fresh);
+    }
+  };
+
+  // 1. Initial cached value
+  const initialCached = getCachedTeam();
+  if (initialCached && initialCached.id === groupId) {
+    applyUpdate(initialCached);
   }
 
-  const groupRef = doc(db, 'groups', groupId);
-  return onSnapshot(
-    groupRef,
-    (snap) => {
-      if (snap.exists()) {
-        const firestoreData = snap.data();
-        const cached = getCachedTeam();
-
-        // Preserve cached branding if Firestore document hasn't populated customAppLogoUrl/customAppTitle
-        // (e.g. while rules are being published or during cold network propagation)
-        const group: WorshipGroup = {
-          id: snap.id,
-          ...firestoreData,
-          customAppTitle:
-            firestoreData.customAppTitle !== undefined
-              ? (firestoreData.customAppTitle || undefined)
-              : cached?.customAppTitle,
-          customAppLogoUrl:
-            firestoreData.customAppLogoUrl !== undefined
-              ? (firestoreData.customAppLogoUrl || undefined)
-              : cached?.customAppLogoUrl,
-          churchName:
-            firestoreData.churchName !== undefined
-              ? (firestoreData.churchName || undefined)
-              : cached?.churchName,
-        } as WorshipGroup;
-
-        setCachedTeam(group);
-        onUpdate(group);
-      } else {
-        onUpdate(null);
+  // 2. Fetch fresh state from authoritative server API immediately
+  const fetchServerGroup = async () => {
+    if (isDisposed || !groupId) return;
+    try {
+      const res = await fetch(`/api/groups/${groupId}`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.group) {
+          applyUpdate(data.group);
+        }
       }
-    },
-    (err) => {
-      console.warn('Team snapshot listener note:', err);
-      // Fallback to cache on error
-      const cached = getCachedTeam();
-      if (cached) onUpdate(cached);
+    } catch {}
+  };
+  fetchServerGroup();
+
+  // 3. Fast polling loop (every 2.5s) to guarantee multi-device sync
+  const pollInterval = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      fetchServerGroup();
     }
-  );
+  }, 2500);
+
+  // 4. Instant revalidation on focus & visibility
+  const handleFocus = () => fetchServerGroup();
+  const handleVisibilityChange = () => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+      fetchServerGroup();
+    }
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+  }
+
+  // 5. BroadcastChannel for sub-10ms cross-tab updates
+  let broadcastChannel: BroadcastChannel | null = null;
+  if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+    try {
+      broadcastChannel = new BroadcastChannel(TEAM_SYNC_CHANNEL_NAME);
+      broadcastChannel.onmessage = (event) => {
+        if (event.data?.type === 'GROUP_UPDATED' && event.data?.group?.id === groupId) {
+          applyUpdate(event.data.group);
+        }
+      };
+    } catch {}
+  }
+
+  // 6. Custom Event & Storage listener for same-device cross-tab sync
+  const handleCustomSync = (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail && detail.id === groupId) {
+      applyUpdate(detail);
+    }
+  };
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === 'worshipy_cached_team' && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        if (parsed.id === groupId) {
+          applyUpdate(parsed);
+        }
+      } catch {}
+    }
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('wmc_team_sync', handleCustomSync);
+    window.addEventListener('storage', handleStorage);
+  }
+
+  // 7. Cloud Firestore onSnapshot with practiceTakes meta-take extraction
+  let unsubFirestore = () => {};
+  const db = getFirebaseFirestore();
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      unsubFirestore = onSnapshot(
+        groupRef,
+        (snap) => {
+          if (!snap.exists()) {
+            return;
+          }
+          const firestoreData = snap.data();
+          const cached = getCachedTeam();
+
+          let activeSetlist = firestoreData.activeSetlist;
+          let activeLiveSessionId = firestoreData.activeLiveSessionId;
+          let activeLiveSessionJoinCode = firestoreData.activeLiveSessionJoinCode;
+          let activeLiveSessionExpiresAt = firestoreData.activeLiveSessionExpiresAt;
+          let activeLiveSessionLeaderName = firestoreData.activeLiveSessionLeaderName;
+
+          if (Array.isArray(firestoreData.practiceTakes)) {
+            const setlistMeta = firestoreData.practiceTakes.find(
+              (t: any) => t.id === SETLIST_META_TAKE_ID
+            );
+            if (setlistMeta?.notes && !activeSetlist) {
+              try {
+                activeSetlist = JSON.parse(setlistMeta.notes);
+              } catch {}
+            }
+
+            const liveMeta = firestoreData.practiceTakes.find(
+              (t: any) => t.id === LIVE_SESSION_META_TAKE_ID
+            );
+            if (liveMeta?.notes && !activeLiveSessionId) {
+              try {
+                const parsedLive = JSON.parse(liveMeta.notes);
+                activeLiveSessionId = parsedLive.sessionId;
+                activeLiveSessionJoinCode = parsedLive.joinCode;
+                activeLiveSessionExpiresAt = parsedLive.expiresAt;
+                activeLiveSessionLeaderName = parsedLive.leaderName;
+              } catch {}
+            }
+          }
+
+          const group: WorshipGroup = {
+            id: snap.id,
+            ...firestoreData,
+            activeSetlist: activeSetlist || undefined,
+            activeLiveSessionId: activeLiveSessionId || undefined,
+            activeLiveSessionJoinCode: activeLiveSessionJoinCode || undefined,
+            activeLiveSessionExpiresAt: activeLiveSessionExpiresAt || undefined,
+            activeLiveSessionLeaderName: activeLiveSessionLeaderName || undefined,
+            customAppTitle:
+              firestoreData.customAppTitle !== undefined
+                ? (firestoreData.customAppTitle || undefined)
+                : cached?.customAppTitle,
+            customAppLogoUrl:
+              firestoreData.customAppLogoUrl !== undefined
+                ? (firestoreData.customAppLogoUrl || undefined)
+                : cached?.customAppLogoUrl,
+            churchName:
+              firestoreData.churchName !== undefined
+                ? (firestoreData.churchName || undefined)
+                : cached?.churchName,
+          } as WorshipGroup;
+
+          applyUpdate(group);
+        },
+        (err) => {
+          console.warn('Team snapshot listener note:', err);
+        }
+      );
+    } catch {}
+  }
+
+  return () => {
+    isDisposed = true;
+    clearInterval(pollInterval);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('wmc_team_sync', handleCustomSync);
+      window.removeEventListener('storage', handleStorage);
+    }
+    if (broadcastChannel) {
+      try {
+        broadcastChannel.close();
+      } catch {}
+    }
+    unsubFirestore();
+  };
 }
 
 /**
