@@ -357,4 +357,108 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     assert.equal(unpackedLive.joinCode, 'K9M2P7');
     assert.equal(unpackedLive.leaderName, 'Leader Sarah');
   });
+
+  it('8. band roster preservation: syncs all members across server updates and prevents single-leader overwrites', () => {
+    // 1. Leader creates group
+    const leader = registerUser({
+      email: `leader_roster_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor Dave',
+      churchName: 'Calvary Church',
+    });
+    const leaderId = leader.profile.id;
+    const createRes = createWorshipGroup(leaderId, 'Calvary Band', 'Calvary Church');
+    assert.equal(createRes.ok, true);
+    const group = createRes.group!;
+    const groupId = group.id;
+
+    // 2. Member joins group
+    const member = registerUser({
+      email: `member_roster_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Bass Player Dan',
+    });
+    const memberId = member.profile.id;
+
+    // Simulate multi-member roster array in Firestore / local cache
+    const multiMembers = [
+      ...group.members,
+      {
+        userId: memberId,
+        email: member.profile.email,
+        displayName: 'Bass Player Dan',
+        role: 'member' as const,
+        joinedAt: new Date().toISOString(),
+      },
+    ];
+
+    // 3. Leader updates group branding and setlist passing full members payload
+    const updateRes = updateWorshipGroupBranding(leaderId, groupId, {
+      churchName: 'Calvary Church Main',
+      members: multiMembers,
+    });
+    assert.equal(updateRes.ok, true);
+    assert.equal(updateRes.group?.members.length, 2);
+
+    // 4. Verify that fetching group from server returns both members
+    const fetched = getWorshipGroup(groupId);
+    assert.ok(fetched);
+    assert.equal(fetched.members.length, 2);
+    assert.ok(fetched.members.some((m) => m.userId === leaderId && m.role === 'leader'));
+    assert.ok(fetched.members.some((m) => m.userId === memberId && m.role === 'member'));
+
+    // 5. Subsequent branding / session update preserves all members
+    const sessionRes = updateWorshipGroupBranding(leaderId, groupId, {
+      activeLiveSessionId: 'sess_roster_check',
+      members: fetched.members,
+    });
+    assert.equal(sessionRes.ok, true);
+    assert.equal(sessionRes.group?.members.length, 2);
+  });
+
+  it('9. live session starting sequence: starts automatically at Song 1 of active setlist without catalog conflict', () => {
+    // Setlist with Song 1 = song-02 (Way Maker, Key of E transposed +2)
+    // and Song 2 = song-01 (Goodness of God)
+    const activeSetlist: TeamActiveSetlist = {
+      id: 'setlist_sunday_worship_lineup',
+      name: 'Sunday Morning Service',
+      publishedAt: new Date().toISOString(),
+      publishedBy: 'leader_1',
+      publishedByName: 'Pastor John',
+      items: [
+        {
+          songId: 'song-02',
+          addedAt: new Date().toISOString(),
+          preferredSemitones: 2,
+          notes: 'Open with soft piano',
+        },
+        {
+          songId: 'song-01',
+          addedAt: new Date().toISOString(),
+          preferredSemitones: 0,
+        },
+      ],
+    };
+
+    // Resolving initial song from setlist:
+    // When a setlist is loaded, Song #1 of the setlist is the automatic starting song!
+    const setlistSongIds = activeSetlist.items.map((i) => i.songId);
+    const initialSongId = activeSetlist.items[0].songId;
+    const initialSemitones = activeSetlist.items[0].preferredSemitones ?? 0;
+
+    const liveRes = createLiveSession({
+      title: activeSetlist.name,
+      leaderName: 'Pastor John',
+      initialSongId,
+      initialSemitones,
+      setlistSongIds,
+    });
+
+    assert.ok(liveRes.session);
+    // Opening song matches setlist song 1 exactly
+    assert.equal(liveRes.session.sharedState.songId, 'song-02');
+    assert.equal(liveRes.session.sharedState.officialSemitones, 2);
+    // Queue contains the entire setlist lineup in exact order
+    assert.deepEqual(liveRes.session.sharedState.setlistSongIds, ['song-02', 'song-01']);
+  });
 });

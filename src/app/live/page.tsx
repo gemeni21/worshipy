@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useRef,
   useState,
+  useMemo,
 } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -19,6 +20,7 @@ import {
   Guitar,
   Headphones,
   Link2,
+  ListMusic,
   Minus,
   Music,
   Piano,
@@ -44,6 +46,7 @@ import {
   getDestinationKeyOptions,
   normalizeSemitones,
   transposeSong,
+  transposeKey,
 } from '@/lib/music/transposition';
 import {
   getBassGuidanceForChord,
@@ -149,9 +152,57 @@ function LiveSyncWorkspace({
   const [starterSongId, setStarterSongId] = useState(
     initialStartSongId || allSongs[0]?.id || ''
   );
-  const [starterSetlistId, setStarterSetlistId] = useState(
-    initialStartSetlistId || ''
-  );
+
+  const teamActiveSetlist = effectiveGroup?.activeSetlist;
+
+  const availableSetlists = useMemo(() => {
+    const list: Array<{
+      id: string;
+      name: string;
+      itemCount: number;
+      isTeamLineup?: boolean;
+      items: Array<{ songId: string; preferredSemitones?: number; referenceAudioUrl?: string }>;
+    }> = [];
+
+    if (teamActiveSetlist && teamActiveSetlist.items?.length > 0) {
+      list.push({
+        id: teamActiveSetlist.id,
+        name: `🌟 Church Lineup: ${teamActiveSetlist.name}`,
+        itemCount: teamActiveSetlist.items.length,
+        isTeamLineup: true,
+        items: teamActiveSetlist.items,
+      });
+    }
+
+    for (const s of setlists) {
+      if (s.id !== teamActiveSetlist?.id && s.items?.length > 0) {
+        list.push({
+          id: s.id,
+          name: s.name,
+          itemCount: s.items.length,
+          items: s.items,
+        });
+      }
+    }
+
+    return list;
+  }, [teamActiveSetlist, setlists]);
+
+  const [starterSetlistId, setStarterSetlistId] = useState<string>(() => {
+    if (initialStartSetlistId) return initialStartSetlistId;
+    if (effectiveGroup?.activeSetlist?.id) return effectiveGroup.activeSetlist.id;
+    if (setlists.length > 0) return setlists[0].id;
+    return '__none__';
+  });
+
+  const activeSelectedSetlist = useMemo(() => {
+    if (!starterSetlistId || starterSetlistId === '__none__') return null;
+    if (teamActiveSetlist && teamActiveSetlist.id === starterSetlistId) {
+      return teamActiveSetlist;
+    }
+    return setlists.find((s) => s.id === starterSetlistId) || null;
+  }, [starterSetlistId, teamActiveSetlist, setlists]);
+
   const [starterInstrument, setStarterInstrument] =
     useState<InstrumentViewMode>('general');
 
@@ -538,27 +589,30 @@ function LiveSyncWorkspace({
     setIsSubmitting(true);
 
     try {
-      const chosenSetlist = setlists.find((s) => s.id === starterSetlistId);
-      const setlistSongIds = chosenSetlist
+      const chosenSetlist = activeSelectedSetlist;
+      const setlistSongIds = chosenSetlist && chosenSetlist.items.length > 0
         ? chosenSetlist.items.map((item) => item.songId)
         : undefined;
+
+      const initialSongId =
+        chosenSetlist && chosenSetlist.items.length > 0
+          ? chosenSetlist.items[0].songId
+          : starterSongId;
+
+      const initialSemitones =
+        chosenSetlist && chosenSetlist.items.length > 0
+          ? chosenSetlist.items[0]?.preferredSemitones ?? initialStartSemitones
+          : initialStartSemitones;
 
       const res = await fetch(apiUrl('/api/live/sessions'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: sessionTitle,
+          title: sessionTitle || (chosenSetlist?.name ? `${chosenSetlist.name} Live` : 'Sunday Worship Service'),
           leaderName: leaderName.trim() || user?.displayName || 'Worship Leader',
           instrument: starterInstrument,
-          initialSongId:
-            setlistSongIds && setlistSongIds.length > 0
-              ? setlistSongIds[0]
-              : starterSongId,
-          initialSemitones:
-            chosenSetlist && chosenSetlist.items.length > 0
-              ? chosenSetlist.items[0]?.preferredSemitones ??
-                initialStartSemitones
-              : initialStartSemitones,
+          initialSongId,
+          initialSemitones,
           setlistSongIds,
         }),
       });
@@ -1247,45 +1301,95 @@ function LiveSyncWorkspace({
                 </div>
               </div>
 
-              <div>
-                <label
-                  htmlFor="starter-song-select"
-                  className="block text-xs font-semibold text-[var(--text-secondary)] mb-1"
-                >
-                  Starting Song
-                </label>
-                <select
-                  id="starter-song-select"
-                  value={starterSongId}
-                  onChange={(e) => setStarterSongId(e.target.value)}
-                  className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm font-medium cursor-pointer"
-                >
-                  {allSongs.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.title} (Key of {s.originalKey} · {s.language.label})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {setlists.length > 0 && (
+              {/* Setlist / Lineup Selection */}
+              {availableSetlists.length > 0 && (
                 <div>
                   <label
                     htmlFor="starter-setlist-select"
                     className="block text-xs font-semibold text-[var(--text-secondary)] mb-1"
                   >
-                    Load Queue from Personal Setlist (Optional)
+                    Service Lineup / Setlist
                   </label>
                   <select
                     id="starter-setlist-select"
-                    value={starterSetlistId}
+                    value={activeSelectedSetlist ? starterSetlistId : '__none__'}
                     onChange={(e) => setStarterSetlistId(e.target.value)}
-                    className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm cursor-pointer"
+                    className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm font-medium cursor-pointer"
                   >
-                    <option value="">Use Default Starter Queue</option>
-                    {setlists.map((list) => (
+                    {availableSetlists.map((list) => (
                       <option key={list.id} value={list.id}>
-                        {list.name} ({list.items.length} songs)
+                        {list.name} ({list.itemCount} {list.itemCount === 1 ? 'song' : 'songs'})
+                      </option>
+                    ))}
+                    <option value="__none__">Single Song / Free Jam (No Setlist)</option>
+                  </select>
+                </div>
+              )}
+
+              {/* If a setlist is loaded: Display opening song and queue preview (NO confusing Starting Song catalog dropdown!) */}
+              {activeSelectedSetlist && activeSelectedSetlist.items.length > 0 ? (
+                <div className="p-3.5 rounded-2xl bg-[var(--brand-surface)]/70 border border-[var(--brand-accent)]/30 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--brand-accent)]">
+                      <ListMusic className="w-4 h-4" />
+                      <span>Lineup Starting Sequence</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--brand-accent)]/20 text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
+                      Auto-starts at Song 1
+                    </span>
+                  </div>
+
+                  {(() => {
+                    const firstItem = activeSelectedSetlist.items[0];
+                    const firstSong = allSongs.find((s) => s.id === firstItem.songId);
+                    const openingKey = firstItem.preferredSemitones
+                      ? transposeKey(firstSong?.originalKey || 'C', firstItem.preferredSemitones, 'auto')
+                      : firstSong?.originalKey || 'C';
+
+                    return (
+                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-5 h-5 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold text-[10px] flex items-center justify-center shrink-0">
+                            1
+                          </span>
+                          <span className="font-bold text-[var(--text-primary)] truncate">
+                            {firstSong?.title || firstItem.songId}
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-[11px] text-[var(--brand-accent)] bg-[var(--brand-surface)] px-2 py-0.5 rounded border border-[var(--brand-accent)]/20 shrink-0 ml-2">
+                          Key of {openingKey}
+                        </span>
+                      </div>
+                    );
+                  })()}
+
+                  {activeSelectedSetlist.items.length > 1 && (
+                    <p className="text-[11px] text-[var(--text-secondary)] truncate">
+                      Queue: {activeSelectedSetlist.items.slice(1).map((item, idx) => {
+                        const s = allSongs.find((song) => song.id === item.songId);
+                        return `${idx + 2}. ${s?.title || item.songId}`;
+                      }).join(' • ')}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                /* Only show Catalog Song selector if the leader is doing an impromptu Single Song session with no setlist */
+                <div>
+                  <label
+                    htmlFor="starter-song-select"
+                    className="block text-xs font-semibold text-[var(--text-secondary)] mb-1"
+                  >
+                    Select Song to Play (Impromptu / Jam)
+                  </label>
+                  <select
+                    id="starter-song-select"
+                    value={starterSongId}
+                    onChange={(e) => setStarterSongId(e.target.value)}
+                    className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm font-medium cursor-pointer"
+                  >
+                    {allSongs.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.title} (Key of {s.originalKey} · {s.language.label})
                       </option>
                     ))}
                   </select>

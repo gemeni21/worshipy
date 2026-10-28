@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useTransition } from 'react';
+import React, { useState, useEffect, useRef, useTransition, useMemo } from 'react';
 import Link from 'next/link';
 import QRCode from 'qrcode';
 import {
@@ -41,7 +41,7 @@ import {
   deleteSharedPracticeTake,
   getCachedTeam,
 } from '@/lib/team/teamService';
-import type { TeamPracticeTake } from '@/types/auth';
+import type { TeamPracticeTake, GroupMember } from '@/types/auth';
 import { PracticeWaveformPlayer } from '@/components/practice/PracticeWaveformPlayer';
 import type { PracticeTake } from '@/lib/audio/practiceStorage';
 
@@ -106,6 +106,28 @@ export default function TeamHubPage() {
   const [, startTransition] = useTransition();
 
   const currentTeam = activeGroup || getCachedTeam();
+
+  // Active member roster computed with presence fallback to guarantee no online musician is ever hidden
+  const rosterMembers = useMemo(() => {
+    const map = new Map<string, GroupMember>();
+    for (const m of (currentTeam?.members || [])) {
+      map.set(m.userId, m);
+    }
+    // Safeguard: Any active musician in teamPresence is guaranteed to be in the roster
+    for (const [pUserId, pRecord] of Object.entries(teamPresence)) {
+      if (!map.has(pUserId) && pRecord && pRecord.displayName) {
+        map.set(pUserId, {
+          userId: pUserId,
+          email: '',
+          displayName: pRecord.displayName,
+          role: 'member',
+          instrument: pRecord.instrument || 'Musician',
+          joinedAt: pRecord.lastSeen,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [currentTeam?.members, teamPresence]);
 
   // Actively synchronize team state (lineup & live status) across devices and tabs
   useEffect(() => {
@@ -713,12 +735,12 @@ export default function TeamHubPage() {
                 <h3 className="font-bold text-sm text-[var(--text-primary)]">Band Roster</h3>
               </div>
               <span className="text-xs text-[var(--text-secondary)]">
-                {currentTeam.members.length} {currentTeam.members.length === 1 ? 'member' : 'members'}
+                {rosterMembers.length} {rosterMembers.length === 1 ? 'member' : 'members'}
               </span>
             </div>
 
             <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
-              {currentTeam.members.map((m) => {
+              {rosterMembers.map((m) => {
                 const presence = teamPresence[m.userId];
                 const isOnline = presence?.online ?? Boolean(user && m.userId === user.id);
                 const currentSong = presence?.currentSong;

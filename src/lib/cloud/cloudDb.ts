@@ -1041,6 +1041,7 @@ export function updateWorshipGroupBranding(
     churchName?: string;
     groupName?: string;
     inviteCode?: string;
+    members?: GroupMember[];
     activeSetlist?: TeamActiveSetlist | null;
     activeLiveSessionId?: string | null;
     activeLiveSessionJoinCode?: string | null;
@@ -1065,15 +1066,18 @@ export function updateWorshipGroupBranding(
       inviteCode: updates.inviteCode || generateGroupInviteCode(),
       ownerId: userId,
       createdAt: now,
-      members: [
-        {
-          userId: user?.profile.id || userId,
-          email: user?.profile.email || '',
-          displayName: user?.profile.displayName || 'Leader',
-          role: 'leader',
-          joinedAt: now,
-        },
-      ],
+      members:
+        Array.isArray(updates.members) && updates.members.length > 0
+          ? updates.members
+          : [
+              {
+                userId: user?.profile.id || userId,
+                email: user?.profile.email || '',
+                displayName: user?.profile.displayName || 'Leader',
+                role: 'leader',
+                joinedAt: now,
+              },
+            ],
     };
     store.groups[groupId] = group;
 
@@ -1090,6 +1094,13 @@ export function updateWorshipGroupBranding(
 
   if (!isLeader) {
     return { ok: false, error: 'Only the team creator or leader can customize the church branding.' };
+  }
+
+  if (Array.isArray(updates.members) && updates.members.length > 0) {
+    const existingMap = new Map<string, GroupMember>();
+    for (const m of group.members) existingMap.set(m.userId, m);
+    for (const m of updates.members) existingMap.set(m.userId, m);
+    group.members = Array.from(existingMap.values());
   }
 
   if (updates.customAppTitle !== undefined) {

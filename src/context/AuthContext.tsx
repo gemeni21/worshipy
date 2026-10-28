@@ -196,6 +196,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .then((r) => (r.ok ? r.json() : null))
                 .then((data) => {
                   if (!cancelled && data?.group) {
+                    const currentMembers = cachedGroup?.members || [];
+                    const incomingMembers = data.group.members || [];
+                    if (currentMembers.length > incomingMembers.length) {
+                      const map = new Map<string, any>();
+                      for (const m of currentMembers) map.set(m.userId, m);
+                      for (const m of incomingMembers) map.set(m.userId, m);
+                      data.group.members = Array.from(map.values());
+                    }
                     setActiveGroup(data.group);
                     setCachedTeam(data.group);
                   }
@@ -490,6 +498,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         if (data.group) {
+          const cached = getCachedTeam();
+          const currentMembers = activeGroup?.members || cached?.members || [];
+          const incomingMembers = data.group.members || [];
+          if (currentMembers.length > incomingMembers.length) {
+            const map = new Map<string, any>();
+            for (const m of currentMembers) map.set(m.userId, m);
+            for (const m of incomingMembers) map.set(m.userId, m);
+            data.group.members = Array.from(map.values());
+          }
           setActiveGroup(data.group);
           setCachedTeam(data.group);
         }

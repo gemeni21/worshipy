@@ -30,6 +30,26 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
 
   const currentTeam = activeGroup || getCachedTeam();
 
+  const rosterMembers = React.useMemo(() => {
+    const map = new Map<string, any>();
+    for (const m of (currentTeam?.members || [])) {
+      map.set(m.userId, m);
+    }
+    for (const [pUserId, pRecord] of Object.entries(teamPresence)) {
+      if (!map.has(pUserId) && pRecord && pRecord.displayName) {
+        map.set(pUserId, {
+          userId: pUserId,
+          email: '',
+          displayName: pRecord.displayName,
+          role: 'member',
+          instrument: pRecord.instrument || 'Musician',
+          joinedAt: pRecord.lastSeen,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [currentTeam?.members, teamPresence]);
+
   const [mode, setMode] = useState<'create' | 'join'>(initialInviteCode ? 'join' : 'create');
   const [teamNameInput, setTeamNameInput] = useState('');
   const [churchNameInput, setChurchNameInput] = useState(user?.churchName || '');
@@ -240,7 +260,7 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
             Team Members
           </span>
           <div className="space-y-1.5 max-h-40 overflow-y-auto">
-            {currentTeam.members.map((m) => {
+            {rosterMembers.map((m) => {
               const presence = teamPresence[m.userId];
               const isOnline = presence?.online ?? Boolean(user && m.userId === user.id);
 

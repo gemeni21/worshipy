@@ -265,6 +265,20 @@ export async function joinTeamByInviteCode(
       } catch (err) {
         console.warn('Firestore member update note:', err);
       }
+
+      // Sync full member roster with server API so polling keeps everyone
+      fetch(`/api/groups/${foundGroup.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          members: updatedMembers,
+          groupName: foundGroup.name,
+          inviteCode: foundGroup.inviteCode,
+        }),
+      }).catch(() => {});
     } else {
       // Sync document structure if needed
       try {
@@ -424,6 +438,7 @@ export async function updateTeamBranding(
         ...updates,
         groupName: current?.name,
         inviteCode: current?.inviteCode,
+        members: current?.members,
       }),
     });
     if (res.ok) {
@@ -480,6 +495,7 @@ export async function publishTeamSetlist(
         activeSetlist: setlist,
         groupName: current?.name,
         inviteCode: current?.inviteCode,
+        members: current?.members,
       }),
     });
     if (res.ok) {
@@ -592,6 +608,7 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
         activeSetlist: null,
         groupName: current?.name,
         inviteCode: current?.inviteCode,
+        members: current?.members,
       }),
     });
     if (res.ok) {
@@ -677,6 +694,7 @@ export async function setTeamActiveLiveSession(
         activeLiveSessionLeaderName: sessionInfo.leaderName,
         groupName: current?.name,
         inviteCode: current?.inviteCode,
+        members: current?.members,
       }),
     });
     if (res.ok) {
@@ -774,6 +792,7 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
         activeLiveSessionLeaderName: null,
         groupName: current?.name,
         inviteCode: current?.inviteCode,
+        members: current?.members,
       }),
     });
     if (res.ok) {
@@ -831,11 +850,34 @@ export function subscribeToTeam(
       onUpdate(null);
       return;
     }
-    const serialized = JSON.stringify(fresh);
+
+    const currentCached = getCachedTeam();
+    // CRITICAL ROSTER PRESERVATION: Never allow an ephemeral or single-leader server response
+    // to wipe out the full band roster. Merge known members so no one is dropped.
+    let mergedMembers = fresh.members || [];
+    if (currentCached && currentCached.id === fresh.id && Array.isArray(currentCached.members)) {
+      if (currentCached.members.length > mergedMembers.length) {
+        const memberMap = new Map<string, GroupMember>();
+        for (const m of currentCached.members) {
+          memberMap.set(m.userId, m);
+        }
+        for (const m of mergedMembers) {
+          memberMap.set(m.userId, m);
+        }
+        mergedMembers = Array.from(memberMap.values());
+      }
+    }
+
+    const mergedGroup: WorshipGroup = {
+      ...fresh,
+      members: mergedMembers,
+    };
+
+    const serialized = JSON.stringify(mergedGroup);
     if (serialized !== lastKnownSerialized) {
       lastKnownSerialized = serialized;
-      setCachedTeam(fresh);
-      onUpdate(fresh);
+      setCachedTeam(mergedGroup);
+      onUpdate(mergedGroup);
     }
   };
 
