@@ -10,6 +10,7 @@ import {
   createLiveSession,
   joinLiveSession,
   updateLiveSessionState,
+  clearAllLiveSessionsForTest,
 } from '../../live/liveSessionServer.ts';
 import { resolveReferencePlayback } from '../../audio/referenceAudio.ts';
 import {
@@ -460,5 +461,50 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     assert.equal(liveRes.session.sharedState.officialSemitones, 2);
     // Queue contains the entire setlist lineup in exact order
     assert.deepEqual(liveRes.session.sharedState.setlistSongIds, ['song-02', 'song-01']);
+  });
+
+  it('10. auto-join resilience: reloads session from disk on memory cache miss and joins seamlessly', () => {
+    // 1. Leader creates a live session which gets written to disk
+    const liveRes = createLiveSession({
+      title: 'Sunday Live Worship',
+      leaderName: 'Mark Edison Talingting',
+      initialSongId: 'song-01',
+    });
+    assert.ok(liveRes.session);
+    const sessionId = liveRes.session.sessionId;
+    const joinCode = liveRes.session.joinCode;
+
+    // 2. Simulate worker restart or multi-process worker isolation where memory cache is cleared
+    clearAllLiveSessionsForTest();
+
+    // 3. Member auto-joins by sessionId (0-code band member flow)
+    const memberJoin = joinLiveSession({
+      sessionId,
+      participantName: 'Guitarist Alex',
+      instrument: 'guitar',
+    });
+
+    assert.ok(memberJoin.session);
+    assert.equal(memberJoin.session.sessionId, sessionId);
+    assert.ok(memberJoin.participantId);
+    assert.ok(memberJoin.participantToken);
+
+    // Verify participant is registered in session
+    const alex = memberJoin.session.participants.find((p) => p.name === 'Guitarist Alex');
+    assert.ok(alex);
+    assert.equal(alex.instrument, 'guitar');
+
+    // 4. Test another worker cache miss joining by joinCode
+    clearAllLiveSessionsForTest();
+    const guestJoin = joinLiveSession({
+      joinCode,
+      participantName: 'Bassist Ben',
+      instrument: 'bass',
+    });
+    assert.ok(guestJoin.session);
+    assert.equal(guestJoin.session.sessionId, sessionId);
+    const ben = guestJoin.session.participants.find((p) => p.name === 'Bassist Ben');
+    assert.ok(ben);
+    assert.equal(ben.instrument, 'bass');
   });
 });

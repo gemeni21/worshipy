@@ -234,6 +234,9 @@ function LiveSyncWorkspace({
   >(null);
   const [showQrModal, setShowQrModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAutoConnecting, setIsAutoConnecting] = useState(false);
+  const autoJoinInFlightRef = useRef(false);
+  const autoJoinAttemptedIdRef = useRef<string | null>(null);
   const [songToAddId, setSongToAddId] = useState(allSongs[0]?.id ?? '');
 
   // Discover local network origin (for band Wi-Fi synchronization)
@@ -356,9 +359,82 @@ function LiveSyncWorkspace({
     };
   }, [targetGroupId, session, refreshActiveGroup]);
 
+  // Unified join helper for automatic and 1-click stage connection
+  const performJoinLiveSession = useCallback(
+    async (target: { sessionId?: string; joinCode?: string; isAuto?: boolean }) => {
+      if (autoJoinInFlightRef.current) return;
+      autoJoinInFlightRef.current = true;
+      if (target.isAuto) {
+        setIsAutoConnecting(true);
+      } else {
+        setIsSubmitting(true);
+      }
+      setErrorAlert(null);
+
+      try {
+        const effectiveName =
+          user?.displayName || user?.email?.split('@')[0] || 'Musician';
+        const res = await fetch(apiUrl('/api/live/sessions/join'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: target.sessionId || undefined,
+            joinCode: target.joinCode || undefined,
+            participantName: effectiveName,
+            instrument: (user?.instrument as any) || 'general',
+          }),
+        });
+
+        const data = await res.json();
+        if (res.ok && data.session) {
+          latestRevisionRef.current = data.session.revision;
+          setSession(data.session);
+          setParticipantId(data.participantId);
+          setParticipantToken(data.participantToken);
+          setInstrumentView((user?.instrument as any) || 'general');
+          setViewMode('follow');
+
+          const creds: StoredLiveCredentials = {
+            sessionId: data.session.sessionId,
+            participantId: data.participantId,
+            participantToken: data.participantToken,
+          };
+          window.sessionStorage.setItem(
+            SESSION_CREDENTIALS_STORAGE_KEY,
+            JSON.stringify(creds)
+          );
+        } else {
+          console.warn('Live session join response not ok:', data);
+          setErrorAlert({
+            title: target.isAuto
+              ? 'Stage Sync Standby'
+              : 'Unable to Join Live Session',
+            message:
+              data?.error ??
+              (target.isAuto
+                ? 'Could not automatically join the live stage. You can tap "Connect to Live Stage Now" below or enter a code.'
+                : 'Invalid join code or live session.'),
+            code: data?.code,
+          });
+        }
+      } catch (err) {
+        console.warn('Live session join network error:', err);
+        setErrorAlert({
+          title: 'Connection Notice',
+          message: 'Network error while attempting to connect to the live stage.',
+        });
+      } finally {
+        autoJoinInFlightRef.current = false;
+        setIsAutoConnecting(false);
+        setIsSubmitting(false);
+      }
+    },
+    [user?.displayName, user?.email, user?.instrument]
+  );
+
   // 2. Auto-connect team members if their worship team leader is currently live
   useEffect(() => {
-    if (session || isSubmitting) return;
+    if (session) return;
     const currentGrp = activeGroup || getCachedTeam();
     if (!currentGrp?.id) return;
 
@@ -368,11 +444,9 @@ function LiveSyncWorkspace({
     );
     if (isLeader) return;
 
-    let cancelled = false;
-
     async function checkAndAutoJoin() {
       const grp = activeGroup || getCachedTeam();
-      if (!grp?.id) return;
+      if (!grp?.id || session) return;
 
       // 1. If activeLiveSessionId is already on group
       let liveId = grp.activeLiveSessionId;
@@ -395,7 +469,6 @@ function LiveSyncWorkspace({
         } catch {}
       }
 
-      if (cancelled) return;
       if (!liveId && !joinCode) return;
       if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) return;
 
@@ -405,63 +478,27 @@ function LiveSyncWorkspace({
         if (dismissed === (liveId || joinCode)) return;
       } catch {}
 
-      setIsSubmitting(true);
-      try {
-        const effectiveName = user?.displayName || user?.email?.split('@')[0] || 'Musician';
-        const res = await fetch(apiUrl('/api/live/sessions/join'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: liveId || undefined,
-            joinCode: joinCode || undefined,
-            participantName: effectiveName,
-            instrument: (user?.instrument as any) || 'general',
-          }),
-        });
+      const sessionKey = `${liveId || ''}:${joinCode || ''}`;
+      if (autoJoinAttemptedIdRef.current === sessionKey) return;
+      autoJoinAttemptedIdRef.current = sessionKey;
 
-        if (cancelled) return;
-        const data = await res.json();
-        if (res.ok && data.session) {
-          latestRevisionRef.current = data.session.revision;
-          setSession(data.session);
-          setParticipantId(data.participantId);
-          setParticipantToken(data.participantToken);
-          setInstrumentView((user?.instrument as any) || 'general');
-          setViewMode('follow');
-
-          const creds: StoredLiveCredentials = {
-            sessionId: data.session.sessionId,
-            participantId: data.participantId,
-            participantToken: data.participantToken,
-          };
-          window.sessionStorage.setItem(
-            SESSION_CREDENTIALS_STORAGE_KEY,
-            JSON.stringify(creds)
-          );
-        }
-      } catch (err) {
-        console.warn('Auto-join team live session note:', err);
-      } finally {
-        if (!cancelled) setIsSubmitting(false);
-      }
+      await performJoinLiveSession({
+        sessionId: liveId || undefined,
+        joinCode: joinCode || undefined,
+        isAuto: true,
+      });
     }
 
     checkAndAutoJoin();
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     activeGroup?.id,
     activeGroup?.activeLiveSessionId,
     activeGroup?.activeLiveSessionJoinCode,
     activeGroup?.activeLiveSessionExpiresAt,
     session,
-    isSubmitting,
     user?.id,
-    user?.displayName,
-    user?.instrument,
     user?.groupRole,
+    performJoinLiveSession,
   ]);
 
   const activeSessionId = session?.sessionId;
@@ -932,6 +969,7 @@ function LiveSyncWorkspace({
         );
       } catch {}
     }
+    autoJoinAttemptedIdRef.current = null;
     window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
     setSession(null);
     setParticipantId('');
@@ -1050,7 +1088,7 @@ function LiveSyncWorkspace({
         {isTeamMember && !isOwnerLeader && !showManualJoinForm ? (
           /* Member View: Automatic 1-Click Sync Standby */
           <div className="max-w-md mx-auto space-y-4">
-            {isSubmitting ? (
+            {isAutoConnecting ? (
               <section className="theme-card rounded-2xl border border-[var(--brand-accent)]/30 bg-[var(--bg-surface)] p-8 text-center space-y-4 shadow-sm">
                 <div className="w-14 h-14 rounded-full bg-[var(--brand-surface)] text-[var(--brand-accent)] flex items-center justify-center mx-auto">
                   <Radio className="w-7 h-7 animate-pulse" />
@@ -1075,10 +1113,42 @@ function LiveSyncWorkspace({
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                     Connected to {effectiveGroup?.name || 'Worship Team'}
                   </div>
-                  <h2 className="text-xl font-bold">Waiting for Worship Leader to Go Live</h2>
-                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
-                    You are logged in as a band member (<strong>{user?.displayName || 'Musician'}</strong> · {user?.instrument || 'Band'}). You don&apos;t need to enter any code—your screen will automatically sync with the leader the moment they start the live service!
-                  </p>
+
+                  {effectiveGroup?.activeLiveSessionId &&
+                  (!effectiveGroup.activeLiveSessionExpiresAt ||
+                    new Date(effectiveGroup.activeLiveSessionExpiresAt).getTime() > Date.now()) ? (
+                    <div className="space-y-3 pt-1">
+                      <h2 className="text-xl font-bold text-[var(--brand-accent)]">
+                        {effectiveGroup.activeLiveSessionLeaderName || 'Worship Leader'} is Live!
+                      </h2>
+                      <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
+                        A live worship stage is currently active. Connect your chart below to follow in real time with zero manual codes.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          autoJoinAttemptedIdRef.current = null;
+                          performJoinLiveSession({
+                            sessionId: effectiveGroup.activeLiveSessionId,
+                            joinCode: effectiveGroup.activeLiveSessionJoinCode,
+                            isAuto: false,
+                          });
+                        }}
+                        disabled={isSubmitting || isAutoConnecting}
+                        className="w-full py-3 px-4 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-sm shadow-md hover:opacity-95 cursor-pointer inline-flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                      >
+                        <Radio className="w-4 h-4 animate-pulse" />
+                        <span>{isSubmitting ? 'Connecting to Stage...' : 'Connect to Live Stage Now'}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <h2 className="text-xl font-bold">Waiting for Worship Leader to Go Live</h2>
+                      <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
+                        You are logged in as a band member (<strong>{user?.displayName || 'Musician'}</strong> · {user?.instrument || 'Band'}). You don&apos;t need to enter any code—your screen will automatically sync with the leader the moment they start the live service!
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <div className="pt-3 border-t border-[var(--border-subtle)]/60 flex flex-col items-center gap-2">

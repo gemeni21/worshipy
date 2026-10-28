@@ -110,6 +110,54 @@ function getStore(): GlobalLiveStore {
   return store;
 }
 
+/**
+ * Re-synchronizes memory with disk storage across multi-process Next.js server workers.
+ */
+export function syncStoreFromDisk(): void {
+  try {
+    const store = getStore();
+    const filePath = getPersistenceFilePath();
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const parsed = JSON.parse(raw) as InternalSessionRecord[];
+      if (Array.isArray(parsed)) {
+        for (const rec of parsed) {
+          const existing = store.sessions.get(rec.sessionId);
+          if (!existing || rec.revision > existing.revision) {
+            store.sessions.set(rec.sessionId, rec);
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-fatal in read-only filesystems
+  }
+}
+
+function getSessionRecord(sessionId: string): InternalSessionRecord | undefined {
+  const store = getStore();
+  let record = store.sessions.get(sessionId);
+  if (!record) {
+    syncStoreFromDisk();
+    record = store.sessions.get(sessionId);
+  }
+  return record;
+}
+
+function findSessionByJoinCode(cleanCode: string): InternalSessionRecord | undefined {
+  const store = getStore();
+  let record = Array.from(store.sessions.values()).find(
+    (s) => s.joinCode.toUpperCase() === cleanCode
+  );
+  if (!record) {
+    syncStoreFromDisk();
+    record = Array.from(store.sessions.values()).find(
+      (s) => s.joinCode.toUpperCase() === cleanCode
+    );
+  }
+  return record;
+}
+
 function persistStoreToDisk(): void {
   if (process.env.WMC_DISABLE_DISK_PERSIST === '1') return;
   try {
@@ -451,7 +499,7 @@ export function joinLiveSession(
       );
     }
 
-    targetSession = store.sessions.get(verifiedInvite.sessionId);
+    targetSession = getSessionRecord(verifiedInvite.sessionId);
     if (
       !targetSession ||
       targetSession.inviteTokenVersion !== verifiedInvite.version
@@ -464,9 +512,7 @@ export function joinLiveSession(
     }
   } else if (input.joinCode) {
     const cleanCode = input.joinCode.trim().toUpperCase();
-    targetSession = Array.from(store.sessions.values()).find(
-      (s) => s.joinCode.toUpperCase() === cleanCode
-    );
+    targetSession = findSessionByJoinCode(cleanCode);
     if (!targetSession) {
       throw new LiveSyncError(
         `No live session found matching join code "${cleanCode}".`,
@@ -475,7 +521,7 @@ export function joinLiveSession(
       );
     }
   } else if (input.sessionId) {
-    targetSession = store.sessions.get(input.sessionId);
+    targetSession = getSessionRecord(input.sessionId);
     if (!targetSession) {
       throw new LiveSyncError(
         'Live session not found.',
@@ -555,8 +601,7 @@ export function getLiveSessionSnapshot(
     );
   }
 
-  const store = getStore();
-  const record = store.sessions.get(sessionId);
+  const record = getSessionRecord(sessionId);
   if (!record) {
     throw new LiveSyncError(
       'Live session not found.',
@@ -615,8 +660,7 @@ export function updateLiveSessionState(
     );
   }
 
-  const store = getStore();
-  const record = store.sessions.get(sessionId);
+  const record = getSessionRecord(sessionId);
   if (!record) {
     throw new LiveSyncError(
       'Live session not found.',
@@ -764,8 +808,7 @@ export function transferSessionLeadership(
     throw new LiveSyncError('Unauthorized token.', 401, 'UNAUTHORIZED');
   }
 
-  const store = getStore();
-  const record = store.sessions.get(sessionId);
+  const record = getSessionRecord(sessionId);
   if (!record) {
     throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
   }
@@ -843,12 +886,12 @@ export function updateParticipantPresence(
     throw new LiveSyncError('Unauthorized token.', 401, 'UNAUTHORIZED');
   }
 
-  const store = getStore();
-  const record = store.sessions.get(sessionId);
+  const record = getSessionRecord(sessionId);
   if (!record) {
     throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
   }
 
+  const store = getStore();
   const participant = record.participants.find(
     (p) => p.id === verified.participantId
   );
@@ -888,8 +931,7 @@ export function endLiveSession(
     throw new LiveSyncError('Unauthorized token.', 401, 'UNAUTHORIZED');
   }
 
-  const store = getStore();
-  const record = store.sessions.get(sessionId);
+  const record = getSessionRecord(sessionId);
   if (!record) {
     throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
   }
@@ -928,12 +970,12 @@ export function subscribeToLiveSession(
     throw new LiveSyncError('Unauthorized stream token.', 401, 'UNAUTHORIZED');
   }
 
-  const store = getStore();
-  const record = store.sessions.get(sessionId);
+  const record = getSessionRecord(sessionId);
   if (!record) {
     throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
   }
 
+  const store = getStore();
   const participant = record.participants.find(
     (p) => p.id === verified.participantId
   );
