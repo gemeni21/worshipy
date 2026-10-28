@@ -17,7 +17,8 @@ import {
   Plus,
   Radio,
   Send,
-  Sparkles,
+  Lightbulb,
+  Calendar,
   Trash2,
   X,
 } from 'lucide-react';
@@ -56,13 +57,17 @@ export default function SetlistsPage() {
     refreshActiveGroup,
   } = useAuth();
 
+  const memberRecord = activeGroup?.members?.find((m) => m.userId === user?.id);
+  const isExplicitMember = user?.groupRole === 'member' || memberRecord?.role === 'member';
+
   const isTeamLeader = Boolean(
     user &&
       activeGroup &&
+      !isExplicitMember &&
       (activeGroup.ownerId === user.id ||
         user.groupRole === 'leader' ||
-        user.role === 'admin' ||
-        activeGroup.members?.some((m) => m.userId === user.id && m.role === 'leader'))
+        memberRecord?.role === 'leader' ||
+        (user.role === 'admin' && !user.groupRole))
   );
 
   const pendingGroupSuggestions = useMemo(() => {
@@ -73,6 +78,13 @@ export default function SetlistsPage() {
     if (!user?.id) return null;
     return (activeGroup?.suggestedSetlists || []).find(
       (s) => s.status === 'pending' && s.suggestedBy === user.id
+    );
+  }, [activeGroup?.suggestedSetlists, user?.id]);
+
+  const userSuggestions = useMemo(() => {
+    if (!user?.id) return [];
+    return (activeGroup?.suggestedSetlists || []).filter(
+      (s) => s.suggestedBy === user.id
     );
   }, [activeGroup?.suggestedSetlists, user?.id]);
 
@@ -271,14 +283,14 @@ export default function SetlistsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-5 h-5" />
+                    <Lightbulb className="w-5 h-5" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h2 className="text-base font-bold text-[var(--text-primary)]">
                         Pending Lineup Suggestions from Team
                       </h2>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs">
                         {pendingGroupSuggestions.length} PENDING REVIEW
                       </span>
                     </div>
@@ -296,98 +308,166 @@ export default function SetlistsPage() {
                 </Link>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3.5">
                 {pendingGroupSuggestions.map((sug) => {
                   const isExpanded = expandedSuggestionId === sug.id;
                   const isReviewingThis = reviewingSuggestionId === sug.id;
+                  const isOwnSuggestion = sug.suggestedBy === user?.id;
 
                   return (
                     <div
                       key={sug.id}
-                      className="p-4 rounded-xl bg-[var(--bg-surface)] border border-amber-500/25 space-y-3 shadow-xs"
+                      className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-amber-500/25 space-y-3.5 shadow-xs"
                     >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1 min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-sm text-[var(--text-primary)]">
-                              {sug.setlist.name}
+                      {/* Top Row: Full-width Setlist Title + Metadata Badges + Status Badge */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-[var(--border-subtle)]/70">
+                        <div className="flex items-center gap-2 flex-wrap min-w-0">
+                          <span className="font-bold text-base text-[var(--text-primary)]">
+                            {sug.setlist.name}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 shrink-0 whitespace-nowrap">
+                            {sug.setlist.items.length}{' '}
+                            {sug.setlist.items.length === 1 ? 'song' : 'songs'}
+                          </span>
+                          {sug.targetServiceDate && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)] shrink-0 whitespace-nowrap flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-[var(--brand-accent)]" />
+                              <span>{sug.targetServiceDate}</span>
                             </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
-                              {sug.setlist.items.length}{' '}
-                              {sug.setlist.items.length === 1 ? 'song' : 'songs'}
-                            </span>
-                            {sug.targetServiceDate && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
-                                {sug.targetServiceDate}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                            <span className="font-semibold text-[var(--text-primary)]">
-                              Suggested by {sug.suggestedByName}
-                            </span>
-                            {sug.suggestedByRole && (
-                              <span>• {sug.suggestedByRole}</span>
-                            )}
-                          </div>
-
-                          {sug.note && (
-                            <div className="mt-1 p-2 rounded-lg bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] italic">
-                              &ldquo;{sug.note}&rdquo;
-                            </div>
                           )}
                         </div>
 
-                        {/* Action buttons */}
+                        {/* Status Badge */}
+                        <div className="shrink-0 self-start sm:self-center">
+                          {sug.status === 'pending' && (
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                              <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                              <span>For Approval</span>
+                            </span>
+                          )}
+                          {sug.status === 'approved' && (
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Approved</span>
+                            </span>
+                          )}
+                          {sug.status === 'declined' && (
+                            <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                              <X className="w-3.5 h-3.5 text-rose-400" />
+                              <span>Declined</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Submitter Info and Note Row (Full width) */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                          <span className="font-semibold text-[var(--text-primary)]">
+                            Suggested by {sug.suggestedByName}
+                          </span>
+                          {sug.suggestedByRole && (
+                            <>
+                              <span>•</span>
+                              <span>{sug.suggestedByRole}</span>
+                            </>
+                          )}
+                        </div>
+
+                        {sug.note && (
+                          <div className="p-2.5 rounded-xl bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] italic">
+                            &ldquo;{sug.note}&rdquo;
+                          </div>
+                        )}
+                        {sug.reviewNote && (
+                          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200">
+                            <span className="font-semibold">Leader feedback:</span> &ldquo;{sug.reviewNote}&rdquo;
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Dedicated Bottom Actions Row */}
+                      <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedSuggestionId(isExpanded ? null : sug.id)
+                          }
+                          className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <span>{isExpanded ? 'Hide Songs' : 'Preview Songs'}</span>
+                          {isExpanded ? (
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
                         <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedSuggestionId(isExpanded ? null : sug.id)
-                            }
-                            className="py-1.5 px-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1 cursor-pointer transition-colors"
-                          >
-                            <span>{isExpanded ? 'Hide Songs' : 'Preview Songs'}</span>
-                            {isExpanded ? (
-                              <ChevronUp className="w-3.5 h-3.5" />
-                            ) : (
-                              <ChevronDown className="w-3.5 h-3.5" />
-                            )}
-                          </button>
+                          {/* Leaders approve/decline if NOT own suggestion */}
+                          {!isOwnSuggestion && sug.status === 'pending' && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={isReviewingAction}
+                                onClick={() => handleReviewSuggestion(sug.id, 'approve')}
+                                className="py-1.5 px-3.5 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Approve & Set as Team Lineup</span>
+                              </button>
 
-                          <button
-                            type="button"
-                            disabled={isReviewingAction}
-                            onClick={() => handleReviewSuggestion(sug.id, 'approve')}
-                            className="py-1.5 px-3 rounded-lg bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Approve & Set as Team Lineup</span>
-                          </button>
+                              <button
+                                type="button"
+                                disabled={isReviewingAction}
+                                onClick={() => {
+                                  if (isReviewingThis) {
+                                    setReviewingSuggestionId(null);
+                                  } else {
+                                    setReviewingSuggestionId(sug.id);
+                                    setDeclineNote('');
+                                  }
+                                }}
+                                className="py-1.5 px-2.5 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Decline</span>
+                              </button>
+                            </>
+                          )}
 
-                          <button
-                            type="button"
-                            disabled={isReviewingAction}
-                            onClick={() => {
-                              if (isReviewingThis) {
-                                setReviewingSuggestionId(null);
-                              } else {
-                                setReviewingSuggestionId(sug.id);
-                                setDeclineNote('');
-                              }
-                            }}
-                            className="py-1.5 px-2.5 rounded-lg border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            <span>Decline</span>
-                          </button>
+                          {/* Submitter viewing own suggestion */}
+                          {isOwnSuggestion && (
+                            <>
+                              {sug.status === 'pending' && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const res = await deleteTeamSetlistSuggestion(activeGroup.id, sug.id);
+                                    if (res.ok) {
+                                      await refreshActiveGroup();
+                                      setStatusMessage('Withdrew lineup proposal.');
+                                    }
+                                  }}
+                                  className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-rose-500/40 hover:text-rose-400 text-xs font-semibold text-[var(--text-secondary)] transition-colors cursor-pointer"
+                                >
+                                  Withdraw Proposal
+                                </button>
+                              )}
+                              {sug.status === 'approved' && (
+                                <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Approved as Official Lineup</span>
+                                </span>
+                              )}
+                            </>
+                          )}
                         </div>
                       </div>
 
                       {/* Inline Decline Note Input */}
                       {isReviewingThis && (
-                        <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 space-y-2 animate-in fade-in">
+                        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2 animate-in fade-in">
                           <label className="block text-xs font-semibold text-rose-300">
                             Reason or feedback for {sug.suggestedByName} (optional):
                           </label>
@@ -433,7 +513,7 @@ export default function SetlistsPage() {
                             return (
                               <div
                                 key={`${item.songId}_${idx}`}
-                                className="p-2 rounded-lg bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] flex items-center justify-between gap-3 text-xs"
+                                className="p-2.5 rounded-xl bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] flex items-center justify-between gap-3 text-xs"
                               >
                                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                   <span className="w-5 h-5 rounded-full font-mono text-[10px] font-bold bg-[var(--bg-surface)] text-[var(--brand-accent)] flex items-center justify-center shrink-0">
@@ -472,7 +552,7 @@ export default function SetlistsPage() {
           ) : (
             <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-4 py-3 text-xs text-[var(--text-secondary)] flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                <Lightbulb className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>
                   <strong className="text-[var(--text-primary)]">Team Lineup Suggestions:</strong> 0 pending proposals. Band members can suggest lineups from their setlists for your review.
                 </span>
@@ -486,41 +566,103 @@ export default function SetlistsPage() {
             </div>
           )
         ) : (
-          userPendingSuggestion && (
-            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 animate-in fade-in">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
-                  <Clock className="w-4 h-4 animate-pulse" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-xs sm:text-sm text-[var(--text-primary)] truncate">
-                      Your Lineup Proposal is Under Review
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black">
-                      PENDING APPROVAL
-                    </span>
+          /* Member View: Shows their suggestions with status "For Approval" or "Approved" */
+          userSuggestions.length > 0 && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5 space-y-3 animate-in fade-in">
+              <div className="flex items-center justify-between border-b border-amber-500/20 pb-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                    <Lightbulb className="w-4 h-4" />
                   </div>
-                  <p className="text-xs text-[var(--text-secondary)] truncate">
-                    You suggested &ldquo;{userPendingSuggestion.setlist.name}&rdquo; ({userPendingSuggestion.setlist.items.length} songs) for{' '}
-                    {userPendingSuggestion.targetServiceDate || 'upcoming service'}. The worship leader will review it.
-                  </p>
+                  <div>
+                    <h3 className="font-bold text-xs sm:text-sm text-[var(--text-primary)]">
+                      Your Lineup Suggestions ({userSuggestions.length})
+                    </h3>
+                    <p className="text-[11px] text-[var(--text-secondary)]">
+                      Track the approval status of setlists you proposed to {activeGroup.name}
+                    </p>
+                  </div>
                 </div>
+                <Link
+                  href="/team"
+                  className="text-xs font-semibold text-amber-300 hover:underline flex items-center gap-1"
+                >
+                  <span>Team Hub</span>
+                  <Church className="w-3 h-3" />
+                </Link>
               </div>
 
-              <button
-                type="button"
-                onClick={async () => {
-                  const res = await deleteTeamSetlistSuggestion(activeGroup.id, userPendingSuggestion.id);
-                  if (res.ok) {
-                    await refreshActiveGroup();
-                    setStatusMessage('Withdrew lineup proposal.');
-                  }
-                }}
-                className="py-1.5 px-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-semibold shrink-0 cursor-pointer transition-colors"
-              >
-                Withdraw Proposal
-              </button>
+              <div className="space-y-2.5">
+                {userSuggestions.map((sug) => (
+                  <div
+                    key={sug.id}
+                    className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-amber-500/25 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-[var(--text-primary)] truncate">
+                          {sug.setlist.name}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
+                          {sug.setlist.items.length}{' '}
+                          {sug.setlist.items.length === 1 ? 'song' : 'songs'}
+                        </span>
+                        {sug.targetServiceDate && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+                            {sug.targetServiceDate}
+                          </span>
+                        )}
+                      </div>
+                      {sug.note && (
+                        <p className="text-[11px] text-[var(--text-secondary)] italic mt-1">
+                          &ldquo;{sug.note}&rdquo;
+                        </p>
+                      )}
+                      {sug.reviewNote && (
+                        <p className="text-[11px] text-amber-300 mt-1">
+                          Leader note: &ldquo;{sug.reviewNote}&rdquo;
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {sug.status === 'pending' && (
+                        <>
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                            <Lightbulb className="w-3 h-3 text-amber-400" />
+                            <span>For Approval</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const res = await deleteTeamSetlistSuggestion(activeGroup.id, sug.id);
+                              if (res.ok) {
+                                await refreshActiveGroup();
+                                setStatusMessage('Withdrew lineup proposal.');
+                              }
+                            }}
+                            className="py-1 px-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-semibold shrink-0 cursor-pointer transition-colors"
+                          >
+                            Withdraw
+                          </button>
+                        </>
+                      )}
+                      {sug.status === 'approved' && (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          <span>Approved</span>
+                        </span>
+                      )}
+                      {sug.status === 'declined' && (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
+                          <X className="w-3 h-3 text-rose-400" />
+                          <span>Declined</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )
         )
@@ -742,9 +884,9 @@ export default function SetlistsPage() {
                             {activeGroup?.suggestedSetlists?.some(
                               (s) => s.setlist.id === setlist.id && s.status === 'pending'
                             ) ? (
-                              <div className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-semibold">
-                                <Clock className="w-3.5 h-3.5 animate-pulse" />
-                                <span>Proposed to Team</span>
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-semibold">
+                                <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                                <span>For Approval</span>
                               </div>
                             ) : (
                               <button
@@ -758,7 +900,7 @@ export default function SetlistsPage() {
                                 className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-500/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500 hover:text-black text-xs font-semibold cursor-pointer transition-all shadow-xs disabled:opacity-50"
                                 title="Suggest this setlist as a proposal (for testing or co-leading)"
                               >
-                                <Sparkles className="w-3.5 h-3.5" />
+                                <Lightbulb className="w-3.5 h-3.5" />
                                 <span>Suggest Lineup</span>
                               </button>
                             )}
@@ -766,35 +908,47 @@ export default function SetlistsPage() {
                         )
                       ) : (
                         // Regular worship team member (vocalist / singer / musician)
-                        activeGroup?.activeSetlist?.id === setlist.id ? (
+                        activeGroup?.activeSetlist?.id === setlist.id ||
+                        activeGroup?.suggestedSetlists?.some(
+                          (s) =>
+                            s.setlist.id === setlist.id &&
+                            s.suggestedBy === user?.id &&
+                            s.status === 'approved'
+                        ) ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
-                            <Church className="w-3.5 h-3.5" />
-                            <span>Active Team Lineup</span>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Approved</span>
                           </span>
                         ) : activeGroup?.suggestedSetlists?.some(
-                            (s) => s.setlist.id === setlist.id && s.suggestedBy === user?.id && s.status === 'pending'
+                            (s) =>
+                              s.setlist.id === setlist.id &&
+                              s.suggestedBy === user?.id &&
+                              s.status === 'pending'
                           ) ? (
                           <div className="inline-flex items-center gap-1.5">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-semibold">
-                              <Clock className="w-3.5 h-3.5 animate-pulse" />
-                              <span>Lineup Proposed (Pending Review)</span>
+                              <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                              <span>For Approval</span>
                             </span>
                             <button
                               type="button"
                               onClick={async () => {
                                 const target = activeGroup?.suggestedSetlists?.find(
-                                  (s) => s.setlist.id === setlist.id && s.suggestedBy === user?.id && s.status === 'pending'
+                                  (s) =>
+                                    s.setlist.id === setlist.id &&
+                                    s.suggestedBy === user?.id &&
+                                    s.status === 'pending'
                                 );
                                 if (target) {
                                   const res = await deleteTeamSetlistSuggestion(activeGroup.id, target.id);
                                   if (res.ok) {
                                     await refreshActiveGroup();
-                                    setStatusMessage('Withdrew lineup suggestion.');
+                                    setStatusMessage('Withdrew lineup proposal.');
                                   }
                                 }
                               }}
                               className="px-2 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-medium cursor-pointer"
-                              title="Cancel this suggestion"
+                              title="Cancel this proposal"
                             >
                               Withdraw
                             </button>
@@ -811,7 +965,7 @@ export default function SetlistsPage() {
                             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-500/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500 hover:text-black text-xs font-bold cursor-pointer transition-all shadow-xs disabled:opacity-50"
                             title="Suggest this setlist to your worship leader for upcoming services"
                           >
-                            <Sparkles className="w-3.5 h-3.5" />
+                            <Lightbulb className="w-3.5 h-3.5" />
                             <span>Suggest to Team</span>
                           </button>
                         )
@@ -956,7 +1110,7 @@ export default function SetlistsPage() {
             <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
-                  <Sparkles className="w-4 h-4" />
+                  <Lightbulb className="w-4 h-4" />
                 </div>
                 <div>
                   <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">

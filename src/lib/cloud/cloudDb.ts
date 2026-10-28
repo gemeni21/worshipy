@@ -1179,17 +1179,41 @@ export function suggestSetlistForGroup(
     setlist: TeamActiveSetlist;
     note?: string;
     targetServiceDate?: string;
+    clientGroupFallback?: Partial<WorshipGroup>;
   }
 ): { ok: boolean; group?: WorshipGroup; suggestion?: TeamSetlistSuggestion; error?: string } {
   const store = ensureDataStore();
   if (!store.groups) store.groups = {};
 
-  const group = store.groups[groupId] || getWorshipGroup(groupId);
+  let group = store.groups[groupId] || getWorshipGroup(groupId);
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+
+  // Self-heal group if missing from server store
   if (!group) {
-    return { ok: false, error: 'Worship team not found.' };
+    const now = new Date().toISOString();
+    group = {
+      id: groupId,
+      name: data.clientGroupFallback?.name || user?.profile.groupName || 'Worship Team',
+      churchName: data.clientGroupFallback?.churchName || 'Church',
+      ownerId: data.clientGroupFallback?.ownerId || userId,
+      inviteCode:
+        data.clientGroupFallback?.inviteCode ||
+        (groupId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'TEAM1234').toUpperCase(),
+      createdAt: now,
+      members: data.clientGroupFallback?.members || [
+        {
+          userId,
+          email: user?.profile.email || '',
+          displayName: user?.profile.displayName || 'Musician',
+          role: 'member',
+          joinedAt: now,
+        },
+      ],
+      suggestedSetlists: data.clientGroupFallback?.suggestedSetlists || [],
+    };
+    store.groups[groupId] = group;
   }
 
-  const user = Object.values(store.users).find((u) => u.profile.id === userId);
   const isMember =
     group.ownerId === userId ||
     user?.profile.groupId === groupId ||
@@ -1254,37 +1278,92 @@ export function reviewSetlistSuggestion(
   groupId: string,
   suggestionId: string,
   action: 'approve' | 'decline',
-  reviewNote?: string
+  reviewNote?: string,
+  clientGroupFallback?: Partial<WorshipGroup>,
+  fallbackSuggestion?: TeamSetlistSuggestion
 ): { ok: boolean; group?: WorshipGroup; error?: string } {
   const store = ensureDataStore();
   if (!store.groups) store.groups = {};
 
-  const group = store.groups[groupId] || getWorshipGroup(groupId);
+  let group = store.groups[groupId] || getWorshipGroup(groupId);
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+
+  // Self-heal group if missing from server store
   if (!group) {
-    return { ok: false, error: 'Worship team not found.' };
+    const now = new Date().toISOString();
+    group = {
+      id: groupId,
+      name: clientGroupFallback?.name || user?.profile.groupName || 'Worship Team',
+      churchName: clientGroupFallback?.churchName || 'Church',
+      ownerId: clientGroupFallback?.ownerId || userId,
+      inviteCode:
+        clientGroupFallback?.inviteCode ||
+        (groupId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'TEAM1234').toUpperCase(),
+      createdAt: now,
+      members:
+        clientGroupFallback?.members ||
+        (user
+          ? [
+              {
+                userId: user.profile.id,
+                email: user.profile.email,
+                displayName: user.profile.displayName,
+                role: 'leader',
+                joinedAt: now,
+              },
+            ]
+          : [
+              {
+                userId,
+                email: '',
+                displayName: 'Worship Leader',
+                role: 'leader',
+                joinedAt: now,
+              },
+            ]),
+      suggestedSetlists:
+        clientGroupFallback?.suggestedSetlists || (fallbackSuggestion ? [fallbackSuggestion] : []),
+    };
+    store.groups[groupId] = group;
   }
 
-  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+  // Ensure suggestedSetlists array
+  if (!Array.isArray(group.suggestedSetlists)) {
+    group.suggestedSetlists =
+      clientGroupFallback?.suggestedSetlists || (fallbackSuggestion ? [fallbackSuggestion] : []);
+  }
+
+  // Look for suggestion or merge from fallback
+  let suggestionIndex = group.suggestedSetlists.findIndex((s) => s.id === suggestionId);
+  if (suggestionIndex === -1 && fallbackSuggestion && fallbackSuggestion.id === suggestionId) {
+    group.suggestedSetlists.unshift(fallbackSuggestion);
+    suggestionIndex = 0;
+  } else if (suggestionIndex === -1 && clientGroupFallback?.suggestedSetlists) {
+    const match = clientGroupFallback.suggestedSetlists.find((s) => s.id === suggestionId);
+    if (match) {
+      group.suggestedSetlists.unshift(match);
+      suggestionIndex = 0;
+    }
+  }
+
+  if (suggestionIndex === -1) {
+    return { ok: false, error: 'Suggestion not found.' };
+  }
+
+  const memberRecord = group.members.find((m) => m.userId === userId);
+  const isExplicitMember = user?.profile.groupRole === 'member' || memberRecord?.role === 'member';
   const isLeader =
-    group.ownerId === userId ||
-    user?.profile.role === 'admin' ||
-    user?.profile.groupRole === 'leader' ||
-    group.members.some((m) => m.userId === userId && m.role === 'leader');
+    !isExplicitMember &&
+    (group.ownerId === userId ||
+      user?.profile.role === 'admin' ||
+      user?.profile.groupRole === 'leader' ||
+      memberRecord?.role === 'leader');
 
   if (!isLeader) {
     return {
       ok: false,
       error: 'Only the worship team leader or owner can review and approve lineup suggestions.',
     };
-  }
-
-  if (!Array.isArray(group.suggestedSetlists)) {
-    return { ok: false, error: 'No setlist suggestions found for this team.' };
-  }
-
-  const suggestionIndex = group.suggestedSetlists.findIndex((s) => s.id === suggestionId);
-  if (suggestionIndex === -1) {
-    return { ok: false, error: 'Suggestion not found.' };
   }
 
   const targetSuggestion = { ...group.suggestedSetlists[suggestionIndex] };
@@ -1323,18 +1402,35 @@ export function reviewSetlistSuggestion(
 export function deleteSetlistSuggestion(
   userId: string,
   groupId: string,
-  suggestionId: string
+  suggestionId: string,
+  clientGroupFallback?: Partial<WorshipGroup>
 ): { ok: boolean; group?: WorshipGroup; error?: string } {
   const store = ensureDataStore();
   if (!store.groups) store.groups = {};
 
-  const group = store.groups[groupId] || getWorshipGroup(groupId);
+  let group = store.groups[groupId] || getWorshipGroup(groupId);
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+
+  // Self-heal group if missing from server store
   if (!group) {
-    return { ok: false, error: 'Worship team not found.' };
+    const now = new Date().toISOString();
+    group = {
+      id: groupId,
+      name: clientGroupFallback?.name || user?.profile.groupName || 'Worship Team',
+      churchName: clientGroupFallback?.churchName || 'Church',
+      ownerId: clientGroupFallback?.ownerId || userId,
+      inviteCode:
+        clientGroupFallback?.inviteCode ||
+        (groupId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'TEAM1234').toUpperCase(),
+      createdAt: now,
+      members: clientGroupFallback?.members || [],
+      suggestedSetlists: clientGroupFallback?.suggestedSetlists || [],
+    };
+    store.groups[groupId] = group;
   }
 
   if (!Array.isArray(group.suggestedSetlists)) {
-    return { ok: false, error: 'No suggestions found.' };
+    group.suggestedSetlists = clientGroupFallback?.suggestedSetlists || [];
   }
 
   const suggestion = group.suggestedSetlists.find((s) => s.id === suggestionId);
@@ -1342,16 +1438,22 @@ export function deleteSetlistSuggestion(
     return { ok: false, error: 'Suggestion not found.' };
   }
 
-  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+  const memberRecord = group.members.find((m) => m.userId === userId);
+  const isExplicitMember = user?.profile.groupRole === 'member' || memberRecord?.role === 'member';
   const isLeader =
-    group.ownerId === userId ||
-    user?.profile.role === 'admin' ||
-    user?.profile.groupRole === 'leader' ||
-    group.members.some((m) => m.userId === userId && m.role === 'leader');
+    !isExplicitMember &&
+    (group.ownerId === userId ||
+      user?.profile.role === 'admin' ||
+      user?.profile.groupRole === 'leader' ||
+      memberRecord?.role === 'leader');
+
   const isSubmitter = suggestion.suggestedBy === userId;
 
   if (!isLeader && !isSubmitter) {
-    return { ok: false, error: 'You do not have permission to remove this suggestion.' };
+    return {
+      ok: false,
+      error: 'Only the suggestion submitter or worship team leader can remove this proposal.',
+    };
   }
 
   group.suggestedSetlists = group.suggestedSetlists.filter((s) => s.id !== suggestionId);

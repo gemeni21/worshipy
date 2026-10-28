@@ -8,6 +8,7 @@ import {
   suggestSetlistForGroup,
   reviewSetlistSuggestion,
   deleteSetlistSuggestion,
+  joinWorshipGroupByCode,
 } from '../../cloud/cloudDb.ts';
 import {
   createLiveSession,
@@ -1087,5 +1088,124 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     );
     assert.ok(approvedSugg);
     assert.equal(approvedSugg.status, 'approved');
+  });
+
+  it('22. self-healing fallback when reviewing suggestions: review succeeds even if group was not in server store', async () => {
+    const leader = registerUser({
+      email: `leader_${Date.now()}_fallback@example.com`,
+      password: 'Password123!',
+      displayName: 'Worship Director Sarah',
+    });
+
+    const unknownGroupId = `group_external_${Date.now()}`;
+    const suggestionId = `sugg_${Date.now()}_remote`;
+
+    const clientGroupFallback = {
+      id: unknownGroupId,
+      name: 'Resilient Praise Team',
+      churchName: 'Faith Fellowship',
+      ownerId: leader.profile.id,
+      inviteCode: 'RESILIENT',
+      createdAt: new Date().toISOString(),
+      members: [
+        {
+          userId: leader.profile.id,
+          email: leader.profile.email,
+          displayName: 'Worship Director Sarah',
+          role: 'leader' as const,
+          joinedAt: new Date().toISOString(),
+        },
+      ],
+      suggestedSetlists: [
+        {
+          id: suggestionId,
+          setlist: {
+            id: 'setlist_recovery',
+            name: 'Praise & Thanksgiving',
+            publishedAt: new Date().toISOString(),
+            publishedBy: 'member_singer',
+            publishedByName: 'Singer Sharon',
+            items: [{ songId: 'goodness-of-god', addedAt: new Date().toISOString() }],
+          },
+          suggestedBy: 'member_singer',
+          suggestedByName: 'Singer Sharon',
+          suggestedByRole: 'Vocalist',
+          suggestedAt: new Date().toISOString(),
+          status: 'pending' as const,
+        },
+      ],
+    };
+
+    // Review suggestion using self-healing clientGroupFallback
+    const reviewRes = reviewSetlistSuggestion(
+      leader.profile.id,
+      unknownGroupId,
+      suggestionId,
+      'approve',
+      'Looks great for Sunday morning service!',
+      clientGroupFallback
+    );
+
+    assert.ok(reviewRes.ok, `Expected review to succeed with self-healing, got error: ${reviewRes.error}`);
+    assert.ok(reviewRes.group);
+    assert.equal(reviewRes.group.id, unknownGroupId);
+    assert.ok(reviewRes.group.activeSetlist);
+    assert.equal(reviewRes.group.activeSetlist.name, 'Praise & Thanksgiving');
+    assert.equal(reviewRes.group.suggestedSetlists?.[0].status, 'approved');
+    assert.equal(reviewRes.group.suggestedSetlists?.[0].reviewNote, 'Looks great for Sunday morning service!');
+  });
+
+  it('23. strict member permission boundary: non-leader member cannot approve or decline lineup suggestions', async () => {
+    const leader = registerUser({
+      email: `leader_${Date.now()}_perm@example.com`,
+      password: 'Password123!',
+      displayName: 'Leader Peter',
+    });
+    const member = registerUser({
+      email: `member_${Date.now()}_perm@example.com`,
+      password: 'Password123!',
+      displayName: 'Guitarist John',
+    });
+
+    const groupRes = createWorshipGroup(leader.profile.id, 'Main Sanctuary Band', 'Cornerstone');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    // Join as explicit member
+    joinWorshipGroupByCode(member.profile.id, groupRes.group.inviteCode);
+
+    // Member proposes setlist
+    const proposeRes = suggestSetlistForGroup(member.profile.id, groupId, {
+      setlist: {
+        id: 'setlist_guitar_lead',
+        name: 'Acoustic Worship Night',
+        publishedAt: new Date().toISOString(),
+        publishedBy: member.profile.id,
+        items: [{ songId: 'way-maker', addedAt: new Date().toISOString() }],
+      },
+      note: 'Soft acoustic arrangements.',
+    });
+    assert.ok(proposeRes.ok && proposeRes.suggestion);
+    assert.equal(proposeRes.suggestion.status, 'pending');
+
+    // Member attempts to approve their own or any suggestion -> must be rejected
+    const memberAttempt = reviewSetlistSuggestion(
+      member.profile.id,
+      groupId,
+      proposeRes.suggestion.id,
+      'approve'
+    );
+    assert.equal(memberAttempt.ok, false);
+    assert.match(memberAttempt.error || '', /leader/i);
+
+    // Leader approves legitimately
+    const leaderApprove = reviewSetlistSuggestion(
+      leader.profile.id,
+      groupId,
+      proposeRes.suggestion.id,
+      'approve'
+    );
+    assert.ok(leaderApprove.ok);
+    assert.equal(leaderApprove.group?.activeSetlist?.name, 'Acoustic Worship Night');
   });
 });

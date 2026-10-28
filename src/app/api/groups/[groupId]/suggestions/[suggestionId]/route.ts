@@ -36,7 +36,7 @@ export async function PATCH(
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const action = body.action as 'approve' | 'decline';
     if (action !== 'approve' && action !== 'decline') {
       return NextResponse.json(
@@ -50,7 +50,9 @@ export async function PATCH(
       groupId,
       suggestionId,
       action,
-      body.reviewNote
+      body.reviewNote,
+      body.clientGroup,
+      body.suggestion
     );
 
     if (!result.ok) {
@@ -98,7 +100,8 @@ export async function DELETE(
       );
     }
 
-    const result = deleteSetlistSuggestion(user.id, groupId, suggestionId);
+    const body = await req.json().catch(() => ({}));
+    const result = deleteSetlistSuggestion(user.id, groupId, suggestionId, body.clientGroup);
     if (!result.ok) {
       return NextResponse.json(
         { error: result.error },

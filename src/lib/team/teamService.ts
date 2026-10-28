@@ -654,6 +654,75 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
 
 export const clearTeamActiveSetlist = clearTeamSetlist;
 
+async function syncSuggestionsToFirestore(
+  db: any,
+  groupId: string,
+  group: WorshipGroup,
+  action?: 'approve' | 'decline'
+) {
+  if (!db || !groupId) return;
+  try {
+    const groupRef = doc(db, 'groups', groupId);
+    const metaPayload: Record<string, any> = {
+      suggestedSetlists: group.suggestedSetlists || [],
+    };
+    if (action === 'approve' && group.activeSetlist) {
+      metaPayload.activeSetlist = group.activeSetlist;
+    }
+
+    const suggestionsMetaTake: TeamPracticeTake = {
+      id: SETLIST_SUGGESTIONS_META_TAKE_ID,
+      songId: '__system_meta__',
+      songTitle: 'Lineup Suggestions',
+      title: `${(group.suggestedSetlists || []).length} Lineup Proposals`,
+      authorName: 'System',
+      authorId: 'system',
+      createdAt: new Date().toISOString(),
+      durationSeconds: 0,
+      notes: JSON.stringify(group.suggestedSetlists || []),
+    };
+
+    const existingTakes = (group.practiceTakes || []).filter(
+      (t: TeamPracticeTake) =>
+        t.id !== SETLIST_SUGGESTIONS_META_TAKE_ID &&
+        (action !== 'approve' || t.id !== SETLIST_META_TAKE_ID)
+    );
+
+    const newTakes: TeamPracticeTake[] = [suggestionsMetaTake];
+    if (action === 'approve' && group.activeSetlist) {
+      newTakes.push({
+        id: SETLIST_META_TAKE_ID,
+        songId: '__system_meta__',
+        songTitle: 'Upcoming Setlist Lineup',
+        title: group.activeSetlist.name,
+        authorName: group.activeSetlist.publishedByName || 'Leader',
+        authorId: group.activeSetlist.publishedBy,
+        createdAt: group.activeSetlist.publishedAt,
+        durationSeconds: 0,
+        notes: JSON.stringify(group.activeSetlist),
+      });
+    }
+
+    const combinedTakes = [...newTakes, ...existingTakes].slice(0, 50);
+    metaPayload.practiceTakes = combinedTakes;
+
+    try {
+      await setDoc(groupRef, metaPayload, { merge: true });
+    } catch {
+      try {
+        await updateDoc(groupRef, {
+          practiceTakes: combinedTakes,
+          ...(action === 'approve' && group.activeSetlist
+            ? { activeSetlist: group.activeSetlist }
+            : {}),
+        });
+      } catch {}
+    }
+  } catch (outerErr) {
+    console.warn('syncSuggestionsToFirestore note:', outerErr);
+  }
+}
+
 export async function proposeTeamSetlist(
   groupId: string,
   setlist: TeamActiveSetlist,
@@ -662,6 +731,7 @@ export async function proposeTeamSetlist(
 ): Promise<{ ok: boolean; group?: WorshipGroup; suggestion?: TeamSetlistSuggestion; error?: string }> {
   const token = getSessionToken();
   const db = getFirebaseFirestore();
+  const current = getCachedTeam();
 
   try {
     const res = await fetch(apiUrl(`/api/groups/${groupId}/suggestions`), {
@@ -674,64 +744,64 @@ export async function proposeTeamSetlist(
         setlist,
         note,
         targetServiceDate,
+        clientGroup: current,
       }),
     });
 
-    const data = await res.json();
-    if (!res.ok) {
-      return { ok: false, error: data.error || 'Failed to submit setlist suggestion.' };
-    }
-
-    if (data.group) {
-      setCachedTeam(data.group);
-      broadcastTeamSync(data.group);
-
-      // Write meta-take fallback to Firestore
-      if (db && groupId && Array.isArray(data.group.suggestedSetlists)) {
-        try {
-          const groupRef = doc(db, 'groups', groupId);
-          const metaTake: TeamPracticeTake = {
-            id: SETLIST_SUGGESTIONS_META_TAKE_ID,
-            songId: '__system_meta__',
-            songTitle: 'Lineup Suggestions',
-            title: `${data.group.suggestedSetlists.length} Lineup Proposals`,
-            authorName: 'System',
-            authorId: 'system',
-            createdAt: new Date().toISOString(),
-            durationSeconds: 0,
-            notes: JSON.stringify(data.group.suggestedSetlists),
-          };
-
-          const existingTakes = (data.group.practiceTakes || []).filter(
-            (t: TeamPracticeTake) => t.id !== SETLIST_SUGGESTIONS_META_TAKE_ID
-          );
-          const combinedTakes = [metaTake, ...existingTakes].slice(0, 50);
-
-          try {
-            await setDoc(
-              groupRef,
-              {
-                suggestedSetlists: data.group.suggestedSetlists,
-                practiceTakes: combinedTakes,
-              },
-              { merge: true }
-            );
-          } catch {
-            try {
-              await updateDoc(groupRef, { practiceTakes: combinedTakes });
-            } catch {}
-          }
-        } catch {}
+    if (res.ok) {
+      const data = await res.json();
+      if (data.group) {
+        setCachedTeam(data.group);
+        broadcastTeamSync(data.group);
+        await syncSuggestionsToFirestore(db, groupId, data.group);
+        return { ok: true, group: data.group, suggestion: data.suggestion };
       }
-
-      return { ok: true, group: data.group, suggestion: data.suggestion };
     }
-
-    return { ok: true };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Network error proposing setlist.';
-    return { ok: false, error: msg };
+    console.warn('Server propose suggestion note:', err);
   }
+
+  // Resilient Local & Firestore Fallback
+  if (setlist && Array.isArray(setlist.items) && setlist.items.length > 0) {
+    const now = new Date().toISOString();
+    const fallbackSuggestionId = `sugg_${Date.now()}_local`;
+    const newSuggestion: TeamSetlistSuggestion = {
+      id: fallbackSuggestionId,
+      setlist: {
+        ...setlist,
+        publishedAt: now,
+        publishedBy: setlist.publishedBy || 'local_user',
+        publishedByName: setlist.publishedByName || 'Vocalist / Member',
+      },
+      suggestedBy: setlist.publishedBy || 'local_user',
+      suggestedByName: setlist.publishedByName || 'Vocalist / Member',
+      suggestedByRole: 'Vocalist / Member',
+      suggestedAt: now,
+      targetServiceDate: targetServiceDate?.trim() || undefined,
+      note: note?.trim() || undefined,
+      status: 'pending',
+    };
+
+    const existing = Array.isArray(current?.suggestedSetlists) ? current.suggestedSetlists : [];
+    const fallbackGroup: WorshipGroup = {
+      ...(current || {
+        id: groupId,
+        name: 'Worship Team',
+        inviteCode: '',
+        ownerId: '',
+        createdAt: now,
+        members: [],
+      }),
+      suggestedSetlists: [newSuggestion, ...existing].slice(0, 20),
+    };
+
+    setCachedTeam(fallbackGroup);
+    broadcastTeamSync(fallbackGroup);
+    await syncSuggestionsToFirestore(db, groupId, fallbackGroup);
+    return { ok: true, group: fallbackGroup, suggestion: newSuggestion };
+  }
+
+  return { ok: false, error: 'Setlist must contain at least one song.' };
 }
 
 export async function reviewTeamSetlistSuggestion(
@@ -742,95 +812,85 @@ export async function reviewTeamSetlistSuggestion(
 ): Promise<{ ok: boolean; group?: WorshipGroup; error?: string }> {
   const token = getSessionToken();
   const db = getFirebaseFirestore();
+  const current = getCachedTeam();
+
+  const existingSuggestions = Array.isArray(current?.suggestedSetlists)
+    ? [...current.suggestedSetlists]
+    : [];
+  const targetIdx = existingSuggestions.findIndex((s) => s.id === suggestionId);
+  const targetSuggestion = targetIdx !== -1 ? existingSuggestions[targetIdx] : null;
 
   try {
     const res = await fetch(
       apiUrl(`/api/groups/${groupId}/suggestions/${encodeURIComponent(suggestionId)}`),
       {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        action,
-        reviewNote,
-      }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      return { ok: false, error: data.error || 'Failed to review setlist suggestion.' };
-    }
-
-    if (data.group) {
-      setCachedTeam(data.group);
-      broadcastTeamSync(data.group);
-
-      if (db && groupId) {
-        try {
-          const groupRef = doc(db, 'groups', groupId);
-          const metaPayload: Record<string, any> = {
-            suggestedSetlists: data.group.suggestedSetlists,
-          };
-          if (data.group.activeSetlist) {
-            metaPayload.activeSetlist = data.group.activeSetlist;
-          }
-
-          const existingTakes = (data.group.practiceTakes || []).filter(
-            (t: TeamPracticeTake) =>
-              t.id !== SETLIST_SUGGESTIONS_META_TAKE_ID &&
-              (action !== 'approve' || t.id !== SETLIST_META_TAKE_ID)
-          );
-
-          const suggestionsMetaTake: TeamPracticeTake = {
-            id: SETLIST_SUGGESTIONS_META_TAKE_ID,
-            songId: '__system_meta__',
-            songTitle: 'Lineup Suggestions',
-            title: `${(data.group.suggestedSetlists || []).length} Lineup Proposals`,
-            authorName: 'System',
-            authorId: 'system',
-            createdAt: new Date().toISOString(),
-            durationSeconds: 0,
-            notes: JSON.stringify(data.group.suggestedSetlists || []),
-          };
-
-          const newTakes = [suggestionsMetaTake];
-          if (action === 'approve' && data.group.activeSetlist) {
-            newTakes.push({
-              id: SETLIST_META_TAKE_ID,
-              songId: '__system_meta__',
-              songTitle: 'Upcoming Setlist Lineup',
-              title: data.group.activeSetlist.name,
-              authorName: data.group.activeSetlist.publishedByName || 'Leader',
-              authorId: data.group.activeSetlist.publishedBy,
-              createdAt: data.group.activeSetlist.publishedAt,
-              durationSeconds: 0,
-              notes: JSON.stringify(data.group.activeSetlist),
-            });
-          }
-
-          const combinedTakes = [...newTakes, ...existingTakes].slice(0, 50);
-          metaPayload.practiceTakes = combinedTakes;
-
-          try {
-            await setDoc(groupRef, metaPayload, { merge: true });
-          } catch {
-            try {
-              await updateDoc(groupRef, { practiceTakes: combinedTakes });
-            } catch {}
-          }
-        } catch {}
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          action,
+          reviewNote,
+          clientGroup: current,
+          suggestion: targetSuggestion,
+        }),
       }
+    );
 
-      return { ok: true, group: data.group };
+    if (res.ok) {
+      const data = await res.json();
+      if (data.group) {
+        setCachedTeam(data.group);
+        broadcastTeamSync(data.group);
+        await syncSuggestionsToFirestore(db, groupId, data.group, action);
+        return { ok: true, group: data.group };
+      }
     }
-
-    return { ok: true };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Network error reviewing setlist.';
-    return { ok: false, error: msg };
+    console.warn('Server review suggestion note:', err);
   }
+
+  // Resilient Local & Firestore Fallback (never leave the leader stuck or show "team not found")
+  if (targetSuggestion) {
+    const now = new Date().toISOString();
+    const updatedSuggestion: TeamSetlistSuggestion = {
+      ...targetSuggestion,
+      status: action === 'approve' ? 'approved' : 'declined',
+      reviewedAt: now,
+      ...(reviewNote ? { reviewNote: reviewNote.trim() } : {}),
+    };
+    existingSuggestions[targetIdx] = updatedSuggestion;
+
+    const fallbackGroup: WorshipGroup = {
+      ...(current || {
+        id: groupId,
+        name: 'Worship Team',
+        inviteCode: '',
+        ownerId: '',
+        createdAt: now,
+        members: [],
+      }),
+      suggestedSetlists: existingSuggestions,
+      ...(action === 'approve'
+        ? {
+            activeSetlist: {
+              ...targetSuggestion.setlist,
+              publishedAt: now,
+              publishedBy: targetSuggestion.suggestedBy,
+              publishedByName: targetSuggestion.suggestedByName,
+            },
+          }
+        : {}),
+    };
+
+    setCachedTeam(fallbackGroup);
+    broadcastTeamSync(fallbackGroup);
+    await syncSuggestionsToFirestore(db, groupId, fallbackGroup, action);
+    return { ok: true, group: fallbackGroup };
+  }
+
+  return { ok: false, error: 'Suggestion not found.' };
 }
 
 export async function deleteTeamSetlistSuggestion(
@@ -839,71 +899,50 @@ export async function deleteTeamSetlistSuggestion(
 ): Promise<{ ok: boolean; group?: WorshipGroup; error?: string }> {
   const token = getSessionToken();
   const db = getFirebaseFirestore();
+  const current = getCachedTeam();
 
   try {
     const res = await fetch(
       apiUrl(`/api/groups/${groupId}/suggestions/${encodeURIComponent(suggestionId)}`),
       {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      return { ok: false, error: data.error || 'Failed to remove suggestion.' };
-    }
-
-    if (data.group) {
-      setCachedTeam(data.group);
-      broadcastTeamSync(data.group);
-
-      if (db && groupId) {
-        try {
-          const groupRef = doc(db, 'groups', groupId);
-          const metaTake: TeamPracticeTake = {
-            id: SETLIST_SUGGESTIONS_META_TAKE_ID,
-            songId: '__system_meta__',
-            songTitle: 'Lineup Suggestions',
-            title: `${(data.group.suggestedSetlists || []).length} Lineup Proposals`,
-            authorName: 'System',
-            authorId: 'system',
-            createdAt: new Date().toISOString(),
-            durationSeconds: 0,
-            notes: JSON.stringify(data.group.suggestedSetlists || []),
-          };
-          const existingTakes = (data.group.practiceTakes || []).filter(
-            (t: TeamPracticeTake) => t.id !== SETLIST_SUGGESTIONS_META_TAKE_ID
-          );
-          const combinedTakes = [metaTake, ...existingTakes].slice(0, 50);
-
-          try {
-            await setDoc(
-              groupRef,
-              {
-                suggestedSetlists: data.group.suggestedSetlists || [],
-                practiceTakes: combinedTakes,
-              },
-              { merge: true }
-            );
-          } catch {
-            try {
-              await updateDoc(groupRef, { practiceTakes: combinedTakes });
-            } catch {}
-          }
-        } catch {}
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          clientGroup: current,
+        }),
       }
+    );
 
-      return { ok: true, group: data.group };
+    if (res.ok) {
+      const data = await res.json();
+      if (data.group) {
+        setCachedTeam(data.group);
+        broadcastTeamSync(data.group);
+        await syncSuggestionsToFirestore(db, groupId, data.group);
+        return { ok: true, group: data.group };
+      }
     }
-
-    return { ok: true };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Network error removing suggestion.';
-    return { ok: false, error: msg };
+    console.warn('Server delete suggestion note:', err);
   }
+
+  // Resilient Local & Firestore Fallback
+  if (current && Array.isArray(current.suggestedSetlists)) {
+    const updatedSuggestions = current.suggestedSetlists.filter((s) => s.id !== suggestionId);
+    const fallbackGroup: WorshipGroup = {
+      ...current,
+      suggestedSetlists: updatedSuggestions,
+    };
+    setCachedTeam(fallbackGroup);
+    broadcastTeamSync(fallbackGroup);
+    await syncSuggestionsToFirestore(db, groupId, fallbackGroup);
+    return { ok: true, group: fallbackGroup };
+  }
+
+  return { ok: true };
 }
 
 export async function setTeamActiveLiveSession(

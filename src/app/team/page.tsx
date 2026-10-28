@@ -17,7 +17,8 @@ import {
   Download,
   Trash2,
   Share2,
-  Sparkles,
+  Lightbulb,
+  Calendar,
   Music2,
   Loader2,
   AlertCircle,
@@ -134,6 +135,11 @@ export default function TeamHubPage() {
     return (currentTeam?.suggestedSetlists || []).find(
       (s) => s.status === 'pending' && s.suggestedBy === user.id
     );
+  }, [currentTeam?.suggestedSetlists, user?.id]);
+
+  const userSuggestions = useMemo(() => {
+    if (!user?.id) return [];
+    return (currentTeam?.suggestedSetlists || []).filter((s) => s.suggestedBy === user.id);
   }, [currentTeam?.suggestedSetlists, user?.id]);
 
   useEffect(() => {
@@ -664,12 +670,16 @@ export default function TeamHubPage() {
   }
 
   // Active Team Hub
+  const memberRecord = currentTeam.members?.find((m) => m.userId === user?.id);
+  const isExplicitMember = user?.groupRole === 'member' || memberRecord?.role === 'member';
+
   const isLeader = Boolean(
     user &&
+      !isExplicitMember &&
       (currentTeam.ownerId === user.id ||
         user.groupRole === 'leader' ||
-        user.role === 'admin' ||
-        currentTeam.members?.some((m) => m.userId === user.id && m.role === 'leader'))
+        memberRecord?.role === 'leader' ||
+        (user.role === 'admin' && !user.groupRole))
   );
 
   return (
@@ -997,34 +1007,34 @@ export default function TeamHubPage() {
               className="px-4 py-2.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center justify-between gap-2 animate-in fade-in"
             >
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 shrink-0" />
+                <Lightbulb className="w-4 h-4 shrink-0" />
                 <span>{suggestionFeedbackMsg}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setSuggestionFeedbackMsg(null)}
-                className="p-1 hover:text-white"
+                className="p-1 hover:text-white cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
 
-          {/* Leader Review Card for Pending Lineup Suggestions */}
+          {/* Leader Review Section for Pending Lineup Suggestions */}
           {isLeader && (
             pendingSuggestions.length > 0 ? (
               <div className="rounded-3xl border border-amber-500/30 bg-amber-500/5 p-5 sm:p-6 space-y-4 shadow-sm animate-in fade-in">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
-                      <Sparkles className="w-5 h-5" />
+                      <Lightbulb className="w-5 h-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
                           Lineup Suggestions from Team
                         </h3>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs">
                           {pendingSuggestions.length} PENDING REVIEW
                         </span>
                       </div>
@@ -1035,92 +1045,155 @@ export default function TeamHubPage() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                   {pendingSuggestions.map((sug) => {
                     const isExpanded = expandedSuggestionId === sug.id;
                     const isReviewingThis = reviewingSuggestionId === sug.id;
+                    const isOwnSuggestion = sug.suggestedBy === user?.id;
 
                     return (
                       <div
                         key={sug.id}
-                        className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-amber-500/25 hover:border-amber-500/40 transition-all space-y-3 shadow-xs"
+                        className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-amber-500/25 hover:border-amber-500/40 transition-all space-y-3.5 shadow-xs"
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="space-y-1 min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-sm text-[var(--text-primary)] truncate">
-                                {sug.setlist.name}
+                        {/* Top Row: Full-width Setlist Title + Metadata Badges + Status Badge */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-[var(--border-subtle)]/70">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <span className="font-bold text-base text-[var(--text-primary)]">
+                              {sug.setlist.name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 shrink-0 whitespace-nowrap">
+                              {sug.setlist.items.length}{' '}
+                              {sug.setlist.items.length === 1 ? 'song' : 'songs'}
+                            </span>
+                            {sug.targetServiceDate && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)] shrink-0 whitespace-nowrap flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-[var(--brand-accent)]" />
+                                <span>{sug.targetServiceDate}</span>
                               </span>
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
-                                {sug.setlist.items.length}{' '}
-                                {sug.setlist.items.length === 1 ? 'song' : 'songs'}
-                              </span>
-                              {sug.targetServiceDate && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
-                                  {sug.targetServiceDate}
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                              <span className="font-semibold text-[var(--text-primary)]">
-                                Suggested by {sug.suggestedByName}
-                              </span>
-                              {sug.suggestedByRole && (
-                                <span>• {sug.suggestedByRole}</span>
-                              )}
-                            </div>
-
-                            {sug.note && (
-                              <div className="mt-1.5 p-2.5 rounded-xl bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] italic">
-                                &ldquo;{sug.note}&rdquo;
-                              </div>
                             )}
                           </div>
 
-                          {/* Action buttons */}
+                          {/* Status Badge */}
+                          <div className="shrink-0 self-start sm:self-center">
+                            {sug.status === 'pending' && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                                <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                                <span>For Approval</span>
+                              </span>
+                            )}
+                            {sug.status === 'approved' && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Approved</span>
+                              </span>
+                            )}
+                            {sug.status === 'declined' && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                                <X className="w-3.5 h-3.5 text-rose-400" />
+                                <span>Declined</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Submitter Info and Note Row (Full width) */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                            <span className="font-semibold text-[var(--text-primary)]">
+                              Suggested by {sug.suggestedByName}
+                            </span>
+                            {sug.suggestedByRole && (
+                              <>
+                                <span>•</span>
+                                <span>{sug.suggestedByRole}</span>
+                              </>
+                            )}
+                          </div>
+
+                          {sug.note && (
+                            <div className="p-2.5 rounded-xl bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] italic">
+                              &ldquo;{sug.note}&rdquo;
+                            </div>
+                          )}
+
+                          {sug.reviewNote && (
+                            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200">
+                              <span className="font-semibold">Leader feedback:</span> &ldquo;{sug.reviewNote}&rdquo;
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Dedicated Bottom Actions Row */}
+                        <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedSuggestionId(isExpanded ? null : sug.id)
+                            }
+                            className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            <span>{isExpanded ? 'Hide Songs' : 'Preview Songs'}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
                           <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedSuggestionId(isExpanded ? null : sug.id)
-                              }
-                              className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1 cursor-pointer transition-colors"
-                            >
-                              <span>{isExpanded ? 'Hide Songs' : 'Preview Songs'}</span>
-                              {isExpanded ? (
-                                <ChevronUp className="w-3.5 h-3.5" />
-                              ) : (
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              )}
-                            </button>
+                            {/* Leaders can approve or decline if it is NOT their own proposal */}
+                            {!isOwnSuggestion && sug.status === 'pending' && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={isReviewingAction}
+                                  onClick={() => handleReviewSuggestion(sug.id, 'approve')}
+                                  className="py-1.5 px-3.5 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Approve & Set Lineup</span>
+                                </button>
 
-                            <button
-                              type="button"
-                              disabled={isReviewingAction}
-                              onClick={() => handleReviewSuggestion(sug.id, 'approve')}
-                              className="py-1.5 px-3 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Approve & Set Lineup</span>
-                            </button>
+                                <button
+                                  type="button"
+                                  disabled={isReviewingAction}
+                                  onClick={() => {
+                                    if (isReviewingThis) {
+                                      setReviewingSuggestionId(null);
+                                    } else {
+                                      setReviewingSuggestionId(sug.id);
+                                      setDeclineNote('');
+                                    }
+                                  }}
+                                  className="py-1.5 px-2.5 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Decline</span>
+                                </button>
+                              </>
+                            )}
 
-                            <button
-                              type="button"
-                              disabled={isReviewingAction}
-                              onClick={() => {
-                                if (isReviewingThis) {
-                                  setReviewingSuggestionId(null);
-                                } else {
-                                  setReviewingSuggestionId(sug.id);
-                                  setDeclineNote('');
-                                }
-                              }}
-                              className="py-1.5 px-2.5 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                              <span>Decline</span>
-                            </button>
+                            {/* Submitter viewing their own suggestion */}
+                            {isOwnSuggestion && (
+                              <>
+                                {sug.status === 'pending' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleWithdrawSuggestion(sug.id)}
+                                    className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-rose-500/40 hover:text-rose-400 text-xs font-semibold text-[var(--text-secondary)] transition-colors cursor-pointer"
+                                  >
+                                    Withdraw Proposal
+                                  </button>
+                                )}
+                                {sug.status === 'approved' && (
+                                  <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Approved as Official Lineup</span>
+                                  </span>
+                                )}
+                              </>
+                            )}
                           </div>
                         </div>
 
@@ -1213,7 +1286,7 @@ export default function TeamHubPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
                   <div className="flex items-center gap-2.5">
                     <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/25 flex items-center justify-center shrink-0">
-                      <Sparkles className="w-5 h-5" />
+                      <Lightbulb className="w-5 h-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -1252,43 +1325,188 @@ export default function TeamHubPage() {
             )
           )}
 
-          {/* Member Status Card when they have a pending proposal */}
+          {/* Member View: Shows their suggested lineups with status "For Approval" or "Approved" */}
           {!isLeader && (
-            userPendingSuggestion ? (
-              <div className="rounded-3xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 animate-in fade-in">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
-                    <Clock className="w-5 h-5 animate-pulse" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-xs sm:text-sm text-[var(--text-primary)] truncate">
-                        Your Lineup Proposal is Under Review
-                      </h4>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black">
-                        PENDING APPROVAL
-                      </span>
+            userSuggestions.length > 0 ? (
+              <div className="rounded-3xl border border-amber-500/30 bg-amber-500/5 p-5 sm:p-6 space-y-4 shadow-sm animate-in fade-in">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
+                      <Lightbulb className="w-5 h-5" />
                     </div>
-                    <p className="text-xs text-[var(--text-secondary)] truncate">
-                      You suggested &ldquo;{userPendingSuggestion.setlist.name}&rdquo; ({userPendingSuggestion.setlist.items.length} songs) for{' '}
-                      {userPendingSuggestion.targetServiceDate || 'upcoming service'}. The worship leader will review and approve it.
-                    </p>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                          Your Lineup Suggestions
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs">
+                          {userSuggestions.length} PROPOSAL{userSuggestions.length === 1 ? '' : 'S'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        Track the approval status of lineups you suggested for upcoming services
+                      </p>
+                    </div>
                   </div>
+                  <Link
+                    href="/setlists"
+                    className="px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] hover:border-amber-500/40 text-xs font-semibold text-[var(--text-secondary)] hover:text-amber-300 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Suggest Another Lineup</span>
+                  </Link>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleWithdrawSuggestion(userPendingSuggestion.id)}
-                  className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-semibold shrink-0 cursor-pointer transition-colors"
-                >
-                  Withdraw Proposal
-                </button>
+                <div className="space-y-3.5">
+                  {userSuggestions.map((sug) => {
+                    const isExpanded = expandedSuggestionId === sug.id;
+
+                    return (
+                      <div
+                        key={sug.id}
+                        className="p-4 sm:p-5 rounded-2xl bg-[var(--bg-surface)] border border-amber-500/25 hover:border-amber-500/40 transition-all space-y-3.5 shadow-xs"
+                      >
+                        {/* Top Row: Full-width Setlist Title + Metadata Badges + Status Badge */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-[var(--border-subtle)]/70">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <span className="font-bold text-base text-[var(--text-primary)]">
+                              {sug.setlist.name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 shrink-0 whitespace-nowrap">
+                              {sug.setlist.items.length}{' '}
+                              {sug.setlist.items.length === 1 ? 'song' : 'songs'}
+                            </span>
+                            {sug.targetServiceDate && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)] shrink-0 whitespace-nowrap flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-[var(--brand-accent)]" />
+                                <span>{sug.targetServiceDate}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Member Status Badge: "For Approval" or "Approved" */}
+                          <div className="shrink-0 self-start sm:self-center">
+                            {sug.status === 'pending' && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                                <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                                <span>For Approval</span>
+                              </span>
+                            )}
+                            {sug.status === 'approved' && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Approved</span>
+                              </span>
+                            )}
+                            {sug.status === 'declined' && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                                <X className="w-3.5 h-3.5 text-rose-400" />
+                                <span>Declined</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Note & Feedback Row */}
+                        <div className="space-y-1.5">
+                          {sug.note && (
+                            <div className="p-2.5 rounded-xl bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] italic">
+                              &ldquo;{sug.note}&rdquo;
+                            </div>
+                          )}
+                          {sug.reviewNote && (
+                            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200">
+                              <span className="font-semibold">Leader feedback:</span> &ldquo;{sug.reviewNote}&rdquo;
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Dedicated Bottom Actions Row for Member */}
+                        <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedSuggestionId(isExpanded ? null : sug.id)
+                            }
+                            className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            <span>{isExpanded ? 'Hide Songs' : 'Preview Songs'}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {sug.status === 'pending' && (
+                              <button
+                                type="button"
+                                onClick={() => handleWithdrawSuggestion(sug.id)}
+                                className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-rose-500/40 hover:text-rose-400 text-xs font-semibold text-[var(--text-secondary)] transition-colors cursor-pointer"
+                              >
+                                Withdraw Proposal
+                              </button>
+                            )}
+                            {sug.status === 'approved' && (
+                              <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Approved by Worship Leader</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Expanded Songs Preview */}
+                        {isExpanded && (
+                          <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1.5 animate-in fade-in">
+                            <div className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
+                              Songs & Keys in this Proposal ({sug.setlist.items.length})
+                            </div>
+                            {sug.setlist.items.map((item, idx) => {
+                              const song = getSongByIdOrSlug(item.songId);
+                              const targetKey = item.preferredSemitones
+                                ? transposeKey(song?.originalKey || 'C', item.preferredSemitones, 'auto')
+                                : song?.originalKey || 'C';
+
+                              return (
+                                <div
+                                  key={`${item.songId}_${idx}`}
+                                  className="p-2.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 text-xs"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                    <span className="w-5 h-5 rounded-full font-mono text-[10px] font-bold bg-[var(--bg-subtle)] text-[var(--brand-accent)] flex items-center justify-center shrink-0">
+                                      {idx + 1}
+                                    </span>
+                                    <span className="font-semibold text-[var(--text-primary)] truncate">
+                                      {song?.title || item.songId}
+                                    </span>
+                                    {song?.artist && (
+                                      <span className="text-[11px] text-[var(--text-secondary)] truncate hidden sm:inline">
+                                        by {song.artist}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
+                                      Key: {targetKey}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
               <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 sm:p-5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 shadow-xs">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-5 h-5" />
+                    <Lightbulb className="w-5 h-5" />
                   </div>
                   <div className="min-w-0">
                     <h4 className="font-bold text-xs sm:text-sm text-[var(--text-primary)]">
@@ -1303,7 +1521,7 @@ export default function TeamHubPage() {
                   href="/setlists"
                   className="py-1.5 px-3.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 hover:bg-amber-500 hover:text-black text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Lightbulb className="w-3.5 h-3.5" />
                   <span>Propose a Lineup</span>
                 </Link>
               </div>
@@ -1492,7 +1710,7 @@ export default function TeamHubPage() {
                     href="/setlists"
                     className="py-2 px-4 rounded-xl bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500 hover:text-black text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
+                    <Lightbulb className="w-3.5 h-3.5" />
                     <span>Suggest a Setlist from Your Library</span>
                   </Link>
                 )}

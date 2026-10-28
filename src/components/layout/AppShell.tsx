@@ -17,7 +17,7 @@ import {
   Radio,
   Settings,
   ShieldCheck,
-  Sparkles,
+  Lightbulb,
   Square,
   Users,
   LogIn,
@@ -55,13 +55,17 @@ function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
+  const memberRecord = activeGroup?.members?.find((m) => m.userId === user?.id);
+  const isExplicitMember = user?.groupRole === 'member' || memberRecord?.role === 'member';
+
   const isLeader = Boolean(
     user &&
       activeGroup &&
+      !isExplicitMember &&
       (activeGroup.ownerId === user.id ||
         user.groupRole === 'leader' ||
-        user.role === 'admin' ||
-        activeGroup.members?.some((m) => m.userId === user.id && m.role === 'leader'))
+        memberRecord?.role === 'leader' ||
+        (user.role === 'admin' && !user.groupRole))
   );
 
   const pendingSuggestionsCount =
@@ -96,7 +100,7 @@ function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
               <div className="flex items-center gap-1.5 shrink-0">
                 {pendingSuggestionsCount > 0 ? (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs animate-pulse">
-                    <Sparkles className="w-3 h-3" />
+                    <Lightbulb className="w-3 h-3" />
                     <span>{pendingSuggestionsCount} Proposal{pendingSuggestionsCount === 1 ? '' : 's'}</span>
                   </span>
                 ) : (
@@ -110,7 +114,7 @@ function DesktopNavLinksContent({ pathname }: { pathname: string | null }) {
 
             {href === '/setlists' && pendingSuggestionsCount > 0 && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs shrink-0 animate-pulse">
-                <Sparkles className="w-2.5 h-2.5" />
+                <Lightbulb className="w-2.5 h-2.5" />
                 <span>{pendingSuggestionsCount}</span>
               </span>
             )}
@@ -160,13 +164,17 @@ function MobileNavLinksContent({ pathname }: { pathname: string | null }) {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [prevPathname, setPrevPathname] = useState(pathname);
 
+  const memberRecord = activeGroup?.members?.find((m) => m.userId === user?.id);
+  const isExplicitMember = user?.groupRole === 'member' || memberRecord?.role === 'member';
+
   const isLeader = Boolean(
     user &&
       activeGroup &&
+      !isExplicitMember &&
       (activeGroup.ownerId === user.id ||
         user.groupRole === 'leader' ||
-        user.role === 'admin' ||
-        activeGroup.members?.some((m) => m.userId === user.id && m.role === 'leader'))
+        memberRecord?.role === 'leader' ||
+        (user.role === 'admin' && !user.groupRole))
   );
 
   const pendingSuggestionsCount =

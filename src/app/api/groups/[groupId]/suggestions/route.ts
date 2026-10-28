@@ -64,11 +64,12 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const result = suggestSetlistForGroup(user.id, groupId, {
       setlist: body.setlist,
       note: body.note,
       targetServiceDate: body.targetServiceDate,
+      clientGroupFallback: body.clientGroup,
     });
 
     if (!result.ok) {
