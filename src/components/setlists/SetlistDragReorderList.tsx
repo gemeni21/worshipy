@@ -2,7 +2,7 @@
 
 import React, { useCallback, useId, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Check, GripVertical, Trash2 } from 'lucide-react';
+import { Check, GripVertical, Headphones, Link2, Trash2 } from 'lucide-react';
 import {
   formatSignedSemitones,
   transposeKey,
@@ -15,6 +15,7 @@ import {
   STEP,
 } from '@/lib/setlists/slotMath';
 import type { SetlistItem, SongRecord } from '@/types/song';
+import { SetlistReferenceAudioModal } from './SetlistReferenceAudioModal';
 
 interface SetlistDragReorderListProps {
   setlistId: string;
@@ -22,6 +23,7 @@ interface SetlistDragReorderListProps {
   items: SetlistItem[];
   onReorder: (newItems: SetlistItem[]) => void;
   onRemove: (index: number) => void;
+  onUpdateItem?: (index: number, updates: Partial<SetlistItem>) => void;
   getSongByIdOrSlug: (idOrSlug: string) => SongRecord | undefined;
   isSongSavedOffline: (songId: string) => boolean;
 }
@@ -49,12 +51,20 @@ export function SetlistDragReorderList({
   items,
   onReorder,
   onRemove,
+  onUpdateItem,
   getSongByIdOrSlug,
   isSongSavedOffline,
 }: SetlistDragReorderListProps) {
   const listId = useId();
   const listRef = useRef<HTMLOListElement | null>(null);
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
+
+  // Active reference audio modal state
+  const [activeAudioItem, setActiveAudioItem] = useState<{
+    index: number;
+    song: SongRecord;
+    url?: string;
+  } | null>(null);
 
   // Store managed items with immutable keys so elements are never unmounted during drag
   const [managedItems, setManagedItems] = useState<ManagedItem[]>(() =>
@@ -590,8 +600,50 @@ export function SetlistDragReorderList({
                 </div>
               </div>
 
-              {/* Right Cluster: Remove / Delete Button */}
-              <div className="flex items-center gap-1 shrink-0">
+              {/* Right Cluster: Reference Audio Track + Remove / Delete Button */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {onUpdateItem && (
+                  item.referenceAudioUrl ? (
+                    <button
+                      type="button"
+                      data-no-drag="true"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() =>
+                        setActiveAudioItem({
+                          index: idx,
+                          song,
+                          url: item.referenceAudioUrl,
+                        })
+                      }
+                      aria-label={`Play reference track for ${song.title}`}
+                      title="Play Reference Track (Audio Only • Scrubbable)"
+                      className="h-8 px-2 sm:px-2.5 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-all shrink-0"
+                    >
+                      <Headphones className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span className="hidden sm:inline">Reference</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      data-no-drag="true"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() =>
+                        setActiveAudioItem({
+                          index: idx,
+                          song,
+                          url: undefined,
+                        })
+                      }
+                      aria-label={`Attach reference audio for ${song.title}`}
+                      title="Attach YouTube / Cloud Audio Link for Practice"
+                      className="h-8 px-2 rounded-lg border border-dashed border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--brand-accent)]/40 text-xs inline-flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                    >
+                      <Link2 className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span className="hidden md:inline text-[11px]">Audio</span>
+                    </button>
+                  )
+                )}
+
                 <button
                   type="button"
                   data-no-drag="true"
@@ -608,6 +660,32 @@ export function SetlistDragReorderList({
           );
         })}
       </ol>
+
+      {/* Setlist Reference Audio Rehearsal Modal */}
+      {activeAudioItem && (
+        <SetlistReferenceAudioModal
+          isOpen={true}
+          onClose={() => setActiveAudioItem(null)}
+          songTitle={activeAudioItem.song.title}
+          songKey={
+            items[activeAudioItem.index]?.preferredSemitones
+              ? transposeKey(
+                  activeAudioItem.song.originalKey,
+                  items[activeAudioItem.index].preferredSemitones!,
+                  'auto'
+                )
+              : activeAudioItem.song.originalKey
+          }
+          initialUrl={items[activeAudioItem.index]?.referenceAudioUrl || ''}
+          onSaveUrl={(newUrl) => {
+            if (onUpdateItem) {
+              onUpdateItem(activeAudioItem.index, {
+                referenceAudioUrl: newUrl,
+              });
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

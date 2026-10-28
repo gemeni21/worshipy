@@ -94,6 +94,11 @@ interface AppContextValue {
     direction: 'up' | 'down'
   ) => void;
   updateSetlistItems: (setlistId: string, items: SetlistItem[]) => void;
+  updateSetlistItem: (
+    setlistId: string,
+    itemIndex: number,
+    updates: Partial<SetlistItem>
+  ) => void;
   offlineEntries: OfflineSongEntry[];
   isSongSavedOffline: (songId: string) => boolean;
   getOfflineSongRecord: (slugOrId: string) => SongRecord | undefined;
@@ -624,6 +629,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateSetlistItem = useCallback(
+    (
+      setlistId: string,
+      itemIndex: number,
+      updates: Partial<SetlistItem>
+    ) => {
+      setSetlists((prev) => {
+        const next = prev.map((setlist) => {
+          if (setlist.id !== setlistId) return setlist;
+          const items = setlist.items.map((item, idx) =>
+            idx === itemIndex ? { ...item, ...updates } : item
+          );
+          return {
+            ...setlist,
+            updatedAt: new Date().toISOString(),
+            items,
+          };
+        });
+        safeWriteJson(STORAGE_KEYS.SETLISTS, next);
+        return next;
+      });
+    },
+    []
+  );
+
   const isSongSavedOffline = useCallback(
     (songId: string) =>
       offlineEntries.some((entry) => entry.songId === songId),
@@ -918,6 +948,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       removeSongFromSetlist,
       moveSongInSetlist,
       updateSetlistItems,
+      updateSetlistItem,
       offlineEntries,
       isSongSavedOffline,
       getOfflineSongRecord,
@@ -960,6 +991,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       removeSongFromSetlist,
       moveSongInSetlist,
       updateSetlistItems,
+      updateSetlistItem,
       offlineEntries,
       isSongSavedOffline,
       getOfflineSongRecord,

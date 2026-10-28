@@ -29,6 +29,7 @@ export default function SetlistsPage() {
     addSongToSetlist,
     removeSongFromSetlist,
     updateSetlistItems,
+    updateSetlistItem,
     isSongSavedOffline,
     saveBatchSongsOffline,
   } = useApp();
@@ -400,6 +401,9 @@ export default function SetlistsPage() {
                     }
                     onRemove={(index) =>
                       removeSongFromSetlist(setlist.id, index)
+                    }
+                    onUpdateItem={(index, updates) =>
+                      updateSetlistItem(setlist.id, index, updates)
                     }
                     getSongByIdOrSlug={getSongByIdOrSlug}
                     isSongSavedOffline={isSongSavedOffline}

@@ -126,6 +126,8 @@ export interface SetlistItem {
   /** Optional preferred transposition semitone offset for this song in this setlist */
   preferredSemitones?: number;
   notes?: string;
+  /** Optional reference audio or YouTube link for rehearsal/sifra */
+  referenceAudioUrl?: string;
 }
 
 export interface PersonalSetlist {
