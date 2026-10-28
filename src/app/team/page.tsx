@@ -87,6 +87,7 @@ export default function TeamHubPage() {
   const [brandingLogoUrl, setBrandingLogoUrl] = useState('');
   const [isSavingBranding, setIsSavingBranding] = useState(false);
   const [brandingSuccessMsg, setBrandingSuccessMsg] = useState(false);
+  const [brandingError, setBrandingError] = useState<string | null>(null);
 
   const [, startTransition] = useTransition();
 
@@ -170,6 +171,7 @@ export default function TeamHubPage() {
     if (!currentTeam) return;
 
     setIsSavingBranding(true);
+    setBrandingError(null);
     try {
       await updateTeamBranding({
         customAppTitle: brandingTitleInput.trim(),
@@ -182,7 +184,7 @@ export default function TeamHubPage() {
         setShowBrandingModal(false);
       }, 1000);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update church branding');
+      setBrandingError(err instanceof Error ? err.message : 'Failed to update church branding');
     } finally {
       setIsSavingBranding(false);
     }
@@ -193,6 +195,7 @@ export default function TeamHubPage() {
     if (!confirm('Reset app name and logo to default Worshipy branding?')) return;
 
     setIsSavingBranding(true);
+    setBrandingError(null);
     try {
       await updateTeamBranding({
         customAppTitle: '',
@@ -202,7 +205,7 @@ export default function TeamHubPage() {
       setBrandingLogoUrl('');
       setShowBrandingModal(false);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to reset branding');
+      setBrandingError(err instanceof Error ? err.message : 'Failed to reset branding');
     } finally {
       setIsSavingBranding(false);
     }
@@ -1178,6 +1181,13 @@ export default function TeamHubPage() {
                   </div>
                 </div>
               </div>
+
+              {brandingError && (
+                <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{brandingError}</span>
+                </div>
+              )}
 
               {brandingSuccessMsg && (
                 <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">

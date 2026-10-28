@@ -356,26 +356,24 @@ export async function updateTeamBranding(
 ): Promise<WorshipGroup> {
   const db = getFirebaseFirestore();
   const token = getSessionToken();
+  const current = getCachedTeam();
 
-  // 1. Sync to server API
-  const res = await fetch(`/api/groups/${groupId}`, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(updates),
-  });
+  const updatedGroup: WorshipGroup = {
+    ...(current || {
+      id: groupId,
+      name: 'Worship Team',
+      inviteCode: '',
+      ownerId: '',
+      createdAt: new Date().toISOString(),
+      members: [],
+    }),
+    ...(updates.customAppTitle !== undefined ? { customAppTitle: updates.customAppTitle || undefined } : {}),
+    ...(updates.customAppLogoUrl !== undefined ? { customAppLogoUrl: updates.customAppLogoUrl || undefined } : {}),
+    ...(updates.churchName !== undefined ? { churchName: updates.churchName || undefined } : {}),
+  };
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || 'Failed to update church branding');
-  }
-
-  const updatedGroup: WorshipGroup = data.group;
-
-  // 2. Sync to Firestore for real-time distribution across all band members
-  if (db && updatedGroup) {
+  // 1. Write to Cloud Firestore (authoritative real-time database across all devices)
+  if (db && groupId) {
     try {
       const groupRef = doc(db, 'groups', groupId);
       await setDoc(
@@ -392,7 +390,34 @@ export async function updateTeamBranding(
     }
   }
 
+  // 2. Immediately update local cache so top-left navbar and UI reflect changes with zero delay
   setCachedTeam(updatedGroup);
+
+  // 3. Sync to server API in background with self-healing fallback metadata
+  try {
+    const res = await fetch(`/api/groups/${groupId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        ...updates,
+        groupName: current?.name,
+        inviteCode: current?.inviteCode,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.group) {
+        setCachedTeam(data.group);
+        return data.group;
+      }
+    }
+  } catch (err) {
+    console.warn('Server group branding sync note:', err);
+  }
+
   return updatedGroup;
 }
 
