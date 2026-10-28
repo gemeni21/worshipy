@@ -62,24 +62,17 @@ import {
   getCachedTeam,
   setCachedTeam,
 } from '@/lib/team/teamService';
-import type {
-  CreateLiveSessionResponse,
-  InstrumentViewMode,
-  JoinLiveSessionResponse,
-  LiveSessionSnapshot,
-  LiveStreamMessage,
-  UpdateSharedStateInput,
+import {
+  SESSION_CREDENTIALS_STORAGE_KEY,
+  type CreateLiveSessionResponse,
+  type InstrumentViewMode,
+  type JoinLiveSessionResponse,
+  type LiveSessionSnapshot,
+  type LiveStreamMessage,
+  type UpdateSharedStateInput,
+  type StoredLiveCredentials,
 } from '@/types/live';
 import type { EnharmonicPreference, SongLine } from '@/types/song';
-
-const SESSION_CREDENTIALS_STORAGE_KEY = 'wmc_active_live_session_v1';
-
-interface StoredLiveCredentials {
-  sessionId: string;
-  participantId: string;
-  participantToken: string;
-  inviteToken?: string;
-}
 
 function isLineInstrumental(line: SongLine): boolean {
   if (line.isInstrumental) return true;

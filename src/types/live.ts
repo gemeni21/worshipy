@@ -60,6 +60,15 @@ export interface LiveSessionSnapshot {
   participants: LiveParticipant[];
 }
 
+export const SESSION_CREDENTIALS_STORAGE_KEY = 'wmc_active_live_session_v1';
+
+export interface StoredLiveCredentials {
+  sessionId: string;
+  participantId: string;
+  participantToken: string;
+  inviteToken?: string;
+}
+
 export interface CreateLiveSessionInput {
   title?: string;
   leaderName: string;

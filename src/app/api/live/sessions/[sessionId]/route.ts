@@ -7,6 +7,7 @@ import {
   updateLiveSessionState,
   updateParticipantPresence,
 } from '@/lib/live/liveSessionServer';
+import { validateSessionToken } from '@/lib/cloud/cloudDb';
 import type {
   InstrumentViewMode,
   ParticipantConnectionState,
@@ -107,7 +108,16 @@ export async function PATCH(
     }
 
     if (body.action === 'end-session') {
-      const updated = endLiveSession(sessionId, token);
+      let isLeaderUser = false;
+      if (token) {
+        const user = validateSessionToken(token);
+        if (user && (user.groupRole === 'leader' || user.role === 'admin')) {
+          isLeaderUser = true;
+        }
+      }
+      const updated = endLiveSession(sessionId, token, {
+        isAuthorizedLeader: isLeaderUser,
+      });
       return NextResponse.json({ session: updated }, { status: 200 });
     }
 

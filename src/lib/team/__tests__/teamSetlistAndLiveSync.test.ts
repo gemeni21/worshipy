@@ -11,6 +11,7 @@ import {
   joinLiveSession,
   updateLiveSessionState,
   clearAllLiveSessionsForTest,
+  endLiveSession,
 } from '../../live/liveSessionServer.ts';
 import { resolveReferencePlayback } from '../../audio/referenceAudio.ts';
 import {
@@ -620,5 +621,63 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     });
     assert.ok(manualClear.ok);
     assert.equal(manualClear.group?.activeSetlist, undefined);
+  });
+
+  it('13. leader ending live session from another page terminates live stage and clears group session ID', async () => {
+    // 1. Create leader and active live session
+    const leaderLive = createLiveSession({
+      title: 'Youth Night Service',
+      leaderName: 'Pastor Timothy',
+      initialSongId: 'song-01',
+    });
+    const sessionId = leaderLive.session.sessionId;
+
+    // 2. Register active live session on group
+    const leaderUser = registerUser({
+      email: `timothy_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor Timothy',
+    });
+    const groupRes = createWorshipGroup(leaderUser.profile.id, 'Youth Band', 'Calvary Chapel');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const liveBroadcast = updateWorshipGroupBranding(leaderUser.profile.id, groupId, {
+      activeLiveSessionId: sessionId,
+      activeLiveSessionJoinCode: leaderLive.session.joinCode,
+      activeLiveSessionLeaderName: 'Pastor Timothy',
+    });
+    assert.ok(liveBroadcast.ok);
+    assert.equal(liveBroadcast.group?.activeLiveSessionId, sessionId);
+
+    // 3. Member joins
+    const memberJoin = joinLiveSession({
+      sessionId,
+      participantName: 'Electric Guitarist',
+      instrument: 'guitar',
+    });
+    assert.equal(memberJoin.session.status, 'active');
+
+    // 4. Leader ends session remotely (from banner on another page)
+    const ended = endLiveSession(sessionId, leaderLive.participantToken);
+    assert.equal(ended.status, 'ended');
+
+    // Clear from group
+    const clearedGroup = updateWorshipGroupBranding(leaderUser.profile.id, groupId, {
+      activeLiveSessionId: null,
+      activeLiveSessionJoinCode: null,
+      activeLiveSessionExpiresAt: null,
+      activeLiveSessionLeaderName: null,
+    });
+    assert.ok(clearedGroup.ok);
+    assert.equal(clearedGroup.group?.activeLiveSessionId, undefined);
+
+    // 5. Subsequent join attempts are rejected with SESSION_ENDED
+    assert.throws(() => {
+      joinLiveSession({
+        sessionId,
+        participantName: 'Late Bassist',
+      });
+    }, /already ended/);
   });
 });

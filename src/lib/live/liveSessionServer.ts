@@ -996,19 +996,23 @@ export function updateParticipantPresence(
  */
 export function endLiveSession(
   sessionId: string,
-  participantToken: string
+  participantToken?: string,
+  options?: { isAuthorizedLeader?: boolean }
 ): LiveSessionSnapshot {
-  const verified = verifyParticipantToken(participantToken, sessionId);
-  if (!verified) {
-    throw new LiveSyncError('Unauthorized token.', 401, 'UNAUTHORIZED');
-  }
-
   const record = getSessionRecord(sessionId);
   if (!record) {
     throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
   }
 
-  if (record.leaderId !== verified.participantId) {
+  let isAuthorized = Boolean(options?.isAuthorizedLeader);
+  if (!isAuthorized && participantToken) {
+    const verified = verifyParticipantToken(participantToken, sessionId);
+    if (verified && record.leaderId === verified.participantId) {
+      isAuthorized = true;
+    }
+  }
+
+  if (!isAuthorized) {
     throw new LiveSyncError(
       'Forbidden: only the worship leader may end the live session.',
       403,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -17,6 +17,7 @@ import {
   Radio,
   Settings,
   ShieldCheck,
+  Square,
   Users,
   LogIn,
   WifiOff,
@@ -28,6 +29,9 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { UserProfileDrawer } from '@/components/auth/UserProfileDrawer';
 import { FloatingVoiceSearchButton } from '@/components/search/FloatingVoiceSearchButton';
 import { ThemeCardTiltEffect } from '@/components/theme/ThemeCardTiltEffect';
+import { apiUrl } from '@/lib/api/apiClient';
+import { clearTeamActiveLiveSession, getSessionToken } from '@/lib/team/teamService';
+import { SESSION_CREDENTIALS_STORAGE_KEY } from '@/types/live';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Home', icon: Home },
@@ -337,10 +341,105 @@ function MobileNavLinksActive() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, activeGroup } = useAuth();
+  const { user, activeGroup, refreshActiveGroup } = useAuth();
   const pathname = usePathname();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
+  const [isEndingLiveSession, setIsEndingLiveSession] = useState(false);
+  const [hasStoredLeaderCredentials, setHasStoredLeaderCredentials] = useState(false);
+
+  // Check if current user or browser device holds leader credentials for the active live session
+  useEffect(() => {
+    if (!activeGroup?.activeLiveSessionId) {
+      setHasStoredLeaderCredentials(false);
+      return;
+    }
+    try {
+      const raw =
+        window.sessionStorage.getItem(SESSION_CREDENTIALS_STORAGE_KEY) ||
+        window.localStorage.getItem(SESSION_CREDENTIALS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.sessionId === activeGroup.activeLiveSessionId && parsed.participantToken) {
+          setHasStoredLeaderCredentials(true);
+          return;
+        }
+      }
+    } catch {}
+    setHasStoredLeaderCredentials(false);
+  }, [activeGroup?.activeLiveSessionId]);
+
+  const isLeaderOfLiveSession = Boolean(
+    activeGroup?.activeLiveSessionId &&
+    (hasStoredLeaderCredentials ||
+      (user &&
+        (user.id === activeGroup.ownerId ||
+          user.groupRole === 'leader' ||
+          (activeGroup.activeLiveSessionLeaderName &&
+            user.displayName &&
+            activeGroup.activeLiveSessionLeaderName.toLowerCase() === user.displayName.toLowerCase()))))
+  );
+
+  const handleEndLiveSessionFromBanner = async () => {
+    if (!activeGroup?.activeLiveSessionId) return;
+    if (
+      !window.confirm(
+        'End this live worship session for all connected team members? Personal setlists and favorites will not be affected.'
+      )
+    ) {
+      return;
+    }
+
+    setIsEndingLiveSession(true);
+    const targetSessionId = activeGroup.activeLiveSessionId;
+    const targetGroupId = activeGroup.id;
+
+    try {
+      let token = '';
+      try {
+        const raw =
+          window.sessionStorage.getItem(SESSION_CREDENTIALS_STORAGE_KEY) ||
+          window.localStorage.getItem(SESSION_CREDENTIALS_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed.sessionId === targetSessionId && parsed.participantToken) {
+            token = parsed.participantToken;
+          }
+        }
+      } catch {}
+
+      const userToken = getSessionToken();
+      const effectiveAuth = token ? `Bearer ${token}` : userToken ? `Bearer ${userToken}` : '';
+
+      // 1. Terminate live session on server
+      await fetch(apiUrl(`/api/live/sessions/${encodeURIComponent(targetSessionId)}`), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(effectiveAuth ? { Authorization: effectiveAuth } : {}),
+        },
+        body: JSON.stringify({ action: 'end-session' }),
+      }).catch(() => {});
+
+      // 2. Clear team active live session in Firestore and server database
+      if (targetGroupId) {
+        await clearTeamActiveLiveSession(targetGroupId).catch(() => {});
+      }
+
+      // 3. Clear local stored session credentials
+      try {
+        window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
+        window.localStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
+      } catch {}
+
+      // 4. Force real-time group state update
+      await refreshActiveGroup().catch(() => {});
+    } catch (err) {
+      console.warn('Error ending live session from banner:', err);
+    } finally {
+      setIsEndingLiveSession(false);
+    }
+  };
 
   const brandingTitle =
     activeGroup?.customAppTitle ||
@@ -512,7 +611,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {activeGroup?.activeLiveSessionId && pathname !== '/live' && (
           <div
             role="status"
-            className="bg-emerald-500/15 border-b border-emerald-500/30 px-4 py-2.5 text-sm flex items-center justify-between gap-3 shadow-xs animate-in fade-in"
+            className="bg-emerald-500/15 border-b border-emerald-500/30 px-4 py-2.5 text-sm flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shadow-xs animate-in fade-in"
           >
             <div className="flex items-center gap-2.5 text-emerald-400 font-semibold min-w-0">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
@@ -521,13 +620,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 Live Sync Active: <strong>{activeGroup.activeLiveSessionLeaderName || 'Leader'}</strong> is live in {activeGroup.name}
               </span>
             </div>
-            <Link
-              href="/live"
-              className="py-1 px-3 rounded-lg bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all shrink-0 flex items-center gap-1.5 shadow-xs"
-            >
-              <span>Return to Stage</span>
-              <span>→</span>
-            </Link>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                href="/live"
+                className="py-1 px-3 rounded-lg bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <span>Return to Stage</span>
+                <span>→</span>
+              </Link>
+
+              {isLeaderOfLiveSession && (
+                <button
+                  type="button"
+                  onClick={handleEndLiveSessionFromBanner}
+                  disabled={isEndingLiveSession}
+                  className="py-1 px-3 rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500 hover:text-white transition-all font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                >
+                  <Square className="w-3 h-3 fill-current" aria-hidden="true" />
+                  <span>{isEndingLiveSession ? 'Ending...' : 'End Session'}</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
