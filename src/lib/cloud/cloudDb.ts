@@ -1150,7 +1150,7 @@ export function updateWorshipGroupBranding(
     group.churchName = updates.churchName ? updates.churchName.trim() : undefined;
   }
   if (updates.activeSetlist !== undefined) {
-    group.activeSetlist = updates.activeSetlist || undefined;
+    group.activeSetlist = updates.activeSetlist ? updates.activeSetlist : (null as any);
   }
   if (updates.activeLiveSessionId !== undefined) {
     group.activeLiveSessionId = updates.activeLiveSessionId || undefined;

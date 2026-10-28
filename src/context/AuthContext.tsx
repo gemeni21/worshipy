@@ -507,9 +507,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           for (const m of incomingMembers) map.set(m.userId, m);
           data.group.members = Array.from(map.values());
 
-          // Preserve active setlist if server response omitted it
-          if (data.group.activeSetlist === undefined && (activeGroup?.activeSetlist || cached?.activeSetlist)) {
-            data.group.activeSetlist = activeGroup?.activeSetlist || cached?.activeSetlist;
+          // Preserve active setlist ONLY if server response omitted it (undefined) AND local state wasn't explicitly cleared (null)
+          if (data.group.activeSetlist === undefined) {
+            if (activeGroup?.activeSetlist === null || cached?.activeSetlist === null) {
+              data.group.activeSetlist = null;
+            } else if (activeGroup?.activeSetlist || cached?.activeSetlist) {
+              data.group.activeSetlist = activeGroup?.activeSetlist || cached?.activeSetlist;
+            }
           }
 
           // Preserve suggested setlists if server response omitted it

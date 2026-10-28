@@ -48,7 +48,6 @@ import {
   sharePracticeTakeToTeam,
   deleteSharedPracticeTake,
   getCachedTeam,
-  clearTeamActiveSetlist,
   reviewTeamSetlistSuggestion,
   deleteTeamSetlistSuggestion,
 } from '@/lib/team/teamService';
@@ -67,6 +66,7 @@ export default function TeamHubPage() {
     joinGroup,
     leaveGroup,
     updateTeamBranding,
+    clearActiveTeamSetlist,
     refreshActiveGroup,
   } = useAuth();
 
@@ -207,8 +207,8 @@ export default function TeamHubPage() {
     }
     setIsClearingSetlist(true);
     try {
-      await clearTeamActiveSetlist(currentTeam.id);
-      refreshActiveGroup();
+      await clearActiveTeamSetlist();
+      setSuggestionFeedbackMsg('Lineup cleared from Worship Team Hub.');
     } catch (err) {
       console.warn('Error clearing active setlist:', err);
     } finally {

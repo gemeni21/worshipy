@@ -594,7 +594,7 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
       createdAt: new Date().toISOString(),
       members: [],
     }),
-    activeSetlist: undefined,
+    activeSetlist: null as any,
   };
 
   setCachedTeam(updatedGroup);
@@ -617,6 +617,7 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
     if (res.ok) {
       const data = await res.json();
       if (data.group) {
+        data.group.activeSetlist = null;
         setCachedTeam(data.group);
         broadcastTeamSync(data.group);
       }
@@ -626,8 +627,15 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
   if (db && groupId) {
     try {
       const groupRef = doc(db, 'groups', groupId);
-      const cleanTakes = (current?.practiceTakes || []).filter(
-        (t) => t.id !== SETLIST_META_TAKE_ID
+      let existingTakes: any[] = current?.practiceTakes || [];
+      try {
+        const snap = await getDoc(groupRef);
+        if (snap.exists() && Array.isArray(snap.data()?.practiceTakes)) {
+          existingTakes = snap.data().practiceTakes;
+        }
+      } catch {}
+      const cleanTakes = existingTakes.filter(
+        (t: any) => t.id !== SETLIST_META_TAKE_ID
       );
       try {
         await updateDoc(groupRef, {
@@ -638,7 +646,7 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
         console.warn('Firestore clear setlist primary write note:', err);
         try {
           await updateDoc(groupRef, {
-            practiceTakes: cleanTakes,
+            activeSetlist: null,
           });
         } catch (fallbackErr) {
           console.warn('Firestore clear setlist fallback note:', fallbackErr);
@@ -1206,8 +1214,12 @@ export function subscribeToTeam(
     // If incoming update omitted activeSetlist (e.g. from an endpoint or Firestore event that only touched live sessions or presence),
     // NEVER drop the active setlist! Only clear it if fresh.activeSetlist is explicitly null.
     let effectiveSetlist = fresh.activeSetlist;
-    if (effectiveSetlist === undefined && currentCached?.id === fresh.id && currentCached.activeSetlist) {
-      effectiveSetlist = currentCached.activeSetlist;
+    if (effectiveSetlist === undefined && currentCached?.id === fresh.id) {
+      if (currentCached.activeSetlist === null) {
+        effectiveSetlist = null as any;
+      } else if (currentCached.activeSetlist) {
+        effectiveSetlist = currentCached.activeSetlist;
+      }
     }
 
     let effectiveSuggestions = fresh.suggestedSetlists;
@@ -1329,16 +1341,19 @@ export function subscribeToTeam(
           let activeLiveSessionExpiresAt = firestoreData.activeLiveSessionExpiresAt;
           let activeLiveSessionLeaderName = firestoreData.activeLiveSessionLeaderName;
 
-          if (Array.isArray(firestoreData.practiceTakes)) {
+          // Meta-take fallback: only parse if activeSetlist is undefined (not explicitly null or set)
+          if (firestoreData.activeSetlist === undefined && Array.isArray(firestoreData.practiceTakes)) {
             const setlistMeta = firestoreData.practiceTakes.find(
               (t: any) => t.id === SETLIST_META_TAKE_ID
             );
-            if (setlistMeta?.notes && !activeSetlist) {
+            if (setlistMeta?.notes) {
               try {
                 activeSetlist = JSON.parse(setlistMeta.notes);
               } catch {}
             }
+          }
 
+          if (Array.isArray(firestoreData.practiceTakes)) {
             const suggestionsMeta = firestoreData.practiceTakes.find(
               (t: any) => t.id === SETLIST_SUGGESTIONS_META_TAKE_ID
             );
@@ -1365,7 +1380,7 @@ export function subscribeToTeam(
           const group: WorshipGroup = {
             id: snap.id,
             ...firestoreData,
-            activeSetlist: activeSetlist || undefined,
+            activeSetlist: activeSetlist !== undefined ? activeSetlist : null,
             suggestedSetlists: suggestedSetlists || undefined,
             activeLiveSessionId: activeLiveSessionId || undefined,
             activeLiveSessionJoinCode: activeLiveSessionJoinCode || undefined,

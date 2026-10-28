@@ -115,10 +115,10 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
       activeSetlist: null,
     });
     assert.equal(clearRes.ok, true, clearRes.error);
-    assert.equal(clearRes.group?.activeSetlist, undefined);
+    assert.ok(!clearRes.group?.activeSetlist);
 
     const fetched = getWorshipGroup(groupId);
-    assert.equal(fetched?.activeSetlist, undefined);
+    assert.ok(!fetched?.activeSetlist);
   });
 
   it('3. registers and broadcasts active live session ID and join code for 1-click auto-join', () => {
@@ -625,7 +625,7 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
       activeSetlist: null,
     });
     assert.ok(manualClear.ok);
-    assert.equal(manualClear.group?.activeSetlist, undefined);
+    assert.ok(!manualClear.group?.activeSetlist);
   });
 
   it('13. leader ending live session from another page terminates live stage and clears group session ID', async () => {
@@ -1207,5 +1207,41 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     );
     assert.ok(leaderApprove.ok);
     assert.equal(leaderApprove.group?.activeSetlist?.name, 'Acoustic Worship Night');
+  });
+
+  it('24. leader clearing active setlist updates store with null and prevents auto-resurrection', () => {
+    const leader = registerUser({
+      email: `leader_${Date.now()}_clear@example.com`,
+      password: 'Password123!',
+      displayName: 'Worship Leader Dan',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Resurrection-Free Team', 'Living Water');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    // 1. Publish setlist
+    const publishRes = updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeSetlist: {
+        id: 'setlist_to_clear',
+        name: 'Songs for Sunday',
+        publishedAt: new Date().toISOString(),
+        publishedBy: leader.profile.id,
+        items: [{ songId: 'song-01', addedAt: new Date().toISOString() }],
+      },
+    });
+    assert.ok(publishRes.ok && publishRes.group?.activeSetlist);
+    assert.equal(publishRes.group.activeSetlist.name, 'Songs for Sunday');
+
+    // 2. Clear setlist via activeSetlist: null
+    const clearRes = updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeSetlist: null,
+    });
+    assert.ok(clearRes.ok);
+    assert.equal(clearRes.group?.activeSetlist, null);
+
+    // 3. Subsequent query must return activeSetlist as null/falsy
+    const refreshed = getWorshipGroup(groupId);
+    assert.ok(refreshed);
+    assert.ok(!refreshed.activeSetlist);
   });
 });
