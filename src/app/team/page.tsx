@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useTransition } from 'react';
+import Link from 'next/link';
 import QRCode from 'qrcode';
 import {
   Users,
@@ -478,6 +479,36 @@ export default function TeamHubPage() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Live Band Rehearsal Quick Action */}
+      <div className="rounded-3xl border border-[var(--brand-accent)]/30 bg-linear-to-r from-[var(--brand-accent)]/10 via-[var(--bg-surface)] to-[var(--bg-surface)] p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-[var(--brand-accent)]/20 border border-[var(--brand-accent)]/40 text-[var(--brand-accent)] flex items-center justify-center shrink-0">
+            <Radio className="w-6 h-6 animate-pulse" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <span>Live Band Rehearsal & Stage Sync</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-accent)] text-black">
+                REAL-TIME
+              </span>
+            </h2>
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+              {isLeader
+                ? 'Broadcast keys, chords, capo, and live sections simultaneously to every musician on stage.'
+                : 'Connect to your worship leader’s live chord chart, auto-transposition, and section cues in real-time.'}
+            </p>
+          </div>
+        </div>
+
+        <Link
+          href="/live"
+          className="shrink-0 w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--brand-accent)] text-black text-xs font-bold hover:brightness-110 active:scale-98 transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
+        >
+          <Radio className="w-4 h-4" />
+          <span>{isLeader ? 'Start Live Rehearsal' : 'Join Live Band Room'}</span>
+        </Link>
       </div>
 
       {/* Main Grid: Roster on Left, Shared Practice Takes on Right */}

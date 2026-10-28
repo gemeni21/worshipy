@@ -123,8 +123,11 @@ function LiveSyncWorkspace({
     useState<InstrumentViewMode>('general');
   const [selectedCapoFret, setSelectedCapoFret] = useState<number>(0);
 
+  // Authenticated user state
+  const { user } = useAuth();
+
   // Start Session Form State
-  const [leaderName, setLeaderName] = useState('Worship Leader');
+  const [leaderName, setLeaderName] = useState(user?.displayName || 'Worship Leader');
   const [sessionTitle, setSessionTitle] = useState('Sunday Worship Service');
   const [starterSongId, setStarterSongId] = useState(
     initialStartSongId || allSongs[0]?.id || ''
@@ -139,12 +142,19 @@ function LiveSyncWorkspace({
   const [joinCodeInput, setJoinCodeInput] = useState(initialJoinCode);
   const [joinInviteTokenInput, setJoinInviteTokenInput] =
     useState(initialInviteToken);
-  const [memberNameInput, setMemberNameInput] = useState('');
+  const [memberNameInput, setMemberNameInput] = useState(user?.displayName || '');
   const [memberInstrument, setMemberInstrument] =
     useState<InstrumentViewMode>('guitar');
 
+  // Sync user display name if resolved asynchronously
+  useEffect(() => {
+    if (user?.displayName) {
+      setLeaderName((prev) => (prev === 'Worship Leader' ? user.displayName : prev));
+      setMemberNameInput((prev) => (prev === '' ? user.displayName : prev));
+    }
+  }, [user?.displayName]);
+
   // UI Alerts & Modals
-  const { user } = useAuth();
   const [networkOrigin, setNetworkOrigin] = useState<string>('');
   const [errorAlert, setErrorAlert] = useState<{
     title: string;

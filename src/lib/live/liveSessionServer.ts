@@ -2,8 +2,13 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { getAllSongs, getSongById } from '../catalog/songCatalog.ts';
+import { getAllSongs, getSongById, getSongBySlug } from '../catalog/songCatalog.ts';
 import { normalizeSemitones } from '../music/transposition.ts';
+
+function findSongByIdOrSlug(idOrSlug?: string) {
+  if (!idOrSlug) return undefined;
+  return getSongById(idOrSlug) ?? getSongBySlug(idOrSlug);
+}
 import type {
   CreateLiveSessionInput,
   CreateLiveSessionResponse,
@@ -321,7 +326,7 @@ export function createLiveSession(
 
   const allSongs = getAllSongs();
   const initialSong =
-    getSongById(input.initialSongId) ?? allSongs[0];
+    findSongByIdOrSlug(input.initialSongId) ?? allSongs[0];
   if (!initialSong) {
     throw new LiveSyncError(
       'Cannot start session: no valid song found.',
@@ -658,13 +663,15 @@ export function updateLiveSessionState(
   }
 
   const currentState = record.sharedState;
-  let targetSong = getSongById(input.songId ?? currentState.songId);
+  let targetSong = input.songId
+    ? findSongByIdOrSlug(input.songId)
+    : findSongByIdOrSlug(currentState.songId);
   if (!targetSong) {
-    targetSong = getSongById(currentState.songId) ?? getAllSongs()[0];
+    targetSong = findSongByIdOrSlug(currentState.songId) ?? getAllSongs()[0];
   }
 
   const songChanged =
-    input.songId !== undefined && input.songId !== currentState.songId;
+    input.songId !== undefined && targetSong.id !== currentState.songId;
 
   const nextSemitones =
     input.officialSemitones !== undefined
@@ -684,11 +691,21 @@ export function updateLiveSessionState(
   };
 
   if (input.activeSectionId) {
+    const secId = input.activeSectionId;
+    const secIdLower = secId.toLowerCase();
     const matchedSection = targetSong.sections.find(
-      (s) => s.id === input.activeSectionId
+      (s) =>
+        s.id === secId ||
+        s.label.toLowerCase() === secIdLower ||
+        s.type.toLowerCase() === secIdLower
     );
     if (matchedSection) {
       nextSection = matchedSection;
+    } else {
+      nextSection = {
+        id: secId,
+        label: input.activeSectionLabel ?? secId,
+      } as (typeof targetSong.sections)[number];
     }
   } else if (!songChanged) {
     const existingSection = targetSong.sections.find(

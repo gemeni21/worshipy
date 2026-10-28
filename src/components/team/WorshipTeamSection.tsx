@@ -15,6 +15,7 @@ import {
   Crown,
   Sparkles,
   ArrowRight,
+  Radio,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getCachedTeam } from '@/lib/team/teamService';
@@ -181,14 +182,23 @@ export function WorshipTeamSection({ onRequireAuth, initialInviteCode }: Worship
           </span>
         </div>
 
-        {/* Link to Full Hub */}
-        <Link
-          href="/team"
-          className="w-full py-2 px-3 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-black font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
-        >
-          <span>Open Full Team Hub &amp; Shared Takes</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
+        {/* Quick Links */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Link
+            href="/team"
+            className="py-2 px-3 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-black font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+          >
+            <span>Team Hub</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+          <Link
+            href="/live"
+            className="py-2 px-3 rounded-xl bg-[var(--brand-accent)]/15 text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-black font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+          >
+            <Radio className="w-3.5 h-3.5" />
+            <span>Live Stage Sync</span>
+          </Link>
+        </div>
 
         {/* Invite Code & Share Banner */}
         <div className="p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-2">

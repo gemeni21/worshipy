@@ -99,6 +99,7 @@ export interface UpdateSharedStateInput {
   officialSemitones?: number;
   enharmonicPreference?: EnharmonicPreference;
   activeSectionId?: string;
+  activeSectionLabel?: string;
   activeLineIndex?: number;
   setlistSongIds?: string[];
   /** Optional optimistic concurrency check */

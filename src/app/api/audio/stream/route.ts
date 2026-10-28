@@ -44,6 +44,23 @@ async function handleAudioStream(req: NextRequest, isHead: boolean) {
       );
     }
 
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(targetUrl);
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid URL format.' },
+        { status: 400 }
+      );
+    }
+
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return NextResponse.json(
+        { error: 'Only HTTP and HTTPS protocols are supported.' },
+        { status: 400 }
+      );
+    }
+
     // 2. Prepare headers with Range forwarding
     const forwardHeaders: Record<string, string> = {
       'User-Agent':
