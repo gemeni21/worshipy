@@ -9,6 +9,7 @@ import React, {
   useState,
 } from 'react';
 import type { SongRecord } from '@/types/song';
+import type { PersonalSetlist } from '@/types/song';
 import type {
   CloudStorageConfig,
   SongSubmission,
@@ -31,6 +32,8 @@ import {
   subscribeToTeam,
   subscribeToTeamPresence,
   updateTeamBranding,
+  publishTeamSetlist,
+  clearTeamSetlist,
 } from '@/lib/team/teamService';
 
 interface AuthContextValue {
@@ -76,6 +79,8 @@ interface AuthContextValue {
     customAppLogoUrl?: string;
     churchName?: string;
   }) => Promise<WorshipGroup>;
+  publishActiveSetlistToTeam: (setlist: PersonalSetlist) => Promise<WorshipGroup>;
+  clearActiveTeamSetlist: () => Promise<WorshipGroup>;
   refreshActiveGroup: () => Promise<void>;
   submissions: SongSubmission[];
   pendingApprovalsCount: number;
@@ -623,6 +628,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [activeGroup?.id, user?.groupId]
   );
 
+  // Publish Setlist Lineup to Team
+  const handlePublishActiveSetlistToTeam = useCallback(
+    async (setlist: PersonalSetlist): Promise<WorshipGroup> => {
+      const targetGroupId = activeGroup?.id || user?.groupId || getCachedTeam()?.id;
+      if (!targetGroupId) {
+        throw new Error('No active worship team found.');
+      }
+      const activePayload = {
+        id: setlist.id,
+        name: setlist.name,
+        ...(setlist.description ? { description: setlist.description } : {}),
+        publishedAt: new Date().toISOString(),
+        publishedBy: user?.id || 'leader',
+        publishedByName: user?.displayName || user?.email?.split('@')[0] || 'Leader',
+        items: setlist.items,
+      };
+      const updated = await publishTeamSetlist(targetGroupId, activePayload);
+      setActiveGroup(updated);
+      return updated;
+    },
+    [activeGroup?.id, user?.groupId, user?.id, user?.displayName, user?.email]
+  );
+
+  // Clear Active Team Setlist
+  const handleClearActiveTeamSetlist = useCallback(async (): Promise<WorshipGroup> => {
+    const targetGroupId = activeGroup?.id || user?.groupId || getCachedTeam()?.id;
+    if (!targetGroupId) {
+      throw new Error('No active worship team found.');
+    }
+    const updated = await clearTeamSetlist(targetGroupId);
+    setActiveGroup(updated);
+    return updated;
+  }, [activeGroup?.id, user?.groupId]);
+
   // Submit song for Global Publishing
   const submitSongForGlobal = useCallback(
     async (song: SongRecord, notes?: string): Promise<SongSubmission> => {
@@ -778,6 +817,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       joinGroup,
       leaveGroup,
       updateTeamBranding: handleUpdateTeamBranding,
+      publishActiveSetlistToTeam: handlePublishActiveSetlistToTeam,
+      clearActiveTeamSetlist: handleClearActiveTeamSetlist,
       refreshActiveGroup,
       submissions,
       pendingApprovalsCount,
@@ -810,6 +851,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       joinGroup,
       leaveGroup,
       handleUpdateTeamBranding,
+      handlePublishActiveSetlistToTeam,
+      handleClearActiveTeamSetlist,
       refreshActiveGroup,
       submissions,
       pendingApprovalsCount,

@@ -1,4 +1,4 @@
-import type { SongRecord } from './song';
+import type { SongRecord, SetlistItem } from './song';
 
 export type UserRole = 'admin' | 'user';
 
@@ -44,6 +44,16 @@ export interface TeamPracticeTake {
   isLeaderTake?: boolean;
 }
 
+export interface TeamActiveSetlist {
+  id: string;
+  name: string;
+  description?: string;
+  publishedAt: string;
+  publishedBy: string;
+  publishedByName?: string;
+  items: SetlistItem[];
+}
+
 export interface WorshipGroup {
   id: string;
   name: string;
@@ -55,6 +65,11 @@ export interface WorshipGroup {
   createdAt: string;
   members: GroupMember[];
   practiceTakes?: TeamPracticeTake[];
+  activeSetlist?: TeamActiveSetlist;
+  activeLiveSessionId?: string;
+  activeLiveSessionJoinCode?: string;
+  activeLiveSessionExpiresAt?: string;
+  activeLiveSessionLeaderName?: string;
 }
 
 export interface UserProfile {

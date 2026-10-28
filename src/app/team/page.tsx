@@ -26,7 +26,13 @@ import {
   Palette,
   Upload,
   Image as ImageIcon,
+  Headphones,
+  ListMusic,
+  Edit3,
 } from 'lucide-react';
+import { useApp } from '@/context/AppContext';
+import { transposeKey } from '@/lib/music/transposition';
+import { SetlistReferenceAudioModal } from '@/components/setlists/SetlistReferenceAudioModal';
 import { useAuth } from '@/context/AuthContext';
 import { AuthModal } from '@/components/auth/AuthModal';
 import {
@@ -51,6 +57,13 @@ export default function TeamHubPage() {
     leaveGroup,
     updateTeamBranding,
   } = useAuth();
+
+  const { getSongByIdOrSlug } = useApp();
+  const [activeRefAudio, setActiveRefAudio] = useState<{
+    songTitle: string;
+    songKey?: string;
+    url: string;
+  } | null>(null);
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -594,34 +607,81 @@ export default function TeamHubPage() {
       </div>
 
       {/* Live Band Rehearsal Quick Action */}
-      <div className="rounded-3xl border border-[var(--brand-accent)]/30 bg-linear-to-r from-[var(--brand-accent)]/10 via-[var(--bg-surface)] to-[var(--bg-surface)] p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-[var(--brand-accent)]/20 border border-[var(--brand-accent)]/40 text-[var(--brand-accent)] flex items-center justify-center shrink-0">
-            <Radio className="w-6 h-6 animate-pulse" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <span>Live Band Rehearsal & Stage Sync</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-accent)] text-black">
-                REAL-TIME
-              </span>
-            </h2>
-            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-              {isLeader
-                ? 'Broadcast keys, chords, capo, and live sections simultaneously to every musician on stage.'
-                : 'Connect to your worship leader’s live chord chart, auto-transposition, and section cues in real-time.'}
-            </p>
-          </div>
-        </div>
+      {(() => {
+        const isTeamLive = Boolean(
+          currentTeam.activeLiveSessionId &&
+          (!currentTeam.activeLiveSessionExpiresAt ||
+            new Date(currentTeam.activeLiveSessionExpiresAt).getTime() > Date.now())
+        );
 
-        <Link
-          href="/live"
-          className="shrink-0 w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[var(--brand-accent)] text-black text-xs font-bold hover:brightness-110 active:scale-98 transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
-        >
-          <Radio className="w-4 h-4" />
-          <span>{isLeader ? 'Start Live Rehearsal' : 'Join Live Band Room'}</span>
-        </Link>
-      </div>
+        return (
+          <div
+            className={`rounded-3xl border p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg transition-all ${
+              isTeamLive
+                ? 'border-emerald-500/50 bg-linear-to-r from-emerald-500/20 via-[var(--bg-surface)] to-[var(--bg-surface)] ring-2 ring-emerald-500/30'
+                : 'border-[var(--brand-accent)]/30 bg-linear-to-r from-[var(--brand-accent)]/10 via-[var(--bg-surface)] to-[var(--bg-surface)]'
+            }`}
+          >
+            <div className="flex items-center gap-3.5">
+              <div
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
+                  isTeamLive
+                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                    : 'bg-[var(--brand-accent)]/20 border-[var(--brand-accent)]/40 text-[var(--brand-accent)]'
+                }`}
+              >
+                <Radio className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  {isTeamLive && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                  )}
+                  <span>
+                    {isTeamLive
+                      ? 'Live Band Rehearsal is ACTIVE NOW'
+                      : 'Live Band Rehearsal & Stage Sync'}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      isTeamLive
+                        ? 'bg-emerald-500 text-black shadow-sm'
+                        : 'bg-[var(--brand-accent)] text-black'
+                    }`}
+                  >
+                    {isTeamLive ? 'LIVE ON STAGE' : 'REAL-TIME'}
+                  </span>
+                </h2>
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                  {isTeamLive
+                    ? `${currentTeam.activeLiveSessionLeaderName || 'Leader'} is live right now! Click below to auto-join the live stage charts with 0 codes.`
+                    : isLeader
+                    ? 'Broadcast keys, chords, capo, and live sections simultaneously to every musician on stage.'
+                    : 'Connect to your worship leader’s live chord chart, auto-transposition, and section cues in real-time.'}
+                </p>
+              </div>
+            </div>
+
+            <Link
+              href="/live"
+              className={`shrink-0 w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer ${
+                isTeamLive
+                  ? 'bg-emerald-500 text-black hover:brightness-110 active:scale-98 ring-2 ring-emerald-400/50'
+                  : 'bg-[var(--brand-accent)] text-black hover:brightness-110 active:scale-98'
+              }`}
+            >
+              <Radio className="w-4 h-4" />
+              <span>
+                {isTeamLive
+                  ? '⚡ Join Live Stage Instantly'
+                  : isLeader
+                  ? 'Start Live Rehearsal'
+                  : 'Join Live Band Room'}
+              </span>
+            </Link>
+          </div>
+        );
+      })()}
 
       {/* Main Grid: Roster on Left, Shared Practice Takes on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -778,8 +838,179 @@ export default function TeamHubPage() {
           </div>
         </div>
 
-        {/* Right Column: Shared Team Practice Takes */}
-        <div className="lg:col-span-2 space-y-4">
+        {/* Right Column: Team Lineup + Shared Practice Takes */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Section: Upcoming Service Lineup (Team Setlist) */}
+          <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0">
+                  <ListMusic className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                      Upcoming Service Lineup
+                    </h3>
+                    {currentTeam.activeSetlist && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
+                        ACTIVE LINEUP
+                      </span>
+                    )}
+                  </div>
+                  {currentTeam.activeSetlist ? (
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {currentTeam.activeSetlist.name} • {currentTeam.activeSetlist.items.length}{' '}
+                      {currentTeam.activeSetlist.items.length === 1 ? 'song' : 'songs'}
+                      {currentTeam.activeSetlist.publishedByName && (
+                        <span> • Set by {currentTeam.activeSetlist.publishedByName}</span>
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Official songs and reference tracks for the band to rehearse
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {currentTeam.activeSetlist && (
+                  <Link
+                    href={`/live?startSetlist=${encodeURIComponent(currentTeam.activeSetlist.id)}`}
+                    className="py-1.5 px-3 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 text-xs font-bold hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Radio className="w-3.5 h-3.5" />
+                    <span>Open in Live Sync</span>
+                  </Link>
+                )}
+                {isLeader && (
+                  <Link
+                    href="/setlists"
+                    className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] text-xs font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                    <span>{currentTeam.activeSetlist ? 'Change Lineup' : 'Set Lineup'}</span>
+                  </Link>
+                )}
+              </div>
+            </div>
+
+            {/* Setlist Song Items */}
+            {currentTeam.activeSetlist && currentTeam.activeSetlist.items.length > 0 ? (
+              <div className="space-y-2">
+                {currentTeam.activeSetlist.items.map((item, idx) => {
+                  const song = getSongByIdOrSlug(item.songId);
+                  const targetKey = item.preferredSemitones
+                    ? transposeKey(song?.originalKey || 'C', item.preferredSemitones, 'auto')
+                    : song?.originalKey || 'C';
+                  const songHref = song
+                    ? item.preferredSemitones
+                      ? `/songs/${song.slug}?semitones=${item.preferredSemitones}`
+                      : `/songs/${song.slug}`
+                    : '#';
+
+                  return (
+                    <div
+                      key={`${item.songId}_${idx}`}
+                      className="p-3 sm:p-3.5 rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all"
+                    >
+                      {/* Left: Slot Number + Title + Musical Info */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <span className="w-6 h-6 rounded-full font-mono text-xs font-bold bg-[var(--bg-subtle)] text-[var(--brand-accent)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Link
+                              href={songHref}
+                              className="font-bold text-xs sm:text-sm text-[var(--text-primary)] hover:text-[var(--brand-accent)] truncate block transition-colors"
+                            >
+                              {song?.title || item.songId}
+                            </Link>
+                            {item.notes && (
+                              <span className="text-[10px] text-[var(--text-secondary)] italic truncate max-w-[200px]">
+                                &ldquo;{item.notes}&rdquo;
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-[var(--text-secondary)] flex flex-wrap items-center gap-2 mt-0.5">
+                            <span className="font-mono font-bold text-[var(--brand-accent)] bg-[var(--brand-surface)] px-1.5 py-0.5 rounded text-[11px] border border-[var(--brand-accent)]/20">
+                              Key of {targetKey}
+                            </span>
+                            {song && (
+                              <>
+                                <span>• {song.language.label}</span>
+                                {song.tempoBpm && <span>• {song.tempoBpm} BPM</span>}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Reference Track Audio Player Button + View Chord Chart */}
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        {item.referenceAudioUrl ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActiveRefAudio({
+                                songTitle: song?.title || item.songId,
+                                songKey: targetKey,
+                                url: item.referenceAudioUrl!,
+                              })
+                            }
+                            className="px-2.5 py-1.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/35 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+                            title="Listen to reference track (Audio only • Sifra chords)"
+                          >
+                            <Headphones className="w-3.5 h-3.5" />
+                            <span>Reference Track</span>
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-[var(--text-secondary)] italic px-2">
+                            No audio link
+                          </span>
+                        )}
+
+                        <Link
+                          href={songHref}
+                          className="px-2.5 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--border-strong)] text-xs font-semibold text-[var(--text-primary)] flex items-center gap-1 transition-colors"
+                        >
+                          <Music2 className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                          <span>Chart</span>
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="py-8 text-center space-y-2.5 border border-dashed border-[var(--border-subtle)] rounded-2xl bg-[var(--bg-canvas)] p-6">
+                <div className="w-10 h-10 mx-auto rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] flex items-center justify-center">
+                  <ListMusic className="w-5 h-5" />
+                </div>
+                <h4 className="font-bold text-xs sm:text-sm text-[var(--text-primary)]">
+                  No Service Lineup Posted Yet
+                </h4>
+                <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto">
+                  {isLeader
+                    ? 'Set the lineup from your personal setlists so your worship band members can see the songs, keys, and practice the YouTube reference tracks at home.'
+                    : 'Your worship leader hasn’t set the service lineup for this week yet. Check back soon!'}
+                </p>
+                {isLeader && (
+                  <Link
+                    href="/setlists"
+                    className="py-2 px-4 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Select Setlist to Publish</span>
+                  </Link>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Shared Team Rehearsal Takes */}
           <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
               <div className="flex items-center gap-2">
@@ -1149,6 +1380,19 @@ export default function TeamHubPage() {
             </form>
           </div>
         </div>
+      )}
+      {/* Active Reference Audio Modal */}
+      {activeRefAudio && (
+        <SetlistReferenceAudioModal
+          isOpen={true}
+          onClose={() => setActiveRefAudio(null)}
+          songTitle={activeRefAudio.songTitle}
+          songKey={activeRefAudio.songKey}
+          initialUrl={activeRefAudio.url}
+          onSaveUrl={() => {
+            setActiveRefAudio(null);
+          }}
+        />
       )}
     </div>
   );

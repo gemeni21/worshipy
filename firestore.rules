@@ -28,6 +28,11 @@ service cloud.firestore {
     //   - memberIds: list of strings (optional, max 100 items) - Member IDs
     //   - memberUids: list of strings (optional, max 100 items) - Member UIDs
     //   - practiceTakes: list of maps (optional, max 100 items) - Embedded rehearsal metadata
+    //   - activeSetlist: map (optional) - Published active setlist (id, name, description, publishedAt, publishedBy, publishedByName, items)
+    //   - activeLiveSessionId: string (optional, 0-128 chars) or null - Active live rehearsal/service session ID
+    //   - activeLiveSessionJoinCode: string (optional, 0-20 chars) or null - Active live session join code
+    //   - activeLiveSessionExpiresAt: timestamp or ISO string (optional) or null - Active live session expiry timestamp
+    //   - activeLiveSessionLeaderName: string (optional, 0-100 chars) or null - Active live session leader name
     //
     // Subcollection: groups/{groupId}/presence/{memberId} & Top-level: presence/{memberId}
     // Fields:
@@ -135,28 +140,56 @@ service cloud.firestore {
              (val is string && val.size() >= 10 && val.size() <= 50);
     }
 
+    function isValidOptionalTimestampOrDateString(data, field) {
+      return !(field in data) ||
+             data[field] == null ||
+             isValidTimestampOrDateString(data[field]);
+    }
+
     // ===============================================================
     // Domain Validators
     // ===============================================================
 
+    function isValidActiveSetlist(setlist) {
+      return setlist is map &&
+             setlist.keys().hasOnly([
+               'id', 'name', 'description', 'publishedAt', 'publishedBy', 'publishedByName', 'items'
+             ]) &&
+             setlist.keys().hasAll(['id', 'name', 'publishedAt', 'publishedBy', 'items']) &&
+             setlist.id is string && setlist.id.size() >= 1 && setlist.id.size() <= 128 &&
+             setlist.name is string && setlist.name.size() >= 1 && setlist.name.size() <= 100 &&
+             isValidOptionalString(setlist, 'description', 0, 1000) &&
+             isValidTimestampOrDateString(setlist.publishedAt) &&
+             setlist.publishedBy is string && setlist.publishedBy.size() >= 1 && setlist.publishedBy.size() <= 128 &&
+             isValidOptionalString(setlist, 'publishedByName', 0, 100) &&
+             setlist.items is list && setlist.items.size() <= 100;
+    }
+
     function isValidGroup(data) {
       return hasOnlyAllowedFields([
                'id', 'name', 'churchName', 'customAppTitle', 'customAppLogoUrl', 'inviteCode', 'ownerId',
-               'createdAt', 'updatedAt', 'members', 'memberIds', 'memberUids', 'practiceTakes'
+               'createdAt', 'updatedAt', 'members', 'memberIds', 'memberUids', 'practiceTakes',
+               'activeSetlist', 'activeLiveSessionId', 'activeLiveSessionJoinCode',
+               'activeLiveSessionExpiresAt', 'activeLiveSessionLeaderName'
              ]) &&
              hasRequiredFields(['name', 'inviteCode', 'ownerId', 'createdAt', 'members']) &&
              data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
              data.inviteCode is string && data.inviteCode.size() >= 4 && data.inviteCode.size() <= 20 &&
              data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 &&
              isValidTimestampOrDateString(data.createdAt) &&
-             (!('updatedAt' in data) || isValidTimestampOrDateString(data.updatedAt)) &&
+             isValidOptionalTimestampOrDateString(data, 'updatedAt') &&
              isValidOptionalString(data, 'churchName', 0, 120) &&
              isValidOptionalString(data, 'customAppTitle', 0, 100) &&
              isValidOptionalString(data, 'customAppLogoUrl', 0, 200000) &&
              data.members is list && data.members.size() <= 100 &&
              (!('memberIds' in data) || (data.memberIds is list && data.memberIds.size() <= 100)) &&
              (!('memberUids' in data) || (data.memberUids is list && data.memberUids.size() <= 100)) &&
-             (!('practiceTakes' in data) || (data.practiceTakes is list && data.practiceTakes.size() <= 100));
+             (!('practiceTakes' in data) || (data.practiceTakes is list && data.practiceTakes.size() <= 100)) &&
+             (!('activeSetlist' in data) || data.activeSetlist == null || isValidActiveSetlist(data.activeSetlist)) &&
+             isValidOptionalString(data, 'activeLiveSessionId', 0, 128) &&
+             isValidOptionalString(data, 'activeLiveSessionJoinCode', 0, 20) &&
+             isValidOptionalTimestampOrDateString(data, 'activeLiveSessionExpiresAt') &&
+             isValidOptionalString(data, 'activeLiveSessionLeaderName', 0, 100);
     }
 
     function isValidPresence(data) {

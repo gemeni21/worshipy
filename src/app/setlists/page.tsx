@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   Check,
+  Church,
   Download,
   Edit3,
   Info,
@@ -15,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { SetlistDragReorderList } from '@/components/setlists/SetlistDragReorderList';
 import type { SongRecord } from '@/types/song';
 
@@ -33,6 +35,17 @@ export default function SetlistsPage() {
     isSongSavedOffline,
     saveBatchSongsOffline,
   } = useApp();
+
+  const {
+    user,
+    activeGroup,
+    publishActiveSetlistToTeam,
+    clearActiveTeamSetlist,
+  } = useAuth();
+
+  const isTeamLeader = Boolean(
+    user && activeGroup && (activeGroup.ownerId === user.id || user.groupRole === 'leader')
+  );
 
   const allSongs = allAvailableSongs;
 
@@ -342,6 +355,51 @@ export default function SetlistsPage() {
                             : 'Save Setlist Offline'}
                         </span>
                       </button>
+                    )}
+
+                    {isTeamLeader && (
+                      activeGroup?.activeSetlist?.id === setlist.id ? (
+                        <div className="inline-flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
+                            <Church className="w-3.5 h-3.5" />
+                            <span>Team Lineup Active</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await clearActiveTeamSetlist();
+                              setStatusMessage('Unpublished lineup from team.');
+                            }}
+                            title="Unpublish this lineup from your worship team"
+                            className="px-2 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-medium cursor-pointer"
+                          >
+                            Unpublish
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await publishActiveSetlistToTeam(setlist);
+                              setStatusMessage(
+                                `Published "${setlist.name}" to ${activeGroup?.name || 'your team'}! All members can now view the lineup and practice tracks in the Team Hub.`
+                              );
+                            } catch (err) {
+                              setStatusMessage(
+                                err instanceof Error
+                                  ? err.message
+                                  : 'Failed to publish setlist to team'
+                              );
+                            }
+                          }}
+                          title={`Publish "${setlist.name}" to your worship team so all members can prepare`}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--brand-accent)]/30 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold cursor-pointer transition-all shadow-xs"
+                        >
+                          <Church className="w-3.5 h-3.5" />
+                          <span>Set as Team Lineup</span>
+                        </button>
+                      )
                     )}
 
                     {setlist.items.length > 0 && (

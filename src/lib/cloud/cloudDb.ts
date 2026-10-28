@@ -9,6 +9,7 @@ import type {
   RemovedGlobalSongRecord,
   SongSubmission,
   SubmissionStatus,
+  TeamActiveSetlist,
   UserCloudSyncPayload,
   UserProfile,
   UserRole,
@@ -193,9 +194,16 @@ function saveStore(store: CloudStoreSchema): void {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    const tempFile = `${STORE_FILE}.tmp.${Date.now()}`;
+    const tempFile = `${STORE_FILE}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
     fs.writeFileSync(tempFile, JSON.stringify(store, null, 2), 'utf-8');
-    fs.renameSync(tempFile, STORE_FILE);
+    try {
+      fs.renameSync(tempFile, STORE_FILE);
+    } catch {
+      fs.copyFileSync(tempFile, STORE_FILE);
+      try {
+        fs.unlinkSync(tempFile);
+      } catch {}
+    }
   } catch (err) {
     console.warn('Notice: In-memory store cached, file write note:', err);
   }
@@ -1033,6 +1041,11 @@ export function updateWorshipGroupBranding(
     churchName?: string;
     groupName?: string;
     inviteCode?: string;
+    activeSetlist?: TeamActiveSetlist | null;
+    activeLiveSessionId?: string | null;
+    activeLiveSessionJoinCode?: string | null;
+    activeLiveSessionExpiresAt?: string | null;
+    activeLiveSessionLeaderName?: string | null;
   }
 ): { ok: boolean; group?: WorshipGroup; error?: string } {
   const store = ensureDataStore();
@@ -1087,6 +1100,21 @@ export function updateWorshipGroupBranding(
   }
   if (updates.churchName !== undefined) {
     group.churchName = updates.churchName ? updates.churchName.trim() : undefined;
+  }
+  if (updates.activeSetlist !== undefined) {
+    group.activeSetlist = updates.activeSetlist || undefined;
+  }
+  if (updates.activeLiveSessionId !== undefined) {
+    group.activeLiveSessionId = updates.activeLiveSessionId || undefined;
+  }
+  if (updates.activeLiveSessionJoinCode !== undefined) {
+    group.activeLiveSessionJoinCode = updates.activeLiveSessionJoinCode || undefined;
+  }
+  if (updates.activeLiveSessionExpiresAt !== undefined) {
+    group.activeLiveSessionExpiresAt = updates.activeLiveSessionExpiresAt || undefined;
+  }
+  if (updates.activeLiveSessionLeaderName !== undefined) {
+    group.activeLiveSessionLeaderName = updates.activeLiveSessionLeaderName || undefined;
   }
 
   saveStore(store);

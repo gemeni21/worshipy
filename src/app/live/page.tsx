@@ -17,6 +17,7 @@ import {
   Copy,
   Crown,
   Guitar,
+  Headphones,
   Link2,
   Minus,
   Music,
@@ -51,6 +52,11 @@ import {
   getKeyboardVoicing,
 } from '@/lib/music/instrumentGuidance';
 import { LiveSyncQrModal } from '@/components/live/LiveSyncQrModal';
+import { ReferenceAudioPlayer } from '@/components/audio/ReferenceAudioPlayer';
+import {
+  setTeamActiveLiveSession,
+  clearTeamActiveLiveSession,
+} from '@/lib/team/teamService';
 import type {
   CreateLiveSessionResponse,
   InstrumentViewMode,
@@ -123,8 +129,9 @@ function LiveSyncWorkspace({
     useState<InstrumentViewMode>('general');
   const [selectedCapoFret, setSelectedCapoFret] = useState<number>(0);
 
-  // Authenticated user state
-  const { user } = useAuth();
+  // Authenticated user & team state
+  const { user, activeGroup } = useAuth();
+  const [showLiveAudioPlayer, setShowLiveAudioPlayer] = useState(false);
 
   // Start Session Form State
   const [leaderName, setLeaderName] = useState(user?.displayName || 'Worship Leader');
@@ -268,6 +275,86 @@ function LiveSyncWorkspace({
     },
     []
   );
+
+  // Auto-connect team members if their worship team leader is currently live
+  useEffect(() => {
+    if (session || isSubmitting || !activeGroup) return;
+
+    const teamLiveId = activeGroup.activeLiveSessionId;
+    const teamJoinCode = activeGroup.activeLiveSessionJoinCode;
+    const teamExpiresAt = activeGroup.activeLiveSessionExpiresAt;
+
+    if (!teamLiveId && !teamJoinCode) return;
+    if (teamExpiresAt && new Date(teamExpiresAt).getTime() <= Date.now()) return;
+
+    // Do not force auto-join on the owner/creator so they can choose to start or resume
+    const isOwnerLeader = Boolean(user && activeGroup.ownerId === user.id);
+    if (isOwnerLeader) return;
+
+    // Check if user previously dismissed this session in this browser session
+    try {
+      const dismissed = window.sessionStorage.getItem('wmc_dismissed_team_live_session');
+      if (dismissed === (teamLiveId || teamJoinCode)) return;
+    } catch {}
+
+    let cancelled = false;
+
+    async function autoJoinTeamLive() {
+      setIsSubmitting(true);
+      try {
+        const effectiveName = user?.displayName || user?.email?.split('@')[0] || 'Musician';
+        const res = await fetch(apiUrl('/api/live/sessions/join'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: teamLiveId || undefined,
+            joinCode: teamJoinCode || undefined,
+            participantName: effectiveName,
+            instrument: (user?.instrument as any) || 'general',
+          }),
+        });
+
+        if (cancelled) return;
+        const data = await res.json();
+        if (res.ok && data.session) {
+          latestRevisionRef.current = data.session.revision;
+          setSession(data.session);
+          setParticipantId(data.participantId);
+          setParticipantToken(data.participantToken);
+          setInstrumentView((user?.instrument as any) || 'general');
+          setViewMode('follow');
+
+          const creds: StoredLiveCredentials = {
+            sessionId: data.session.sessionId,
+            participantId: data.participantId,
+            participantToken: data.participantToken,
+          };
+          window.sessionStorage.setItem(
+            SESSION_CREDENTIALS_STORAGE_KEY,
+            JSON.stringify(creds)
+          );
+        }
+      } catch (err) {
+        console.warn('Auto-join team live session note:', err);
+      } finally {
+        if (!cancelled) setIsSubmitting(false);
+      }
+    }
+
+    autoJoinTeamLive();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeGroup?.activeLiveSessionId,
+    activeGroup?.activeLiveSessionJoinCode,
+    activeGroup?.activeLiveSessionExpiresAt,
+    session,
+    isSubmitting,
+    user,
+    activeGroup?.ownerId,
+  ]);
 
   const activeSessionId = session?.sessionId;
   const activeSessionStatus = session?.status;
@@ -440,6 +527,16 @@ function LiveSyncWorkspace({
       setInviteToken(data.inviteToken);
       setInstrumentView(starterInstrument);
       setViewMode('follow');
+
+      // If user is in a worship team, broadcast active live session to team in Firestore
+      if (activeGroup?.id) {
+        setTeamActiveLiveSession(activeGroup.id, {
+          sessionId: data.session.sessionId,
+          joinCode: data.session.joinCode,
+          expiresAt: data.session.expiresAt,
+          leaderName: data.session.leaderName,
+        }).catch((err) => console.warn('Broadcast live session note:', err));
+      }
 
       try {
         const creds: StoredLiveCredentials = {
@@ -704,6 +801,9 @@ function LiveSyncWorkspace({
         setSession(data.session);
         setStreamStatus('ended');
       }
+      if (activeGroup?.id) {
+        clearTeamActiveLiveSession(activeGroup.id).catch(() => {});
+      }
       window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
     } catch {
       // ignore
@@ -711,6 +811,14 @@ function LiveSyncWorkspace({
   };
 
   const handleLeaveLocalSession = () => {
+    if (activeGroup?.activeLiveSessionId) {
+      try {
+        window.sessionStorage.setItem(
+          'wmc_dismissed_team_live_session',
+          activeGroup.activeLiveSessionId
+        );
+      } catch {}
+    }
     window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
     setSession(null);
     setParticipantId('');
@@ -842,6 +950,18 @@ function LiveSyncWorkspace({
                 follow the chart in real time.
               </p>
             </div>
+
+            {activeGroup && (
+              <div className="p-3.5 rounded-xl bg-[var(--brand-surface)] border border-[var(--brand-accent)]/30 text-xs text-[var(--text-primary)] space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-[var(--brand-accent)]">
+                  <Radio className="w-3.5 h-3.5 animate-pulse" />
+                  <span>Team Member Auto-Sync Active</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-secondary)]">
+                  You are connected to <strong>{activeGroup.name}</strong>. Whenever your leader starts a Live Rehearsal, this page will connect automatically without typing any code. (Visiting musicians can enter the 6-character code below).
+                </p>
+              </div>
+            )}
 
             <form onSubmit={handleJoinSession} className="space-y-4">
               <div>
@@ -1156,6 +1276,11 @@ function LiveSyncWorkspace({
   const currentSongSetlistIndex = currentSetlistSongs.findIndex(
     (s) => s.id === session.sharedState.songId
   );
+
+  // Check if active song has a reference audio track in team lineup or personal setlists
+  const activeReferenceAudioUrl =
+    activeGroup?.activeSetlist?.items.find((i) => i.songId === activeSongId)?.referenceAudioUrl ||
+    setlists.flatMap((s) => s.items).find((i) => i.songId === activeSongId && i.referenceAudioUrl)?.referenceAudioUrl;
 
   const activeSectionObj =
     displaySong.sections.find((s) => s.id === activeSectionAnchor) ??
@@ -1720,6 +1845,37 @@ function LiveSyncWorkspace({
                 );
               })}
             </div>
+
+            {/* In-Ear Reference Audio Player (Strictly local to this device) */}
+            {activeReferenceAudioUrl && (
+              <div className="pt-3 border-t border-[var(--border-subtle)] space-y-2.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setShowLiveAudioPlayer(!showLiveAudioPlayer)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <Headphones className="w-3.5 h-3.5" />
+                    <span>
+                      {showLiveAudioPlayer
+                        ? 'Hide In-Ear Reference Audio'
+                        : 'Play In-Ear Reference Audio (Sifra / Practice)'}
+                    </span>
+                  </button>
+                  <span className="text-[11px] text-[var(--text-secondary)] italic">
+                    Plays locally in your earphones • Zero sound sent to other members
+                  </span>
+                </div>
+
+                {showLiveAudioPlayer && (
+                  <ReferenceAudioPlayer
+                    url={activeReferenceAudioUrl}
+                    songTitle={`${displaySong.title} (${displayedKey})`}
+                    compact={true}
+                  />
+                )}
+              </div>
+            )}
           </div>
 
           {/* Instrument-Specific Guidance Panel (Guitar / Keyboard / Bass) */}

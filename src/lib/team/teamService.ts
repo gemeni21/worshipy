@@ -21,6 +21,7 @@ import type {
   TeamPresenceRecord,
   UserProfile,
   WorshipGroup,
+  TeamActiveSetlist,
 } from '@/types/auth';
 
 const LOCAL_GROUP_CACHE_KEY = 'worshipy_cached_group';
@@ -436,6 +437,262 @@ export async function updateTeamBranding(
   }
 
   return updatedGroup;
+}
+
+/**
+ * Publishes an active setlist (lineup) to the team in Firestore and local storage
+ */
+export async function publishTeamSetlist(
+  groupId: string,
+  setlist: TeamActiveSetlist
+): Promise<WorshipGroup> {
+  const db = getFirebaseFirestore();
+  const token = getSessionToken();
+  const current = getCachedTeam();
+
+  const updatedGroup: WorshipGroup = {
+    ...(current || {
+      id: groupId,
+      name: 'Worship Team',
+      inviteCode: '',
+      ownerId: '',
+      createdAt: new Date().toISOString(),
+      members: [],
+    }),
+    activeSetlist: setlist,
+  };
+
+  // 1. Write to Firestore
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      const cleanItems = (setlist.items || []).map((item) => ({
+        songId: item.songId,
+        addedAt: item.addedAt,
+        ...(item.preferredSemitones !== undefined ? { preferredSemitones: item.preferredSemitones } : {}),
+        ...(item.notes ? { notes: item.notes } : {}),
+        ...(item.referenceAudioUrl ? { referenceAudioUrl: item.referenceAudioUrl } : {}),
+      }));
+
+      await setDoc(
+        groupRef,
+        {
+          activeSetlist: {
+            id: setlist.id,
+            name: setlist.name,
+            ...(setlist.description ? { description: setlist.description } : {}),
+            publishedAt: setlist.publishedAt,
+            publishedBy: setlist.publishedBy,
+            ...(setlist.publishedByName ? { publishedByName: setlist.publishedByName } : {}),
+            items: cleanItems,
+          },
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('Firestore publish setlist note:', err);
+    }
+  }
+
+  // 2. Update local cache immediately
+  setCachedTeam(updatedGroup);
+
+  // 3. Sync to API in background
+  try {
+    const res = await fetch(`/api/groups/${groupId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        activeSetlist: setlist,
+        groupName: current?.name,
+        inviteCode: current?.inviteCode,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.group) {
+        setCachedTeam(data.group);
+        return data.group;
+      }
+    }
+  } catch (err) {
+    console.warn('Server publish setlist sync note:', err);
+  }
+
+  return updatedGroup;
+}
+
+export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
+  const db = getFirebaseFirestore();
+  const token = getSessionToken();
+  const current = getCachedTeam();
+
+  const updatedGroup: WorshipGroup = {
+    ...(current || {
+      id: groupId,
+      name: 'Worship Team',
+      inviteCode: '',
+      ownerId: '',
+      createdAt: new Date().toISOString(),
+      members: [],
+    }),
+    activeSetlist: undefined,
+  };
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      await updateDoc(groupRef, {
+        activeSetlist: null,
+      });
+    } catch (err) {
+      console.warn('Firestore clear setlist note:', err);
+    }
+  }
+
+  setCachedTeam(updatedGroup);
+
+  try {
+    await fetch(`/api/groups/${groupId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        activeSetlist: null,
+        groupName: current?.name,
+        inviteCode: current?.inviteCode,
+      }),
+    });
+  } catch {}
+
+  return updatedGroup;
+}
+
+export async function setTeamActiveLiveSession(
+  groupId: string,
+  sessionInfo: {
+    sessionId: string;
+    joinCode: string;
+    expiresAt: string;
+    leaderName: string;
+  }
+): Promise<void> {
+  const db = getFirebaseFirestore();
+  const token = getSessionToken();
+  const current = getCachedTeam();
+
+  const updatedGroup: WorshipGroup = {
+    ...(current || {
+      id: groupId,
+      name: 'Worship Team',
+      inviteCode: '',
+      ownerId: '',
+      createdAt: new Date().toISOString(),
+      members: [],
+    }),
+    activeLiveSessionId: sessionInfo.sessionId,
+    activeLiveSessionJoinCode: sessionInfo.joinCode,
+    activeLiveSessionExpiresAt: sessionInfo.expiresAt,
+    activeLiveSessionLeaderName: sessionInfo.leaderName,
+  };
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      await setDoc(
+        groupRef,
+        {
+          activeLiveSessionId: sessionInfo.sessionId,
+          activeLiveSessionJoinCode: sessionInfo.joinCode,
+          activeLiveSessionExpiresAt: sessionInfo.expiresAt,
+          activeLiveSessionLeaderName: sessionInfo.leaderName,
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('Firestore set live session note:', err);
+    }
+  }
+
+  setCachedTeam(updatedGroup);
+
+  try {
+    await fetch(`/api/groups/${groupId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        activeLiveSessionId: sessionInfo.sessionId,
+        activeLiveSessionJoinCode: sessionInfo.joinCode,
+        activeLiveSessionExpiresAt: sessionInfo.expiresAt,
+        activeLiveSessionLeaderName: sessionInfo.leaderName,
+        groupName: current?.name,
+        inviteCode: current?.inviteCode,
+      }),
+    });
+  } catch {}
+}
+
+export async function clearTeamActiveLiveSession(groupId: string): Promise<void> {
+  const db = getFirebaseFirestore();
+  const token = getSessionToken();
+  const current = getCachedTeam();
+
+  const updatedGroup: WorshipGroup = {
+    ...(current || {
+      id: groupId,
+      name: 'Worship Team',
+      inviteCode: '',
+      ownerId: '',
+      createdAt: new Date().toISOString(),
+      members: [],
+    }),
+    activeLiveSessionId: undefined,
+    activeLiveSessionJoinCode: undefined,
+    activeLiveSessionExpiresAt: undefined,
+    activeLiveSessionLeaderName: undefined,
+  };
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      await updateDoc(groupRef, {
+        activeLiveSessionId: null,
+        activeLiveSessionJoinCode: null,
+        activeLiveSessionExpiresAt: null,
+        activeLiveSessionLeaderName: null,
+      });
+    } catch (err) {
+      console.warn('Firestore clear live session note:', err);
+    }
+  }
+
+  setCachedTeam(updatedGroup);
+
+  try {
+    await fetch(`/api/groups/${groupId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        activeLiveSessionId: null,
+        activeLiveSessionJoinCode: null,
+        activeLiveSessionExpiresAt: null,
+        activeLiveSessionLeaderName: null,
+        groupName: current?.name,
+        inviteCode: current?.inviteCode,
+      }),
+    });
+  } catch {}
 }
 
 /**
