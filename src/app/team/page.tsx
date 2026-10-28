@@ -29,6 +29,12 @@ import {
   Headphones,
   ListMusic,
   Edit3,
+  Clock,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Send,
+  X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { transposeKey } from '@/lib/music/transposition';
@@ -41,8 +47,10 @@ import {
   deleteSharedPracticeTake,
   getCachedTeam,
   clearTeamActiveSetlist,
+  reviewTeamSetlistSuggestion,
+  deleteTeamSetlistSuggestion,
 } from '@/lib/team/teamService';
-import type { TeamPracticeTake, GroupMember } from '@/types/auth';
+import type { TeamPracticeTake, GroupMember, TeamSetlistSuggestion } from '@/types/auth';
 import { PracticeWaveformPlayer } from '@/components/practice/PracticeWaveformPlayer';
 import type { PracticeTake } from '@/lib/audio/practiceStorage';
 
@@ -105,9 +113,81 @@ export default function TeamHubPage() {
   const [brandingError, setBrandingError] = useState<string | null>(null);
   const [isClearingSetlist, setIsClearingSetlist] = useState(false);
 
+  // Setlist Suggestions States
+  const [expandedSuggestionId, setExpandedSuggestionId] = useState<string | null>(null);
+  const [reviewingSuggestionId, setReviewingSuggestionId] = useState<string | null>(null);
+  const [declineNote, setDeclineNote] = useState('');
+  const [isReviewingAction, setIsReviewingAction] = useState(false);
+  const [suggestionFeedbackMsg, setSuggestionFeedbackMsg] = useState<string | null>(null);
+
   const [, startTransition] = useTransition();
 
   const currentTeam = activeGroup || getCachedTeam();
+
+  const pendingSuggestions = useMemo(() => {
+    return (currentTeam?.suggestedSetlists || []).filter((s) => s.status === 'pending');
+  }, [currentTeam?.suggestedSetlists]);
+
+  const userPendingSuggestion = useMemo(() => {
+    if (!user?.id) return null;
+    return (currentTeam?.suggestedSetlists || []).find(
+      (s) => s.status === 'pending' && s.suggestedBy === user.id
+    );
+  }, [currentTeam?.suggestedSetlists, user?.id]);
+
+  useEffect(() => {
+    if (!suggestionFeedbackMsg) return;
+    const timer = window.setTimeout(() => setSuggestionFeedbackMsg(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [suggestionFeedbackMsg]);
+
+  const handleReviewSuggestion = async (
+    suggestionId: string,
+    action: 'approve' | 'decline'
+  ) => {
+    if (!currentTeam?.id) return;
+    setIsReviewingAction(true);
+    try {
+      const res = await reviewTeamSetlistSuggestion(
+        currentTeam.id,
+        suggestionId,
+        action,
+        action === 'decline' ? declineNote : undefined
+      );
+      if (res.ok) {
+        await refreshActiveGroup();
+        setReviewingSuggestionId(null);
+        setDeclineNote('');
+        setSuggestionFeedbackMsg(
+          action === 'approve'
+            ? 'Setlist approved! It is now the official Worship Team lineup.'
+            : 'Setlist suggestion declined.'
+        );
+      } else {
+        setSuggestionFeedbackMsg(res.error || 'Failed to update suggestion');
+      }
+    } catch (err) {
+      setSuggestionFeedbackMsg(err instanceof Error ? err.message : 'Error processing review');
+    } finally {
+      setIsReviewingAction(false);
+    }
+  };
+
+  const handleWithdrawSuggestion = async (suggestionId: string) => {
+    if (!currentTeam?.id) return;
+    if (!window.confirm('Withdraw your lineup suggestion for the team?')) return;
+    try {
+      const res = await deleteTeamSetlistSuggestion(currentTeam.id, suggestionId);
+      if (res.ok) {
+        await refreshActiveGroup();
+        setSuggestionFeedbackMsg('Withdrew your lineup suggestion.');
+      } else {
+        setSuggestionFeedbackMsg(res.error || 'Failed to withdraw suggestion');
+      }
+    } catch (err) {
+      setSuggestionFeedbackMsg(err instanceof Error ? err.message : 'Error withdrawing suggestion');
+    }
+  };
 
   const handleClearActiveSetlist = async () => {
     if (!currentTeam?.id || !currentTeam.activeSetlist) return;
@@ -903,6 +983,258 @@ export default function TeamHubPage() {
 
         {/* Right Column: Team Lineup + Shared Practice Takes */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Toast / Status Notification for Suggestion Actions */}
+          {suggestionFeedbackMsg && (
+            <div
+              role="status"
+              className="px-4 py-2.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-semibold flex items-center justify-between gap-2 animate-in fade-in"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 shrink-0" />
+                <span>{suggestionFeedbackMsg}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSuggestionFeedbackMsg(null)}
+                className="p-1 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Leader Review Card for Pending Lineup Suggestions */}
+          {isLeader && pendingSuggestions.length > 0 && (
+            <div className="rounded-3xl border border-amber-500/30 bg-amber-500/5 p-5 sm:p-6 space-y-4 shadow-sm animate-in fade-in">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                        Lineup Suggestions from Team
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black shadow-xs">
+                        {pendingSuggestions.length} PENDING REVIEW
+                      </span>
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Singers and song leaders proposing service lineups for your approval
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {pendingSuggestions.map((sug) => {
+                  const isExpanded = expandedSuggestionId === sug.id;
+                  const isReviewingThis = reviewingSuggestionId === sug.id;
+
+                  return (
+                    <div
+                      key={sug.id}
+                      className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-amber-500/25 hover:border-amber-500/40 transition-all space-y-3 shadow-xs"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-[var(--text-primary)] truncate">
+                              {sug.setlist.name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
+                              {sug.setlist.items.length}{' '}
+                              {sug.setlist.items.length === 1 ? 'song' : 'songs'}
+                            </span>
+                            {sug.targetServiceDate && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+                                {sug.targetServiceDate}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                            <span className="font-semibold text-[var(--text-primary)]">
+                              Suggested by {sug.suggestedByName}
+                            </span>
+                            {sug.suggestedByRole && (
+                              <span>• {sug.suggestedByRole}</span>
+                            )}
+                          </div>
+
+                          {sug.note && (
+                            <div className="mt-1.5 p-2.5 rounded-xl bg-[var(--bg-subtle)]/70 border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] italic">
+                              &ldquo;{sug.note}&rdquo;
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedSuggestionId(isExpanded ? null : sug.id)
+                            }
+                            className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <span>{isExpanded ? 'Hide Songs' : 'Preview Songs'}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isReviewingAction}
+                            onClick={() => handleReviewSuggestion(sug.id, 'approve')}
+                            className="py-1.5 px-3 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Approve & Set Lineup</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isReviewingAction}
+                            onClick={() => {
+                              if (isReviewingThis) {
+                                setReviewingSuggestionId(null);
+                              } else {
+                                setReviewingSuggestionId(sug.id);
+                                setDeclineNote('');
+                              }
+                            }}
+                            className="py-1.5 px-2.5 rounded-xl border border-rose-500/30 text-rose-400 hover:bg-rose-500/10 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            <span>Decline</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Inline Decline Note Input */}
+                      {isReviewingThis && (
+                        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2 animate-in fade-in">
+                          <label className="block text-xs font-semibold text-rose-300">
+                            Reason or note for {sug.suggestedByName} (optional):
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={declineNote}
+                              onChange={(e) => setDeclineNote(e.target.value)}
+                              placeholder="e.g. Let's do this next Sunday instead so the band has more rehearsal time."
+                              className="flex-1 px-3 py-1.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-rose-400"
+                            />
+                            <button
+                              type="button"
+                              disabled={isReviewingAction}
+                              onClick={() => handleReviewSuggestion(sug.id, 'decline')}
+                              className="px-3 py-1.5 rounded-lg bg-rose-500 text-white font-bold text-xs hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              Confirm Decline
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setReviewingSuggestionId(null)}
+                              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Expanded Songs List Preview */}
+                      {isExpanded && (
+                        <div className="pt-2 border-t border-[var(--border-subtle)] space-y-1.5 animate-in fade-in">
+                          <div className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
+                            Proposed Songs & Keys ({sug.setlist.items.length})
+                          </div>
+                          {sug.setlist.items.map((item, idx) => {
+                            const song = getSongByIdOrSlug(item.songId);
+                            const targetKey = item.preferredSemitones
+                              ? transposeKey(song?.originalKey || 'C', item.preferredSemitones, 'auto')
+                              : song?.originalKey || 'C';
+
+                            return (
+                              <div
+                                key={`${item.songId}_${idx}`}
+                                className="p-2.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 text-xs"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  <span className="w-5 h-5 rounded-full font-mono text-[10px] font-bold bg-[var(--bg-subtle)] text-[var(--brand-accent)] flex items-center justify-center shrink-0">
+                                    {idx + 1}
+                                  </span>
+                                  <span className="font-semibold text-[var(--text-primary)] truncate">
+                                    {song?.title || item.songId}
+                                  </span>
+                                  {song?.artist && (
+                                    <span className="text-[11px] text-[var(--text-secondary)] truncate hidden sm:inline">
+                                      by {song.artist}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-bold bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30">
+                                    Key: {targetKey}
+                                  </span>
+                                  {item.referenceAudioUrl && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-semibold">
+                                      <Headphones className="w-3 h-3" />
+                                      <span>Audio</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Member Status Card when they have a pending proposal */}
+          {!isLeader && userPendingSuggestion && (
+            <div className="rounded-3xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-4 animate-in fade-in">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <Clock className="w-5 h-5 animate-pulse" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-xs sm:text-sm text-[var(--text-primary)] truncate">
+                      Your Lineup Proposal is Under Review
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-black">
+                      PENDING APPROVAL
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--text-secondary)] truncate">
+                    You suggested &ldquo;{userPendingSuggestion.setlist.name}&rdquo; ({userPendingSuggestion.setlist.items.length} songs) for{' '}
+                    {userPendingSuggestion.targetServiceDate || 'upcoming service'}. The worship leader will review and approve it.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleWithdrawSuggestion(userPendingSuggestion.id)}
+                className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-semibold shrink-0 cursor-pointer transition-colors"
+              >
+                Withdraw Proposal
+              </button>
+            </div>
+          )}
+
           {/* Section: Upcoming Service Lineup (Team Setlist) */}
           <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
@@ -1072,13 +1404,21 @@ export default function TeamHubPage() {
                     ? 'Set the lineup from your personal setlists so your worship band members can see the songs, keys, and practice the YouTube reference tracks at home.'
                     : 'Your worship leader hasn’t set the service lineup for this week yet. Check back soon!'}
                 </p>
-                {isLeader && (
+                {isLeader ? (
                   <Link
                     href="/setlists"
                     className="py-2 px-4 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Select Setlist to Publish</span>
+                  </Link>
+                ) : (
+                  <Link
+                    href="/setlists"
+                    className="py-2 px-4 rounded-xl bg-amber-500/15 text-amber-300 border border-amber-500/30 hover:bg-amber-500 hover:text-black text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Suggest a Setlist from Your Library</span>
                   </Link>
                 )}
               </div>

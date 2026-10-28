@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   Check,
   Church,
+  Clock,
   Download,
   Edit3,
   Info,
@@ -12,13 +13,19 @@ import {
   Loader2,
   Plus,
   Radio,
+  Send,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { SetlistDragReorderList } from '@/components/setlists/SetlistDragReorderList';
-import type { SongRecord } from '@/types/song';
+import {
+  proposeTeamSetlist,
+  deleteTeamSetlistSuggestion,
+} from '@/lib/team/teamService';
+import type { SongRecord, PersonalSetlist, SetlistItem } from '@/types/song';
 
 export default function SetlistsPage() {
   const {
@@ -41,6 +48,7 @@ export default function SetlistsPage() {
     activeGroup,
     publishActiveSetlistToTeam,
     clearActiveTeamSetlist,
+    refreshActiveGroup,
   } = useAuth();
 
   const isTeamLeader = Boolean(
@@ -57,6 +65,10 @@ export default function SetlistsPage() {
   >({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [savingSetlistId, setSavingSetlistId] = useState<string | null>(null);
+  const [proposeModalSetlist, setProposeModalSetlist] = useState<PersonalSetlist | null>(null);
+  const [targetServiceDate, setTargetServiceDate] = useState('Sunday Morning Service');
+  const [proposalNote, setProposalNote] = useState('');
+  const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
 
   useEffect(() => {
     if (!statusMessage) return;
@@ -357,48 +369,101 @@ export default function SetlistsPage() {
                       </button>
                     )}
 
-                    {isTeamLeader && (
-                      activeGroup?.activeSetlist?.id === setlist.id ? (
-                        <div className="inline-flex items-center gap-1.5">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
-                            <Church className="w-3.5 h-3.5" />
-                            <span>Team Lineup Active</span>
-                          </span>
+                    {activeGroup && (
+                      isTeamLeader ? (
+                        activeGroup?.activeSetlist?.id === setlist.id ? (
+                          <div className="inline-flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
+                              <Church className="w-3.5 h-3.5" />
+                              <span>Team Lineup Active</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await clearActiveTeamSetlist();
+                                setStatusMessage('Unpublished lineup from team.');
+                              }}
+                              title="Unpublish this lineup from your worship team"
+                              className="px-2 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-medium cursor-pointer"
+                            >
+                              Unpublish
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             type="button"
                             onClick={async () => {
-                              await clearActiveTeamSetlist();
-                              setStatusMessage('Unpublished lineup from team.');
+                              try {
+                                await publishActiveSetlistToTeam(setlist);
+                                setStatusMessage(
+                                  `Published "${setlist.name}" to ${activeGroup?.name || 'your team'}! All members can now view the lineup and practice tracks in the Team Hub.`
+                                );
+                              } catch (err) {
+                                setStatusMessage(
+                                  err instanceof Error
+                                    ? err.message
+                                    : 'Failed to publish setlist to team'
+                                );
+                              }
                             }}
-                            title="Unpublish this lineup from your worship team"
-                            className="px-2 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-medium cursor-pointer"
+                            title={`Publish "${setlist.name}" to your worship team so all members can prepare`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--brand-accent)]/30 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold cursor-pointer transition-all shadow-xs"
                           >
-                            Unpublish
+                            <Church className="w-3.5 h-3.5" />
+                            <span>Set as Team Lineup</span>
                           </button>
-                        </div>
+                        )
                       ) : (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await publishActiveSetlistToTeam(setlist);
-                              setStatusMessage(
-                                `Published "${setlist.name}" to ${activeGroup?.name || 'your team'}! All members can now view the lineup and practice tracks in the Team Hub.`
-                              );
-                            } catch (err) {
-                              setStatusMessage(
-                                err instanceof Error
-                                  ? err.message
-                                  : 'Failed to publish setlist to team'
-                              );
-                            }
-                          }}
-                          title={`Publish "${setlist.name}" to your worship team so all members can prepare`}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--brand-accent)]/30 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold cursor-pointer transition-all shadow-xs"
-                        >
-                          <Church className="w-3.5 h-3.5" />
-                          <span>Set as Team Lineup</span>
-                        </button>
+                        // Regular worship team member (vocalist / singer / musician)
+                        activeGroup?.activeSetlist?.id === setlist.id ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
+                            <Church className="w-3.5 h-3.5" />
+                            <span>Active Team Lineup</span>
+                          </span>
+                        ) : activeGroup?.suggestedSetlists?.some(
+                            (s) => s.setlist.id === setlist.id && s.suggestedBy === user?.id && s.status === 'pending'
+                          ) ? (
+                          <div className="inline-flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-xs font-semibold">
+                              <Clock className="w-3.5 h-3.5 animate-pulse" />
+                              <span>Lineup Proposed (Pending Review)</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const target = activeGroup?.suggestedSetlists?.find(
+                                  (s) => s.setlist.id === setlist.id && s.suggestedBy === user?.id && s.status === 'pending'
+                                );
+                                if (target) {
+                                  const res = await deleteTeamSetlistSuggestion(activeGroup.id, target.id);
+                                  if (res.ok) {
+                                    await refreshActiveGroup();
+                                    setStatusMessage('Withdrew lineup suggestion.');
+                                  }
+                                }
+                              }}
+                              className="px-2 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-rose-400 text-xs font-medium cursor-pointer"
+                              title="Cancel this suggestion"
+                            >
+                              Withdraw
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProposeModalSetlist(setlist);
+                              setTargetServiceDate('Sunday Morning Service');
+                              setProposalNote('');
+                            }}
+                            disabled={setlist.items.length === 0}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-500/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500 hover:text-black text-xs font-bold cursor-pointer transition-all shadow-xs disabled:opacity-50"
+                            title="Suggest this setlist to your worship leader for upcoming services"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>Suggest to Team</span>
+                          </button>
+                        )
                       )
                     )}
 
@@ -527,6 +592,150 @@ export default function SetlistsPage() {
             &ldquo;Practice List&rdquo;) to group and reorder songs for quick
             access.
           </p>
+        </div>
+      )}
+      {/* Member Setlist Suggestion Modal */}
+      {proposeModalSetlist && activeGroup && (
+        <div
+          role="dialog"
+          aria-label="Suggest Lineup to Worship Team"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+        >
+          <div className="w-full max-w-md bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                    Suggest as Team Lineup
+                  </h3>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    Propose for {activeGroup.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProposeModalSetlist(null)}
+                className="p-1 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] space-y-1.5">
+              <div className="text-xs font-bold text-[var(--text-primary)]">
+                {proposeModalSetlist.name}
+              </div>
+              <div className="text-[11px] text-[var(--text-secondary)] flex items-center gap-2">
+                <span>
+                  {proposeModalSetlist.items.length}{' '}
+                  {proposeModalSetlist.items.length === 1 ? 'song' : 'songs'}
+                </span>
+                <span>•</span>
+                <span>Preserves your transpositions & audio links</span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Target Service or Event
+                </label>
+                <input
+                  type="text"
+                  value={targetServiceDate}
+                  onChange={(e) => setTargetServiceDate(e.target.value)}
+                  placeholder="e.g. Sunday Morning, Youth Fellowship, Midweek Prayer"
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Note for Worship Leader (Optional)
+                </label>
+                <textarea
+                  value={proposalNote}
+                  onChange={(e) => setProposalNote(e.target.value)}
+                  placeholder="e.g. I transposed Song 2 to D for my vocal range as song leader!"
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--brand-accent)] resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setProposeModalSetlist(null)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingProposal}
+                onClick={async () => {
+                  if (!activeGroup) return;
+                  setIsSubmittingProposal(true);
+                  try {
+                    const cleanItems = proposeModalSetlist.items.map((i: SetlistItem) => ({
+                      songId: i.songId,
+                      addedAt: i.addedAt,
+                      preferredSemitones: i.preferredSemitones,
+                      notes: i.notes,
+                      referenceAudioUrl: i.referenceAudioUrl,
+                    }));
+                    const setlistPayload = {
+                      id: proposeModalSetlist.id,
+                      name: proposeModalSetlist.name,
+                      publishedAt: new Date().toISOString(),
+                      publishedBy: user?.id || 'member',
+                      publishedByName: user?.displayName || 'Musician',
+                      items: cleanItems,
+                    };
+                    const res = await proposeTeamSetlist(
+                      activeGroup.id,
+                      setlistPayload,
+                      proposalNote,
+                      targetServiceDate
+                    );
+                    if (res.ok) {
+                      await refreshActiveGroup();
+                      setStatusMessage(
+                        `Lineup proposal for "${proposeModalSetlist.name}" sent to your worship leader! It will appear in Team Hub once approved.`
+                      );
+                      setProposeModalSetlist(null);
+                    } else {
+                      setStatusMessage(res.error || 'Failed to submit proposal.');
+                    }
+                  } catch (err) {
+                    setStatusMessage(
+                      err instanceof Error ? err.message : 'Error submitting proposal'
+                    );
+                  } finally {
+                    setIsSubmittingProposal(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-500 text-black font-bold text-xs hover:bg-amber-400 transition-all cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isSubmittingProposal ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Submitting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send to Leader for Approval</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

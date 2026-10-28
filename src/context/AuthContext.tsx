@@ -512,6 +512,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             data.group.activeSetlist = activeGroup?.activeSetlist || cached?.activeSetlist;
           }
 
+          // Preserve suggested setlists if server response omitted it
+          if (data.group.suggestedSetlists === undefined && (activeGroup?.suggestedSetlists || cached?.suggestedSetlists)) {
+            data.group.suggestedSetlists = activeGroup?.suggestedSetlists || cached?.suggestedSetlists;
+          }
+
           setActiveGroup(data.group);
           setCachedTeam(data.group);
         }

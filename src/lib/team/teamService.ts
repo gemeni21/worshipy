@@ -22,6 +22,7 @@ import type {
   UserProfile,
   WorshipGroup,
   TeamActiveSetlist,
+  TeamSetlistSuggestion,
 } from '../../types/auth.ts';
 
 const LOCAL_GROUP_CACHE_KEY = 'worshipy_cached_group';
@@ -360,6 +361,7 @@ export async function leaveTeam(groupId: string, userId: string): Promise<void> 
 
 export const TEAM_SYNC_CHANNEL_NAME = 'wmc_team_sync_channel';
 export const SETLIST_META_TAKE_ID = '__team_active_setlist_meta__';
+export const SETLIST_SUGGESTIONS_META_TAKE_ID = '__team_setlist_suggestions_meta__';
 export const LIVE_SESSION_META_TAKE_ID = '__team_active_live_session_meta__';
 
 export function broadcastTeamSync(group: WorshipGroup): void {
@@ -651,6 +653,254 @@ export async function clearTeamSetlist(groupId: string): Promise<WorshipGroup> {
 
 export const clearTeamActiveSetlist = clearTeamSetlist;
 
+export async function proposeTeamSetlist(
+  groupId: string,
+  setlist: TeamActiveSetlist,
+  note?: string,
+  targetServiceDate?: string
+): Promise<{ ok: boolean; group?: WorshipGroup; suggestion?: TeamSetlistSuggestion; error?: string }> {
+  const token = getSessionToken();
+  const db = getFirebaseFirestore();
+
+  try {
+    const res = await fetch(`/api/groups/${groupId}/suggestions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        setlist,
+        note,
+        targetServiceDate,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return { ok: false, error: data.error || 'Failed to submit setlist suggestion.' };
+    }
+
+    if (data.group) {
+      setCachedTeam(data.group);
+      broadcastTeamSync(data.group);
+
+      // Write meta-take fallback to Firestore
+      if (db && groupId && Array.isArray(data.group.suggestedSetlists)) {
+        try {
+          const groupRef = doc(db, 'groups', groupId);
+          const metaTake: TeamPracticeTake = {
+            id: SETLIST_SUGGESTIONS_META_TAKE_ID,
+            songId: '__system_meta__',
+            songTitle: 'Lineup Suggestions',
+            title: `${data.group.suggestedSetlists.length} Lineup Proposals`,
+            authorName: 'System',
+            authorId: 'system',
+            createdAt: new Date().toISOString(),
+            durationSeconds: 0,
+            notes: JSON.stringify(data.group.suggestedSetlists),
+          };
+
+          const existingTakes = (data.group.practiceTakes || []).filter(
+            (t: TeamPracticeTake) => t.id !== SETLIST_SUGGESTIONS_META_TAKE_ID
+          );
+          const combinedTakes = [metaTake, ...existingTakes].slice(0, 50);
+
+          try {
+            await setDoc(
+              groupRef,
+              {
+                suggestedSetlists: data.group.suggestedSetlists,
+                practiceTakes: combinedTakes,
+              },
+              { merge: true }
+            );
+          } catch {
+            try {
+              await updateDoc(groupRef, { practiceTakes: combinedTakes });
+            } catch {}
+          }
+        } catch {}
+      }
+
+      return { ok: true, group: data.group, suggestion: data.suggestion };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Network error proposing setlist.';
+    return { ok: false, error: msg };
+  }
+}
+
+export async function reviewTeamSetlistSuggestion(
+  groupId: string,
+  suggestionId: string,
+  action: 'approve' | 'decline',
+  reviewNote?: string
+): Promise<{ ok: boolean; group?: WorshipGroup; error?: string }> {
+  const token = getSessionToken();
+  const db = getFirebaseFirestore();
+
+  try {
+    const res = await fetch(`/api/groups/${groupId}/suggestions/${encodeURIComponent(suggestionId)}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        action,
+        reviewNote,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return { ok: false, error: data.error || 'Failed to review setlist suggestion.' };
+    }
+
+    if (data.group) {
+      setCachedTeam(data.group);
+      broadcastTeamSync(data.group);
+
+      if (db && groupId) {
+        try {
+          const groupRef = doc(db, 'groups', groupId);
+          const metaPayload: Record<string, any> = {
+            suggestedSetlists: data.group.suggestedSetlists,
+          };
+          if (data.group.activeSetlist) {
+            metaPayload.activeSetlist = data.group.activeSetlist;
+          }
+
+          const existingTakes = (data.group.practiceTakes || []).filter(
+            (t: TeamPracticeTake) =>
+              t.id !== SETLIST_SUGGESTIONS_META_TAKE_ID &&
+              (action !== 'approve' || t.id !== SETLIST_META_TAKE_ID)
+          );
+
+          const suggestionsMetaTake: TeamPracticeTake = {
+            id: SETLIST_SUGGESTIONS_META_TAKE_ID,
+            songId: '__system_meta__',
+            songTitle: 'Lineup Suggestions',
+            title: `${(data.group.suggestedSetlists || []).length} Lineup Proposals`,
+            authorName: 'System',
+            authorId: 'system',
+            createdAt: new Date().toISOString(),
+            durationSeconds: 0,
+            notes: JSON.stringify(data.group.suggestedSetlists || []),
+          };
+
+          const newTakes = [suggestionsMetaTake];
+          if (action === 'approve' && data.group.activeSetlist) {
+            newTakes.push({
+              id: SETLIST_META_TAKE_ID,
+              songId: '__system_meta__',
+              songTitle: 'Upcoming Setlist Lineup',
+              title: data.group.activeSetlist.name,
+              authorName: data.group.activeSetlist.publishedByName || 'Leader',
+              authorId: data.group.activeSetlist.publishedBy,
+              createdAt: data.group.activeSetlist.publishedAt,
+              durationSeconds: 0,
+              notes: JSON.stringify(data.group.activeSetlist),
+            });
+          }
+
+          const combinedTakes = [...newTakes, ...existingTakes].slice(0, 50);
+          metaPayload.practiceTakes = combinedTakes;
+
+          try {
+            await setDoc(groupRef, metaPayload, { merge: true });
+          } catch {
+            try {
+              await updateDoc(groupRef, { practiceTakes: combinedTakes });
+            } catch {}
+          }
+        } catch {}
+      }
+
+      return { ok: true, group: data.group };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Network error reviewing setlist.';
+    return { ok: false, error: msg };
+  }
+}
+
+export async function deleteTeamSetlistSuggestion(
+  groupId: string,
+  suggestionId: string
+): Promise<{ ok: boolean; group?: WorshipGroup; error?: string }> {
+  const token = getSessionToken();
+  const db = getFirebaseFirestore();
+
+  try {
+    const res = await fetch(`/api/groups/${groupId}/suggestions/${encodeURIComponent(suggestionId)}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      return { ok: false, error: data.error || 'Failed to remove suggestion.' };
+    }
+
+    if (data.group) {
+      setCachedTeam(data.group);
+      broadcastTeamSync(data.group);
+
+      if (db && groupId) {
+        try {
+          const groupRef = doc(db, 'groups', groupId);
+          const metaTake: TeamPracticeTake = {
+            id: SETLIST_SUGGESTIONS_META_TAKE_ID,
+            songId: '__system_meta__',
+            songTitle: 'Lineup Suggestions',
+            title: `${(data.group.suggestedSetlists || []).length} Lineup Proposals`,
+            authorName: 'System',
+            authorId: 'system',
+            createdAt: new Date().toISOString(),
+            durationSeconds: 0,
+            notes: JSON.stringify(data.group.suggestedSetlists || []),
+          };
+          const existingTakes = (data.group.practiceTakes || []).filter(
+            (t: TeamPracticeTake) => t.id !== SETLIST_SUGGESTIONS_META_TAKE_ID
+          );
+          const combinedTakes = [metaTake, ...existingTakes].slice(0, 50);
+
+          try {
+            await setDoc(
+              groupRef,
+              {
+                suggestedSetlists: data.group.suggestedSetlists || [],
+                practiceTakes: combinedTakes,
+              },
+              { merge: true }
+            );
+          } catch {
+            try {
+              await updateDoc(groupRef, { practiceTakes: combinedTakes });
+            } catch {}
+          }
+        } catch {}
+      }
+
+      return { ok: true, group: data.group };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Network error removing suggestion.';
+    return { ok: false, error: msg };
+  }
+}
+
 export async function setTeamActiveLiveSession(
   groupId: string,
   sessionInfo: {
@@ -916,10 +1166,16 @@ export function subscribeToTeam(
       effectiveSetlist = currentCached.activeSetlist;
     }
 
+    let effectiveSuggestions = fresh.suggestedSetlists;
+    if (effectiveSuggestions === undefined && currentCached?.id === fresh.id && currentCached.suggestedSetlists) {
+      effectiveSuggestions = currentCached.suggestedSetlists;
+    }
+
     const mergedGroup: WorshipGroup = {
       ...fresh,
       members: mergedMembers,
       activeSetlist: effectiveSetlist,
+      suggestedSetlists: effectiveSuggestions,
     };
 
     const serialized = JSON.stringify(mergedGroup);
@@ -1023,6 +1279,7 @@ export function subscribeToTeam(
           const cached = getCachedTeam();
 
           let activeSetlist = firestoreData.activeSetlist;
+          let suggestedSetlists = firestoreData.suggestedSetlists;
           let activeLiveSessionId = firestoreData.activeLiveSessionId;
           let activeLiveSessionJoinCode = firestoreData.activeLiveSessionJoinCode;
           let activeLiveSessionExpiresAt = firestoreData.activeLiveSessionExpiresAt;
@@ -1035,6 +1292,15 @@ export function subscribeToTeam(
             if (setlistMeta?.notes && !activeSetlist) {
               try {
                 activeSetlist = JSON.parse(setlistMeta.notes);
+              } catch {}
+            }
+
+            const suggestionsMeta = firestoreData.practiceTakes.find(
+              (t: any) => t.id === SETLIST_SUGGESTIONS_META_TAKE_ID
+            );
+            if (suggestionsMeta?.notes && !suggestedSetlists) {
+              try {
+                suggestedSetlists = JSON.parse(suggestionsMeta.notes);
               } catch {}
             }
 
@@ -1056,6 +1322,7 @@ export function subscribeToTeam(
             id: snap.id,
             ...firestoreData,
             activeSetlist: activeSetlist || undefined,
+            suggestedSetlists: suggestedSetlists || undefined,
             activeLiveSessionId: activeLiveSessionId || undefined,
             activeLiveSessionJoinCode: activeLiveSessionJoinCode || undefined,
             activeLiveSessionExpiresAt: activeLiveSessionExpiresAt || undefined,

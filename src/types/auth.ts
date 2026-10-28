@@ -54,6 +54,22 @@ export interface TeamActiveSetlist {
   items: SetlistItem[];
 }
 
+export interface TeamSetlistSuggestion {
+  id: string;
+  setlist: TeamActiveSetlist;
+  suggestedBy: string;
+  suggestedByName: string;
+  suggestedByRole?: string;
+  suggestedAt: string;
+  targetServiceDate?: string;
+  note?: string;
+  status: 'pending' | 'approved' | 'declined';
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+}
+
 export interface WorshipGroup {
   id: string;
   name: string;
@@ -66,6 +82,7 @@ export interface WorshipGroup {
   members: GroupMember[];
   practiceTakes?: TeamPracticeTake[];
   activeSetlist?: TeamActiveSetlist;
+  suggestedSetlists?: TeamSetlistSuggestion[];
   activeLiveSessionId?: string;
   activeLiveSessionJoinCode?: string;
   activeLiveSessionExpiresAt?: string;

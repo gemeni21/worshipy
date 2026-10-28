@@ -5,6 +5,9 @@ import {
   createWorshipGroup,
   getWorshipGroup,
   updateWorshipGroupBranding,
+  suggestSetlistForGroup,
+  reviewSetlistSuggestion,
+  deleteSetlistSuggestion,
 } from '../../cloud/cloudDb.ts';
 import {
   createLiveSession,
@@ -708,5 +711,322 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     // Leader participant token successfully ends session
     const ended = endLiveSession(sessionId, leaderLive.participantToken);
     assert.equal(ended.status, 'ended');
+  });
+
+  it('15. team member can suggest a setlist, which enters pending state without overwriting active lineup', () => {
+    const leader = registerUser({
+      email: `lead_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor David',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Main Worship Team', 'Grace Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    // Member joins team
+    const singer = registerUser({
+      email: `singer_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Sarah Singer',
+      instrument: 'Vocalist',
+    });
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      members: [
+        {
+          userId: leader.profile.id,
+          email: leader.profile.email,
+          displayName: 'Pastor David',
+          role: 'leader',
+          joinedAt: new Date().toISOString(),
+        },
+        {
+          userId: singer.profile.id,
+          email: singer.profile.email,
+          displayName: 'Sarah Singer',
+          role: 'member',
+          instrument: 'Vocalist',
+          joinedAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    const proposedSetlist: TeamActiveSetlist = {
+      id: 'setlist_youth_1',
+      name: 'Youth Service Praise',
+      publishedAt: new Date().toISOString(),
+      publishedBy: singer.profile.id,
+      publishedByName: 'Sarah Singer',
+      items: [
+        { songId: '1', addedAt: new Date().toISOString(), preferredSemitones: 2 },
+        { songId: '2', addedAt: new Date().toISOString(), preferredSemitones: -1 },
+      ],
+    };
+
+    // Singer proposes setlist
+    const suggestRes = suggestSetlistForGroup(singer.profile.id, groupId, {
+      setlist: proposedSetlist,
+      note: 'Keys adjusted for my vocal range as song leader this Sunday',
+      targetServiceDate: 'Youth Sunday',
+    });
+
+    assert.ok(suggestRes.ok);
+    assert.ok(suggestRes.suggestion);
+    assert.equal(suggestRes.suggestion.status, 'pending');
+    assert.equal(suggestRes.suggestion.suggestedBy, singer.profile.id);
+    assert.equal(suggestRes.suggestion.suggestedByName, 'Sarah Singer');
+    assert.equal(suggestRes.suggestion.note, 'Keys adjusted for my vocal range as song leader this Sunday');
+    assert.equal(suggestRes.suggestion.targetServiceDate, 'Youth Sunday');
+
+    // CRITICAL: activeSetlist MUST NOT be overwritten while pending
+    const group = getWorshipGroup(groupId);
+    assert.ok(group);
+    assert.equal(group.activeSetlist, undefined);
+    assert.equal(group.suggestedSetlists?.length, 1);
+    assert.equal(group.suggestedSetlists?.[0].status, 'pending');
+  });
+
+  it('16. non-member is rejected when trying to suggest a setlist', () => {
+    const leader = registerUser({
+      email: `lead_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor David',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Main Worship Team', 'Grace Church');
+    assert.ok(groupRes.group);
+
+    const outsider = registerUser({
+      email: `outsider_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Outsider User',
+    });
+
+    const res = suggestSetlistForGroup(outsider.profile.id, groupRes.group.id, {
+      setlist: {
+        id: 'setlist_test',
+        name: 'Test Setlist',
+        publishedAt: new Date().toISOString(),
+        publishedBy: outsider.profile.id,
+        items: [{ songId: '1', addedAt: new Date().toISOString() }],
+      },
+    });
+
+    assert.equal(res.ok, false);
+    assert.match(res.error || '', /must be a member of this worship team/i);
+  });
+
+  it('17. non-leader cannot approve or decline setlist suggestions', () => {
+    const leader = registerUser({
+      email: `lead_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor David',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Main Worship Team', 'Grace Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const singer = registerUser({
+      email: `singer_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Sarah Singer',
+    });
+    const bassist = registerUser({
+      email: `bassist_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Bob Bassist',
+    });
+
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      members: [
+        { userId: leader.profile.id, email: leader.profile.email, displayName: 'Pastor David', role: 'leader', joinedAt: new Date().toISOString() },
+        { userId: singer.profile.id, email: singer.profile.email, displayName: 'Sarah Singer', role: 'member', joinedAt: new Date().toISOString() },
+        { userId: bassist.profile.id, email: bassist.profile.email, displayName: 'Bob Bassist', role: 'member', joinedAt: new Date().toISOString() },
+      ],
+    });
+
+    const suggestRes = suggestSetlistForGroup(singer.profile.id, groupId, {
+      setlist: {
+        id: 'setlist_1',
+        name: 'Sunday Morning Praise',
+        publishedAt: new Date().toISOString(),
+        publishedBy: singer.profile.id,
+        items: [{ songId: '1', addedAt: new Date().toISOString() }],
+      },
+    });
+    assert.ok(suggestRes.ok && suggestRes.suggestion);
+
+    // Bassist (non-leader) attempts to approve
+    const reviewRes = reviewSetlistSuggestion(
+      bassist.profile.id,
+      groupId,
+      suggestRes.suggestion.id,
+      'approve'
+    );
+    assert.equal(reviewRes.ok, false);
+    assert.match(reviewRes.error || '', /only the worship team leader or owner/i);
+
+    // Active lineup remains unset
+    const group = getWorshipGroup(groupId);
+    assert.equal(group?.activeSetlist, undefined);
+  });
+
+  it('18. leader approving suggestion promotes it to official active lineup and notifies team', () => {
+    const leader = registerUser({
+      email: `lead_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor David',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Main Worship Team', 'Grace Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const singer = registerUser({
+      email: `singer_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Sarah Singer',
+      instrument: 'Lead Vocalist',
+    });
+
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      members: [
+        { userId: leader.profile.id, email: leader.profile.email, displayName: 'Pastor David', role: 'leader', joinedAt: new Date().toISOString() },
+        { userId: singer.profile.id, email: singer.profile.email, displayName: 'Sarah Singer', role: 'member', instrument: 'Lead Vocalist', joinedAt: new Date().toISOString() },
+      ],
+    });
+
+    const suggestRes = suggestSetlistForGroup(singer.profile.id, groupId, {
+      setlist: {
+        id: 'setlist_singer_special',
+        name: 'Special Easter Service',
+        publishedAt: new Date().toISOString(),
+        publishedBy: singer.profile.id,
+        items: [
+          { songId: '1', addedAt: new Date().toISOString(), preferredSemitones: 3 },
+          { songId: '2', addedAt: new Date().toISOString(), preferredSemitones: 0 },
+        ],
+      },
+      note: 'Vocal arrangement for Easter',
+      targetServiceDate: 'Easter Sunday',
+    });
+    assert.ok(suggestRes.ok && suggestRes.suggestion);
+
+    // Leader approves!
+    const approveRes = reviewSetlistSuggestion(
+      leader.profile.id,
+      groupId,
+      suggestRes.suggestion.id,
+      'approve',
+      'Looks great Sarah, approved for Sunday!'
+    );
+
+    assert.ok(approveRes.ok);
+    assert.ok(approveRes.group?.activeSetlist);
+    assert.equal(approveRes.group.activeSetlist.name, 'Special Easter Service');
+    assert.equal(approveRes.group.activeSetlist.publishedByName, 'Sarah Singer');
+    assert.equal(approveRes.group.activeSetlist.items.length, 2);
+    assert.equal(approveRes.group.activeSetlist.items[0].preferredSemitones, 3);
+
+    // Suggestion status is updated to approved
+    const updatedSuggestion = approveRes.group.suggestedSetlists?.find(
+      (s) => s.id === suggestRes.suggestion!.id
+    );
+    assert.ok(updatedSuggestion);
+    assert.equal(updatedSuggestion.status, 'approved');
+    assert.equal(updatedSuggestion.reviewedByName, 'Pastor David');
+    assert.equal(updatedSuggestion.reviewNote, 'Looks great Sarah, approved for Sunday!');
+  });
+
+  it('19. leader declining suggestion updates status with feedback note without touching active lineup', () => {
+    const leader = registerUser({
+      email: `lead_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor David',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Main Worship Team', 'Grace Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const singer = registerUser({
+      email: `singer_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Sarah Singer',
+    });
+
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      members: [
+        { userId: leader.profile.id, email: leader.profile.email, displayName: 'Pastor David', role: 'leader', joinedAt: new Date().toISOString() },
+        { userId: singer.profile.id, email: singer.profile.email, displayName: 'Sarah Singer', role: 'member', joinedAt: new Date().toISOString() },
+      ],
+    });
+
+    const suggestRes = suggestSetlistForGroup(singer.profile.id, groupId, {
+      setlist: {
+        id: 'setlist_rock',
+        name: 'Heavy Rock Praise',
+        publishedAt: new Date().toISOString(),
+        publishedBy: singer.profile.id,
+        items: [{ songId: '1', addedAt: new Date().toISOString() }],
+      },
+    });
+    assert.ok(suggestRes.ok && suggestRes.suggestion);
+
+    // Leader declines with note
+    const declineRes = reviewSetlistSuggestion(
+      leader.profile.id,
+      groupId,
+      suggestRes.suggestion.id,
+      'decline',
+      'Too heavy for this week’s communion service, let’s do acoustic songs instead.'
+    );
+
+    assert.ok(declineRes.ok);
+    assert.equal(declineRes.group?.activeSetlist, undefined);
+
+    const declinedSuggestion = declineRes.group?.suggestedSetlists?.find(
+      (s) => s.id === suggestRes.suggestion!.id
+    );
+    assert.ok(declinedSuggestion);
+    assert.equal(declinedSuggestion.status, 'declined');
+    assert.equal(declinedSuggestion.reviewNote, 'Too heavy for this week’s communion service, let’s do acoustic songs instead.');
+  });
+
+  it('20. member can withdraw their pending lineup suggestion', () => {
+    const leader = registerUser({
+      email: `lead_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor David',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Main Worship Team', 'Grace Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const singer = registerUser({
+      email: `singer_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Sarah Singer',
+    });
+
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      members: [
+        { userId: leader.profile.id, email: leader.profile.email, displayName: 'Pastor David', role: 'leader', joinedAt: new Date().toISOString() },
+        { userId: singer.profile.id, email: singer.profile.email, displayName: 'Sarah Singer', role: 'member', joinedAt: new Date().toISOString() },
+      ],
+    });
+
+    const suggestRes = suggestSetlistForGroup(singer.profile.id, groupId, {
+      setlist: {
+        id: 'setlist_draft',
+        name: 'Draft Lineup',
+        publishedAt: new Date().toISOString(),
+        publishedBy: singer.profile.id,
+        items: [{ songId: '1', addedAt: new Date().toISOString() }],
+      },
+    });
+    assert.ok(suggestRes.ok && suggestRes.suggestion);
+    assert.equal(suggestRes.group?.suggestedSetlists?.length, 1);
+
+    // Member withdraws
+    const deleteRes = deleteSetlistSuggestion(singer.profile.id, groupId, suggestRes.suggestion.id);
+    assert.ok(deleteRes.ok);
+    assert.equal(deleteRes.group?.suggestedSetlists?.length, 0);
   });
 });

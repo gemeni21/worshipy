@@ -29,6 +29,7 @@ service cloud.firestore {
     //   - memberUids: list of strings (optional, max 100 items) - Member UIDs
     //   - practiceTakes: list of maps (optional, max 100 items) - Embedded rehearsal metadata
     //   - activeSetlist: map (optional) - Published active setlist (id, name, description, publishedAt, publishedBy, publishedByName, items)
+    //   - suggestedSetlists: list of maps (optional, max 20 items) - Member setlist proposals / suggestions
     //   - activeLiveSessionId: string (optional, 0-128 chars) or null - Active live rehearsal/service session ID
     //   - activeLiveSessionJoinCode: string (optional, 0-20 chars) or null - Active live session join code
     //   - activeLiveSessionExpiresAt: timestamp or ISO string (optional) or null - Active live session expiry timestamp
@@ -165,11 +166,15 @@ service cloud.firestore {
              setlist.items is list && setlist.items.size() <= 100;
     }
 
+    function isValidSuggestedSetlists(suggestions) {
+      return suggestions is list && suggestions.size() <= 20;
+    }
+
     function isValidGroup(data) {
       return hasOnlyAllowedFields([
                'id', 'name', 'churchName', 'customAppTitle', 'customAppLogoUrl', 'inviteCode', 'ownerId',
                'createdAt', 'updatedAt', 'members', 'memberIds', 'memberUids', 'practiceTakes',
-               'activeSetlist', 'activeLiveSessionId', 'activeLiveSessionJoinCode',
+               'activeSetlist', 'suggestedSetlists', 'activeLiveSessionId', 'activeLiveSessionJoinCode',
                'activeLiveSessionExpiresAt', 'activeLiveSessionLeaderName'
              ]) &&
              hasRequiredFields(['name', 'inviteCode', 'ownerId', 'createdAt', 'members']) &&
@@ -186,6 +191,7 @@ service cloud.firestore {
              (!('memberUids' in data) || (data.memberUids is list && data.memberUids.size() <= 100)) &&
              (!('practiceTakes' in data) || (data.practiceTakes is list && data.practiceTakes.size() <= 100)) &&
              (!('activeSetlist' in data) || data.activeSetlist == null || isValidActiveSetlist(data.activeSetlist)) &&
+             (!('suggestedSetlists' in data) || data.suggestedSetlists == null || isValidSuggestedSetlists(data.suggestedSetlists)) &&
              isValidOptionalString(data, 'activeLiveSessionId', 0, 128) &&
              isValidOptionalString(data, 'activeLiveSessionJoinCode', 0, 20) &&
              isValidOptionalTimestampOrDateString(data, 'activeLiveSessionExpiresAt') &&

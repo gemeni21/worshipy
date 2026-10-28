@@ -10,6 +10,7 @@ import type {
   SongSubmission,
   SubmissionStatus,
   TeamActiveSetlist,
+  TeamSetlistSuggestion,
   UserCloudSyncPayload,
   UserProfile,
   UserRole,
@@ -1063,6 +1064,7 @@ export function updateWorshipGroupBranding(
     inviteCode?: string;
     members?: GroupMember[];
     activeSetlist?: TeamActiveSetlist | null;
+    suggestedSetlists?: TeamSetlistSuggestion[];
     activeLiveSessionId?: string | null;
     activeLiveSessionJoinCode?: string | null;
     activeLiveSessionExpiresAt?: string | null;
@@ -1160,8 +1162,184 @@ export function updateWorshipGroupBranding(
   if (updates.activeLiveSessionLeaderName !== undefined) {
     group.activeLiveSessionLeaderName = updates.activeLiveSessionLeaderName || undefined;
   }
+  if (updates.suggestedSetlists !== undefined) {
+    group.suggestedSetlists = updates.suggestedSetlists;
+  }
 
   saveStore(store);
+  return { ok: true, group };
+}
+
+export function suggestSetlistForGroup(
+  userId: string,
+  groupId: string,
+  data: {
+    setlist: TeamActiveSetlist;
+    note?: string;
+    targetServiceDate?: string;
+  }
+): { ok: boolean; group?: WorshipGroup; suggestion?: TeamSetlistSuggestion; error?: string } {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  const group = store.groups[groupId] || getWorshipGroup(groupId);
+  if (!group) {
+    return { ok: false, error: 'Worship team not found.' };
+  }
+
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+  const isMember =
+    group.ownerId === userId ||
+    group.members.some((m) => m.userId === userId);
+
+  if (!isMember) {
+    return { ok: false, error: 'You must be a member of this worship team to suggest a lineup.' };
+  }
+
+  if (!data.setlist || !Array.isArray(data.setlist.items) || data.setlist.items.length === 0) {
+    return { ok: false, error: 'Setlist must contain at least one song.' };
+  }
+
+  const now = new Date().toISOString();
+  const suggestionId = `sugg_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+
+  const memberEntry = group.members.find((m) => m.userId === userId);
+  const displayName = memberEntry?.displayName || user?.profile.displayName || 'Vocalist / Member';
+  const role =
+    memberEntry?.instrument ||
+    user?.profile.instrument ||
+    (memberEntry?.role === 'leader' ? 'Leader' : 'Musician');
+
+  const newSuggestion: TeamSetlistSuggestion = {
+    id: suggestionId,
+    setlist: {
+      ...data.setlist,
+      publishedAt: now,
+      publishedBy: userId,
+      publishedByName: displayName,
+    },
+    suggestedBy: userId,
+    suggestedByName: displayName,
+    suggestedByRole: role,
+    suggestedAt: now,
+    targetServiceDate: data.targetServiceDate?.trim() || undefined,
+    note: data.note?.trim() || undefined,
+    status: 'pending',
+  };
+
+  const existing = Array.isArray(group.suggestedSetlists) ? group.suggestedSetlists : [];
+  group.suggestedSetlists = [newSuggestion, ...existing].slice(0, 20);
+
+  store.groups[groupId] = group;
+  saveStore(store);
+
+  return { ok: true, group, suggestion: newSuggestion };
+}
+
+export function reviewSetlistSuggestion(
+  userId: string,
+  groupId: string,
+  suggestionId: string,
+  action: 'approve' | 'decline',
+  reviewNote?: string
+): { ok: boolean; group?: WorshipGroup; error?: string } {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  const group = store.groups[groupId] || getWorshipGroup(groupId);
+  if (!group) {
+    return { ok: false, error: 'Worship team not found.' };
+  }
+
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+  const isLeader =
+    group.ownerId === userId ||
+    group.members.some((m) => m.userId === userId && m.role === 'leader');
+
+  if (!isLeader) {
+    return {
+      ok: false,
+      error: 'Only the worship team leader or owner can review and approve lineup suggestions.',
+    };
+  }
+
+  if (!Array.isArray(group.suggestedSetlists)) {
+    return { ok: false, error: 'No setlist suggestions found for this team.' };
+  }
+
+  const suggestionIndex = group.suggestedSetlists.findIndex((s) => s.id === suggestionId);
+  if (suggestionIndex === -1) {
+    return { ok: false, error: 'Suggestion not found.' };
+  }
+
+  const targetSuggestion = { ...group.suggestedSetlists[suggestionIndex] };
+  const now = new Date().toISOString();
+  const leaderName = user?.profile.displayName || 'Worship Leader';
+
+  if (action === 'approve') {
+    targetSuggestion.status = 'approved';
+    targetSuggestion.reviewedBy = userId;
+    targetSuggestion.reviewedByName = leaderName;
+    targetSuggestion.reviewedAt = now;
+    if (reviewNote?.trim()) targetSuggestion.reviewNote = reviewNote.trim();
+
+    // Promote suggestion's setlist to group's activeSetlist
+    group.activeSetlist = {
+      ...targetSuggestion.setlist,
+      publishedAt: now,
+      publishedBy: targetSuggestion.suggestedBy,
+      publishedByName: targetSuggestion.suggestedByName,
+    };
+  } else {
+    targetSuggestion.status = 'declined';
+    targetSuggestion.reviewedBy = userId;
+    targetSuggestion.reviewedByName = leaderName;
+    targetSuggestion.reviewedAt = now;
+    if (reviewNote?.trim()) targetSuggestion.reviewNote = reviewNote.trim();
+  }
+
+  group.suggestedSetlists[suggestionIndex] = targetSuggestion;
+  store.groups[groupId] = group;
+  saveStore(store);
+
+  return { ok: true, group };
+}
+
+export function deleteSetlistSuggestion(
+  userId: string,
+  groupId: string,
+  suggestionId: string
+): { ok: boolean; group?: WorshipGroup; error?: string } {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  const group = store.groups[groupId] || getWorshipGroup(groupId);
+  if (!group) {
+    return { ok: false, error: 'Worship team not found.' };
+  }
+
+  if (!Array.isArray(group.suggestedSetlists)) {
+    return { ok: false, error: 'No suggestions found.' };
+  }
+
+  const suggestion = group.suggestedSetlists.find((s) => s.id === suggestionId);
+  if (!suggestion) {
+    return { ok: false, error: 'Suggestion not found.' };
+  }
+
+  const isLeader =
+    group.ownerId === userId ||
+    group.members.some((m) => m.userId === userId && m.role === 'leader');
+  const isSubmitter = suggestion.suggestedBy === userId;
+
+  if (!isLeader && !isSubmitter) {
+    return { ok: false, error: 'You do not have permission to remove this suggestion.' };
+  }
+
+  group.suggestedSetlists = group.suggestedSetlists.filter((s) => s.id !== suggestionId);
+  store.groups[groupId] = group;
+  saveStore(store);
+
   return { ok: true, group };
 }
 
