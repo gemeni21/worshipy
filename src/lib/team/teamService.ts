@@ -344,6 +344,59 @@ export async function leaveTeam(groupId: string, userId: string): Promise<void> 
 }
 
 /**
+ * Updates church branding (custom app title, logo, and church name) for a worship team
+ */
+export async function updateTeamBranding(
+  groupId: string,
+  updates: {
+    customAppTitle?: string;
+    customAppLogoUrl?: string;
+    churchName?: string;
+  }
+): Promise<WorshipGroup> {
+  const db = getFirebaseFirestore();
+  const token = getSessionToken();
+
+  // 1. Sync to server API
+  const res = await fetch(`/api/groups/${groupId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(updates),
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to update church branding');
+  }
+
+  const updatedGroup: WorshipGroup = data.group;
+
+  // 2. Sync to Firestore for real-time distribution across all band members
+  if (db && updatedGroup) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      await setDoc(
+        groupRef,
+        {
+          ...(updates.customAppTitle !== undefined ? { customAppTitle: updates.customAppTitle || null } : {}),
+          ...(updates.customAppLogoUrl !== undefined ? { customAppLogoUrl: updates.customAppLogoUrl || null } : {}),
+          ...(updates.churchName !== undefined ? { churchName: updates.churchName || null } : {}),
+        },
+        { merge: true }
+      );
+    } catch (firestoreErr) {
+      console.warn('Firestore branding update note:', firestoreErr);
+    }
+  }
+
+  setCachedTeam(updatedGroup);
+  return updatedGroup;
+}
+
+/**
  * Subscribes to real-time updates for a team document
  */
 export function subscribeToTeam(

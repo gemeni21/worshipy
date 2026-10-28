@@ -325,9 +325,23 @@ function MobileNavLinksActive() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, activeGroup } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfileDrawer, setShowProfileDrawer] = useState(false);
+
+  const brandingTitle =
+    activeGroup?.customAppTitle ||
+    activeGroup?.churchName ||
+    activeGroup?.name ||
+    'Worship Music';
+
+  const brandingSubtitle = activeGroup?.customAppTitle
+    ? (activeGroup.churchName || activeGroup.name || 'Worship Team')
+    : activeGroup
+    ? (activeGroup.churchName || 'Worship Team')
+    : 'Companion · MVP';
+
+  const brandingLogo = activeGroup?.customAppLogoUrl;
 
   const {
     effectiveOffline,
@@ -343,19 +357,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         aria-label="Primary Sidebar Navigation"
         className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] z-30"
       >
-        <div className="px-5 py-5 border-b border-[var(--border-subtle)] flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0 shadow-sm">
-            <Music2 className="w-5 h-5" aria-hidden="true" />
-          </div>
-          <div>
-            <span className="font-bold tracking-tight text-base block leading-tight">
-              Worship Music
+        <Link
+          href="/"
+          className="px-4 py-4 border-b border-[var(--border-subtle)] flex items-center gap-3 hover:bg-[var(--bg-subtle)]/50 transition-colors group cursor-pointer"
+        >
+          {brandingLogo ? (
+            <img
+              src={brandingLogo}
+              alt={brandingTitle}
+              className="w-10 h-10 rounded-xl object-contain bg-white/5 border border-[var(--border-subtle)] p-1 shrink-0 shadow-sm"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0 shadow-sm">
+              <Music2 className="w-5 h-5" aria-hidden="true" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <span className="font-bold tracking-tight text-base block leading-tight truncate group-hover:text-[var(--brand-accent)] transition-colors">
+              {brandingTitle}
             </span>
-            <span className="text-xs text-[var(--text-secondary)] block">
-              Companion · MVP
+            <span className="text-xs text-[var(--text-secondary)] block truncate">
+              {brandingSubtitle}
             </span>
           </div>
-        </div>
+        </Link>
 
         <Suspense fallback={<DesktopNavLinksContent pathname={null} />}>
           <DesktopNavLinksActive />
@@ -398,14 +423,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Mobile Compact Header */}
-      <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-3 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shadow-sm">
-            <Music2 className="w-4 h-4" aria-hidden="true" />
+      <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-2.5 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)]">
+        <Link href="/" className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+          {brandingLogo ? (
+            <img
+              src={brandingLogo}
+              alt={brandingTitle}
+              className="w-8 h-8 rounded-lg object-contain bg-white/5 border border-[var(--border-subtle)] p-0.5 shrink-0 shadow-sm"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0 shadow-sm">
+              <Music2 className="w-4 h-4" aria-hidden="true" />
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <span className="font-bold text-sm tracking-tight block truncate">
+              {brandingTitle}
+            </span>
+            <span className="text-[10px] text-[var(--text-secondary)] block -mt-0.5 truncate">
+              {brandingSubtitle}
+            </span>
           </div>
-          <span className="font-bold text-sm tracking-tight">
-            Worship Music Companion
-          </span>
         </Link>
         {user ? (
           <button

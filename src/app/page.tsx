@@ -11,7 +11,6 @@ import {
   Clock,
   Download,
   FolderHeart,
-  Gauge,
   Heart,
   ListMusic,
   Mic,
@@ -19,6 +18,7 @@ import {
   Radio,
   Search,
   Sparkles,
+  Users,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useIsMounted } from '@/hooks/useIsMounted';
@@ -216,20 +216,19 @@ export default function HomePage() {
         </Link>
 
         <Link
-          href="/tuner"
+          href="/team"
           className="theme-card rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 hover:border-[var(--brand-accent)] flex items-center justify-between gap-4"
         >
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-sm font-bold text-[var(--text-primary)]">
-              <Gauge
+              <Users
                 className="w-4 h-4 text-[var(--brand-accent)]"
                 aria-hidden="true"
               />
-              <span>Instrument Tuner</span>
+              <span>Worship Team Hub</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)]">
-              Tune guitar, bass, ukulele, or chromatic pitch using your
-              device&apos;s microphone or reference tones.
+              Collaborate with your church band. Share custom arrangements, live rehearsal takes, and roster presence.
             </p>
           </div>
           <ArrowRight

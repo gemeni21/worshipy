@@ -23,6 +23,9 @@ import {
   AlertCircle,
   Plus,
   Radio,
+  Palette,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { AuthModal } from '@/components/auth/AuthModal';
@@ -44,6 +47,7 @@ export default function TeamHubPage() {
     createGroup,
     joinGroup,
     leaveGroup,
+    updateTeamBranding,
   } = useAuth();
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -76,6 +80,14 @@ export default function TeamHubPage() {
   const [uploadInstrument, setUploadInstrument] = useState(user?.instrument || 'Band Take');
   const [isUploadingTake, setIsUploadingTake] = useState(false);
 
+  // Church Branding State (Leader Customization)
+  const [showBrandingModal, setShowBrandingModal] = useState(false);
+  const [brandingTitleInput, setBrandingTitleInput] = useState('');
+  const [brandingChurchInput, setBrandingChurchInput] = useState('');
+  const [brandingLogoUrl, setBrandingLogoUrl] = useState('');
+  const [isSavingBranding, setIsSavingBranding] = useState(false);
+  const [brandingSuccessMsg, setBrandingSuccessMsg] = useState(false);
+
   const [, startTransition] = useTransition();
 
   const currentTeam = activeGroup || getCachedTeam();
@@ -104,6 +116,97 @@ export default function TeamHubPage() {
         .catch(() => {});
     }
   }, [showQrModal, currentTeam?.inviteCode]);
+
+  // Synchronize initial branding values with team
+  useEffect(() => {
+    if (currentTeam) {
+      setBrandingTitleInput(currentTeam.customAppTitle || '');
+      setBrandingChurchInput(currentTeam.churchName || '');
+      setBrandingLogoUrl(currentTeam.customAppLogoUrl || '');
+    }
+  }, [currentTeam?.id, currentTeam?.customAppTitle, currentTeam?.customAppLogoUrl, currentTeam?.churchName]);
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file (PNG, JPG, SVG, or WebP).');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (loadEvt) => {
+      const src = loadEvt.target?.result as string;
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxDim = 128;
+        let w = img.width;
+        let h = img.height;
+        if (w > h && w > maxDim) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else if (h > maxDim) {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/png');
+          setBrandingLogoUrl(compressed);
+        }
+      };
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveBranding = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentTeam) return;
+
+    setIsSavingBranding(true);
+    try {
+      await updateTeamBranding({
+        customAppTitle: brandingTitleInput.trim(),
+        churchName: brandingChurchInput.trim(),
+        customAppLogoUrl: brandingLogoUrl.trim(),
+      });
+      setBrandingSuccessMsg(true);
+      setTimeout(() => {
+        setBrandingSuccessMsg(false);
+        setShowBrandingModal(false);
+      }, 1000);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to update church branding');
+    } finally {
+      setIsSavingBranding(false);
+    }
+  };
+
+  const handleResetBranding = async () => {
+    if (!currentTeam) return;
+    if (!confirm('Reset app name and logo to default Worshipy branding?')) return;
+
+    setIsSavingBranding(true);
+    try {
+      await updateTeamBranding({
+        customAppTitle: '',
+        customAppLogoUrl: '',
+      });
+      setBrandingTitleInput('');
+      setBrandingLogoUrl('');
+      setShowBrandingModal(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to reset branding');
+    } finally {
+      setIsSavingBranding(false);
+    }
+  };
 
   // Audio Playback handler
   const handleTogglePlay = (take: TeamPracticeTake) => {
@@ -477,6 +580,18 @@ export default function TeamHubPage() {
             >
               <QrCode className="w-4 h-4" />
             </button>
+
+            {isLeader && (
+              <button
+                type="button"
+                onClick={() => setShowBrandingModal(true)}
+                className="px-3 py-1.5 rounded-xl border border-[var(--brand-accent)]/30 hover:border-[var(--brand-accent)] text-xs font-semibold text-[var(--brand-accent)] hover:bg-[var(--brand-surface)] flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+                title="Customize Church Name & Logo"
+              >
+                <Palette className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Church Branding</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -586,6 +701,46 @@ export default function TeamHubPage() {
                 );
               })}
             </div>
+
+            {/* Church Branding Card for Leader */}
+            {isLeader && (
+              <div className="p-3 rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                    <span className="font-bold text-xs text-[var(--text-primary)]">Church Branding</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowBrandingModal(true)}
+                    className="text-[11px] font-bold text-[var(--brand-accent)] hover:underline cursor-pointer"
+                  >
+                    Customize
+                  </button>
+                </div>
+                <div className="flex items-center gap-2.5 p-2 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                  {currentTeam.customAppLogoUrl ? (
+                    <img
+                      src={currentTeam.customAppLogoUrl}
+                      alt="Logo"
+                      className="w-7 h-7 rounded-lg object-contain bg-white/5 border border-[var(--border-subtle)] p-0.5 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0">
+                      <Music2 className="w-3.5 h-3.5" />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <span className="font-bold text-xs block text-[var(--text-primary)] truncate">
+                      {currentTeam.customAppTitle || currentTeam.churchName || currentTeam.name}
+                    </span>
+                    <span className="text-[10px] text-[var(--text-secondary)] block truncate">
+                      {currentTeam.customAppTitle ? 'Custom Church Name & Logo' : 'Default App Title'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Leave Team Button */}
             <div className="pt-2 border-t border-[var(--border-subtle)]">
@@ -895,6 +1050,175 @@ export default function TeamHubPage() {
                 >
                   {isUploadingTake ? 'Saving...' : 'Share with Band'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Church Branding Customization Modal (Leader Only) */}
+      {showBrandingModal && currentTeam && isLeader && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-lg rounded-3xl border border-[var(--border-subtle)] bg-[#101014] p-6 sm:p-7 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Palette className="w-5 h-5 text-[var(--brand-accent)]" />
+                  <h3 className="text-lg font-bold text-[var(--text-primary)]">Church Branding &amp; Custom Logo</h3>
+                </div>
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                  Personalize the app to represent your church or ministry. This title and logo will appear at the very top-left of Worshipy for all members of <span className="text-[var(--text-primary)] font-semibold">{currentTeam.name}</span>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBrandingModal(false)}
+                className="p-1 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Live Top-Left Navbar Preview Mockup */}
+            <div className="space-y-2">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-secondary)] block">
+                Live Navbar Preview (Top-Left Corner)
+              </span>
+              <div className="p-3.5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-center gap-3 shadow-inner">
+                {brandingLogoUrl ? (
+                  <img
+                    src={brandingLogoUrl}
+                    alt="Logo preview"
+                    className="w-10 h-10 rounded-xl object-contain bg-white/5 border border-[var(--border-subtle)] p-1 shrink-0 shadow-sm"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0 shadow-sm">
+                    <Music2 className="w-5 h-5" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <span className="font-bold text-sm sm:text-base text-[var(--text-primary)] block leading-tight truncate">
+                    {brandingTitleInput.trim() || currentTeam.churchName || currentTeam.name || 'Worship Music'}
+                  </span>
+                  <span className="text-xs text-[var(--text-secondary)] block truncate">
+                    {brandingChurchInput.trim() || currentTeam.churchName || 'Worship Team'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveBranding} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Custom App Main Title
+                </label>
+                <input
+                  type="text"
+                  value={brandingTitleInput}
+                  onChange={(e) => setBrandingTitleInput(e.target.value)}
+                  placeholder="e.g. Grace City Worship, Elevate Music, Central Band"
+                  maxLength={100}
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+                <span className="text-[10px] text-[var(--text-secondary)] block mt-1">
+                  Replaces the default &quot;Worship Music&quot; title on the top left.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
+                  Church / Ministry Name
+                </label>
+                <input
+                  type="text"
+                  value={brandingChurchInput}
+                  onChange={(e) => setBrandingChurchInput(e.target.value)}
+                  placeholder="e.g. Grace City Church"
+                  maxLength={120}
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+                />
+              </div>
+
+              {/* Logo / Profile Image Upload & URL */}
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold text-[var(--text-secondary)]">
+                  Church Logo or Ministry Profile Image
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label className="p-3 rounded-xl border border-dashed border-[var(--border-strong)] hover:border-[var(--brand-accent)] bg-[var(--bg-surface)] flex flex-col items-center justify-center text-center cursor-pointer transition-colors group">
+                    <Upload className="w-5 h-5 text-[var(--text-secondary)] group-hover:text-[var(--brand-accent)] mb-1" />
+                    <span className="text-xs font-semibold text-[var(--text-primary)]">Upload Image File</span>
+                    <span className="text-[10px] text-[var(--text-secondary)]">PNG, JPG, SVG, WebP (auto-scaled)</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <div className="space-y-1">
+                    <input
+                      type="url"
+                      value={brandingLogoUrl.startsWith('data:') ? '' : brandingLogoUrl}
+                      onChange={(e) => setBrandingLogoUrl(e.target.value)}
+                      placeholder="Or paste image URL (https://...)"
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)]"
+                    />
+                    {brandingLogoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setBrandingLogoUrl('')}
+                        className="text-[10px] text-rose-400 hover:underline cursor-pointer block"
+                      >
+                        Remove current logo
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {brandingSuccessMsg && (
+                <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Church branding updated successfully!</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                <button
+                  type="button"
+                  onClick={handleResetBranding}
+                  disabled={isSavingBranding}
+                  className="px-3 py-2 rounded-xl text-xs text-rose-400 hover:bg-rose-500/10 cursor-pointer disabled:opacity-50"
+                >
+                  Reset to Default
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowBrandingModal(false)}
+                    className="px-3 py-2 rounded-xl text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingBranding}
+                    className="px-4 py-2 rounded-xl bg-[var(--brand-accent)] text-black text-xs font-bold hover:brightness-110 active:scale-98 cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
+                  >
+                    {isSavingBranding ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <span>Save Branding</span>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

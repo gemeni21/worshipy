@@ -18,6 +18,8 @@ service cloud.firestore {
     //   - id: string (optional) - Group identifier
     //   - name: string (required, 1-100 chars) - Worship team name
     //   - churchName: string (optional, 0-120 chars) - Church name
+    //   - customAppTitle: string (optional, 0-100 chars) - Custom church / team branding title
+    //   - customAppLogoUrl: string (optional, 0-200000 chars) - Custom church logo (data URL or HTTPS link)
     //   - inviteCode: string (required, 4-20 chars) - Unique joining code
     //   - ownerId: string (required, 1-128 chars) - Worship leader / creator ID
     //   - createdAt: timestamp or ISO string (required, 10-50 chars)
@@ -139,7 +141,7 @@ service cloud.firestore {
 
     function isValidGroup(data) {
       return hasOnlyAllowedFields([
-               'id', 'name', 'churchName', 'inviteCode', 'ownerId',
+               'id', 'name', 'churchName', 'customAppTitle', 'customAppLogoUrl', 'inviteCode', 'ownerId',
                'createdAt', 'updatedAt', 'members', 'memberIds', 'memberUids', 'practiceTakes'
              ]) &&
              hasRequiredFields(['name', 'inviteCode', 'ownerId', 'createdAt', 'members']) &&
@@ -149,6 +151,8 @@ service cloud.firestore {
              isValidTimestampOrDateString(data.createdAt) &&
              (!('updatedAt' in data) || isValidTimestampOrDateString(data.updatedAt)) &&
              isValidOptionalString(data, 'churchName', 0, 120) &&
+             isValidOptionalString(data, 'customAppTitle', 0, 100) &&
+             isValidOptionalString(data, 'customAppLogoUrl', 0, 200000) &&
              data.members is list && data.members.size() <= 100 &&
              (!('memberIds' in data) || (data.memberIds is list && data.memberIds.size() <= 100)) &&
              (!('memberUids' in data) || (data.memberUids is list && data.memberUids.size() <= 100)) &&

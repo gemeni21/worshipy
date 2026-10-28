@@ -30,6 +30,7 @@ import {
   setCachedTeam,
   subscribeToTeam,
   subscribeToTeamPresence,
+  updateTeamBranding,
 } from '@/lib/team/teamService';
 
 interface AuthContextValue {
@@ -70,6 +71,11 @@ interface AuthContextValue {
   createGroup: (name: string, churchName?: string) => Promise<WorshipGroup>;
   joinGroup: (inviteCode: string) => Promise<WorshipGroup>;
   leaveGroup: () => Promise<void>;
+  updateTeamBranding: (updates: {
+    customAppTitle?: string;
+    customAppLogoUrl?: string;
+    churchName?: string;
+  }) => Promise<WorshipGroup>;
   refreshActiveGroup: () => Promise<void>;
   submissions: SongSubmission[];
   pendingApprovalsCount: number;
@@ -600,6 +606,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
   }, [user, activeGroup]);
 
+  const handleUpdateTeamBranding = useCallback(
+    async (updates: {
+      customAppTitle?: string;
+      customAppLogoUrl?: string;
+      churchName?: string;
+    }): Promise<WorshipGroup> => {
+      const targetGroupId = activeGroup?.id || user?.groupId || getCachedTeam()?.id;
+      if (!targetGroupId) {
+        throw new Error('No active worship team found.');
+      }
+      const updated = await updateTeamBranding(targetGroupId, updates);
+      setActiveGroup(updated);
+      return updated;
+    },
+    [activeGroup?.id, user?.groupId]
+  );
+
   // Submit song for Global Publishing
   const submitSongForGlobal = useCallback(
     async (song: SongRecord, notes?: string): Promise<SongSubmission> => {
@@ -754,6 +777,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       createGroup,
       joinGroup,
       leaveGroup,
+      updateTeamBranding: handleUpdateTeamBranding,
       refreshActiveGroup,
       submissions,
       pendingApprovalsCount,
@@ -785,6 +809,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       createGroup,
       joinGroup,
       leaveGroup,
+      handleUpdateTeamBranding,
       refreshActiveGroup,
       submissions,
       pendingApprovalsCount,

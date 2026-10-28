@@ -1024,6 +1024,41 @@ export function getWorshipGroup(groupId: string): WorshipGroup | null {
   return store.groups[groupId] || null;
 }
 
+export function updateWorshipGroupBranding(
+  userId: string,
+  groupId: string,
+  updates: {
+    customAppTitle?: string;
+    customAppLogoUrl?: string;
+    churchName?: string;
+  }
+): { ok: boolean; group?: WorshipGroup; error?: string } {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  const group = store.groups[groupId];
+  if (!group) {
+    return { ok: false, error: 'Worship team not found.' };
+  }
+
+  if (group.ownerId !== userId) {
+    return { ok: false, error: 'Only the team creator or leader can customize the church branding.' };
+  }
+
+  if (updates.customAppTitle !== undefined) {
+    group.customAppTitle = updates.customAppTitle ? updates.customAppTitle.trim() : undefined;
+  }
+  if (updates.customAppLogoUrl !== undefined) {
+    group.customAppLogoUrl = updates.customAppLogoUrl ? updates.customAppLogoUrl.trim() : undefined;
+  }
+  if (updates.churchName !== undefined) {
+    group.churchName = updates.churchName ? updates.churchName.trim() : undefined;
+  }
+
+  saveStore(store);
+  return { ok: true, group };
+}
+
 export function findWorshipGroupByCode(code: string): WorshipGroup | null {
   const store = ensureDataStore();
   if (!store.groups) return null;

@@ -48,6 +48,8 @@ export interface WorshipGroup {
   id: string;
   name: string;
   churchName?: string;
+  customAppTitle?: string;
+  customAppLogoUrl?: string;
   inviteCode: string; // 6-character unique code e.g. "D7FLWV"
   ownerId: string;
   createdAt: string;
