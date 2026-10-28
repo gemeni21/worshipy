@@ -6,7 +6,7 @@ import {
   signOut as firebaseSignOut,
   type Auth,
 } from 'firebase/auth';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, type Firestore } from 'firebase/firestore';
 
 export const DEFAULT_FIREBASE_CONFIG = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyBQvQyMxSSZteL5-15IPGk0YEC6Lw7mQTA',
@@ -32,7 +32,13 @@ if (isFirebaseConfigured && typeof window !== 'undefined') {
   try {
     appInstance = getApps().length > 0 ? getApp() : initializeApp(DEFAULT_FIREBASE_CONFIG);
     authInstance = getAuth(appInstance);
-    firestoreInstance = getFirestore(appInstance);
+    try {
+      firestoreInstance = initializeFirestore(appInstance, {
+        ignoreUndefinedProperties: true,
+      });
+    } catch {
+      firestoreInstance = getFirestore(appInstance);
+    }
   } catch (err) {
     console.warn('Firebase initialization note:', err);
   }

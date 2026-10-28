@@ -79,6 +79,7 @@ export default function TeamHubPage() {
   const [uploadNotes, setUploadNotes] = useState('');
   const [uploadInstrument, setUploadInstrument] = useState(user?.instrument || 'Band Take');
   const [isUploadingTake, setIsUploadingTake] = useState(false);
+  const [takeUploadError, setTakeUploadError] = useState<string | null>(null);
 
   // Church Branding State (Leader Customization)
   const [showBrandingModal, setShowBrandingModal] = useState(false);
@@ -311,6 +312,7 @@ export default function TeamHubPage() {
     if (!currentTeam || !user || !uploadSongTitle.trim() || !uploadTakeTitle.trim()) return;
 
     setIsUploadingTake(true);
+    setTakeUploadError(null);
     try {
       const newTake: TeamPracticeTake = {
         id: `take_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -321,9 +323,9 @@ export default function TeamHubPage() {
         authorId: user.id,
         createdAt: new Date().toISOString(),
         durationSeconds: 180,
-        audioUrl: uploadAudioUrl.trim() || undefined,
-        notes: uploadNotes.trim() || undefined,
-        instrumentTag: uploadInstrument,
+        ...(uploadAudioUrl.trim() ? { audioUrl: uploadAudioUrl.trim() } : {}),
+        ...(uploadNotes.trim() ? { notes: uploadNotes.trim() } : {}),
+        ...(uploadInstrument.trim() ? { instrumentTag: uploadInstrument.trim() } : {}),
         isLeaderTake: currentTeam.ownerId === user.id,
       };
 
@@ -334,7 +336,7 @@ export default function TeamHubPage() {
       setUploadAudioUrl('');
       setUploadNotes('');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to share take');
+      setTakeUploadError(err instanceof Error ? err.message : 'Failed to share take');
     } finally {
       setIsUploadingTake(false);
     }
@@ -1037,6 +1039,13 @@ export default function TeamHubPage() {
                   className="w-full px-3 py-2 text-xs rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:border-[var(--brand-accent)] resize-none"
                 />
               </div>
+
+              {takeUploadError && (
+                <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{takeUploadError}</span>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button

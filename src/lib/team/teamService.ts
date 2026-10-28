@@ -556,10 +556,10 @@ export async function sendTeamHeartbeat(
         userId: user.id,
         displayName: user.displayName || user.email.split('@')[0],
         instrument: user.instrument || 'Musician',
-        photoURL: user.photoURL || undefined,
+        ...(user.photoURL ? { photoURL: user.photoURL } : {}),
         online: true,
         lastSeen: now,
-        currentSong: currentSong || undefined,
+        ...(currentSong ? { currentSong } : {}),
       },
       { merge: true }
     );
@@ -603,8 +603,26 @@ export async function sharePracticeTakeToTeam(
   const db = getFirebaseFirestore();
   if (!db || !groupId) throw new Error('Firestore database is not available.');
 
+  // Clean undefined properties so Firestore never throws unsupported field value error
+  const cleanTake: Record<string, unknown> = {
+    id: take.id,
+    groupId,
+    songId: take.songId,
+    songTitle: take.songTitle,
+    title: take.title,
+    authorName: take.authorName,
+    authorId: take.authorId,
+    createdAt: take.createdAt,
+    durationSeconds: Math.max(0, Math.round(take.durationSeconds || 180)),
+  };
+
+  if (take.audioUrl && take.audioUrl.trim()) cleanTake.audioUrl = take.audioUrl.trim();
+  if (take.notes && take.notes.trim()) cleanTake.notes = take.notes.trim();
+  if (take.instrumentTag && take.instrumentTag.trim()) cleanTake.instrumentTag = take.instrumentTag.trim();
+  if (take.isLeaderTake !== undefined) cleanTake.isLeaderTake = Boolean(take.isLeaderTake);
+
   const takeRef = doc(db, 'groups', groupId, 'practiceTakes', take.id);
-  await setDoc(takeRef, take);
+  await setDoc(takeRef, cleanTake);
 }
 
 export async function deleteSharedPracticeTake(

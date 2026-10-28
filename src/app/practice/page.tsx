@@ -51,8 +51,8 @@ export default function PracticeStudioPage() {
         authorId: user.id,
         createdAt: new Date().toISOString(),
         durationSeconds: Math.round(take.durationSeconds || 180),
-        audioUrl: take.audioUrl || undefined,
-        notes: take.notes || undefined,
+        ...(take.audioUrl ? { audioUrl: take.audioUrl } : {}),
+        ...(take.notes ? { notes: take.notes } : {}),
         instrumentTag: user.instrument || 'Band Take',
         isLeaderTake: activeGroup.ownerId === user.id,
       };
