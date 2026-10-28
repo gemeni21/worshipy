@@ -27,6 +27,23 @@ const LOCAL_GROUP_CACHE_KEY = 'worshipy_cached_group';
 const PRESENCE_HEARTBEAT_MS = 20000; // 20 seconds
 const ONLINE_THRESHOLD_MS = 50000; // 50 seconds
 
+export function getSessionToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return (
+    localStorage.getItem('worshipy_auth_token_v1') ||
+    localStorage.getItem('worshipy_token') ||
+    null
+  );
+}
+
+export function setSessionToken(token: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('worshipy_auth_token_v1', token);
+    localStorage.setItem('worshipy_token', token);
+  } catch {}
+}
+
 // Local storage helper
 export function getCachedTeam(): WorshipGroup | null {
   if (typeof window === 'undefined') return null;
@@ -59,7 +76,7 @@ function generateInviteCode(): string {
 }
 
 /**
- * Creates a new Worship Group in Firestore with fallback to Local API
+ * Creates a new Worship Group in Firestore with sync to server API
  */
 export async function createTeam(
   user: UserProfile,
@@ -70,64 +87,90 @@ export async function createTeam(
   if (!trimmedName) throw new Error('Please enter a team name.');
 
   const db = getFirebaseFirestore();
-  const now = new Date().toISOString();
-  const groupId = `group_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const inviteCode = generateInviteCode();
+  const token = getSessionToken();
+  let finalGroup: WorshipGroup | null = null;
 
-  const newMember: GroupMember = {
-    userId: user.id,
-    email: user.email,
-    displayName: user.displayName || user.email.split('@')[0],
-    role: 'leader',
-    instrument: user.instrument || 'Worship Leader',
-    photoURL: user.photoURL,
-    joinedAt: now,
-  };
-
-  const newGroup: WorshipGroup = {
-    id: groupId,
-    name: trimmedName,
-    churchName: churchName?.trim() || user.churchName,
-    inviteCode,
-    ownerId: user.id,
-    createdAt: now,
-    members: [newMember],
-  };
-
-  if (db) {
-    try {
-      const groupRef = doc(db, 'groups', groupId);
-      await setDoc(groupRef, {
-        ...newGroup,
-        memberIds: [user.id],
-        serverCreatedAt: serverTimestamp(),
-      });
-    } catch (firestoreErr) {
-      console.warn('Firestore write note, ensuring fallback:', firestoreErr);
-    }
-  }
-
-  // Also sync with server endpoint to update stateless session token
+  // 1. Sync with server to get canonical group and update HMAC session token
   try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('worshipy_token') : null;
     const res = await fetch('/api/groups/create', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ name: trimmedName, churchName: newGroup.churchName }),
+      body: JSON.stringify({ name: trimmedName, churchName: churchName?.trim() || user.churchName }),
     });
     if (res.ok) {
       const data = await res.json();
       if (data.token) {
-        localStorage.setItem('worshipy_token', data.token);
+        setSessionToken(data.token);
+      }
+      if (data.group) {
+        finalGroup = data.group;
+      }
+    } else {
+      const data = await res.json().catch(() => null);
+      if (data?.error && data.error.includes('already a member')) {
+        throw new Error(data.error);
       }
     }
-  } catch {}
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('already a member')) {
+      throw err;
+    }
+    console.warn('Server group create note, proceeding with fallback:', err);
+  }
 
-  setCachedTeam(newGroup);
-  return newGroup;
+  // 2. Fallback to client-generated group if server was unreachable
+  if (!finalGroup) {
+    const now = new Date().toISOString();
+    const groupId = `group_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const inviteCode = generateInviteCode();
+    const newMember: GroupMember = {
+      userId: user.id,
+      email: user.email,
+      displayName: user.displayName || user.email.split('@')[0],
+      role: 'leader',
+      instrument: user.instrument || 'Worship Leader',
+      photoURL: user.photoURL,
+      joinedAt: now,
+    };
+    finalGroup = {
+      id: groupId,
+      name: trimmedName,
+      churchName: churchName?.trim() || user.churchName,
+      inviteCode,
+      ownerId: user.id,
+      createdAt: now,
+      members: [newMember],
+    };
+  }
+
+  // 3. Write to Firestore so real-time roster & presence listeners work across all devices
+  if (db && finalGroup) {
+    try {
+      const groupRef = doc(db, 'groups', finalGroup.id);
+      await setDoc(
+        groupRef,
+        {
+          id: finalGroup.id,
+          name: finalGroup.name,
+          churchName: finalGroup.churchName || null,
+          inviteCode: finalGroup.inviteCode,
+          ownerId: finalGroup.ownerId,
+          createdAt: finalGroup.createdAt,
+          members: finalGroup.members,
+          memberIds: finalGroup.members.map((m) => m.userId),
+        },
+        { merge: true }
+      );
+    } catch (firestoreErr) {
+      console.warn('Firestore group write note:', firestoreErr);
+    }
+  }
+
+  setCachedTeam(finalGroup);
+  return finalGroup;
 }
 
 /**
@@ -141,9 +184,11 @@ export async function joinTeamByInviteCode(
   if (!normalizedCode) throw new Error('Please enter an invite code.');
 
   const db = getFirebaseFirestore();
+  const token = getSessionToken();
   let foundGroup: WorshipGroup | null = null;
   let targetDocId = '';
 
+  // 1. First look up team in Firestore
   if (db) {
     try {
       const q = query(
@@ -162,9 +207,8 @@ export async function joinTeamByInviteCode(
     }
   }
 
-  // If not found in Firestore yet, try server API
-  if (!foundGroup) {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('worshipy_token') : null;
+  // 2. Sync with server API to update user session token and resolve server store
+  try {
     const res = await fetch('/api/groups/join', {
       method: 'POST',
       headers: {
@@ -174,21 +218,36 @@ export async function joinTeamByInviteCode(
       body: JSON.stringify({ inviteCode: normalizedCode }),
     });
     const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Team not found with that invite code.');
+    if (res.ok && data.group) {
+      if (data.token) {
+        setSessionToken(data.token);
+      }
+      if (!foundGroup) {
+        foundGroup = data.group;
+        targetDocId = data.group.id;
+      }
+    } else if (!foundGroup && !res.ok) {
+      throw new Error(data.error || 'No worship team found with that invite code.');
     }
-    if (data.token) {
-      localStorage.setItem('worshipy_token', data.token);
+  } catch (apiErr) {
+    if (!foundGroup) {
+      throw apiErr instanceof Error ? apiErr : new Error('Team not found with that invite code.');
     }
-    foundGroup = data.group;
-  } else if (db && targetDocId) {
-    // Add user to Firestore group members
+  }
+
+  if (!foundGroup) {
+    throw new Error('No worship team found with that invite code. Please verify the code with your worship leader.');
+  }
+
+  // 3. Update membership in Firestore for real-time sync across band members
+  if (db) {
+    const docId = targetDocId || foundGroup.id;
     const existingIndex = foundGroup.members.findIndex((m) => m.userId === user.id);
     if (existingIndex === -1) {
       const newMember: GroupMember = {
         userId: user.id,
         email: user.email,
-        displayName: user.displayName,
+        displayName: user.displayName || user.email.split('@')[0],
         role: 'member',
         instrument: user.instrument || 'Musician',
         photoURL: user.photoURL,
@@ -198,37 +257,32 @@ export async function joinTeamByInviteCode(
       foundGroup.members = updatedMembers;
 
       try {
-        await updateDoc(doc(db, 'groups', targetDocId), {
+        await updateDoc(doc(db, 'groups', docId), {
           members: updatedMembers,
           memberIds: updatedMembers.map((m) => m.userId),
         });
       } catch (err) {
         console.warn('Firestore member update note:', err);
       }
+    } else {
+      // Sync document structure if needed
+      try {
+        await setDoc(
+          doc(db, 'groups', docId),
+          {
+            id: foundGroup.id,
+            name: foundGroup.name,
+            churchName: foundGroup.churchName || null,
+            inviteCode: foundGroup.inviteCode,
+            ownerId: foundGroup.ownerId,
+            createdAt: foundGroup.createdAt,
+            members: foundGroup.members,
+            memberIds: foundGroup.members.map((m) => m.userId),
+          },
+          { merge: true }
+        );
+      } catch {}
     }
-
-    // Update server session token
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('worshipy_token') : null;
-      const res = await fetch('/api/groups/join', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ inviteCode: normalizedCode }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.token) {
-          localStorage.setItem('worshipy_token', data.token);
-        }
-      }
-    } catch {}
-  }
-
-  if (!foundGroup) {
-    throw new Error('Unable to join team. Please check the code.');
   }
 
   setCachedTeam(foundGroup);
@@ -240,6 +294,8 @@ export async function joinTeamByInviteCode(
  */
 export async function leaveTeam(groupId: string, userId: string): Promise<void> {
   const db = getFirebaseFirestore();
+  const token = getSessionToken();
+
   if (db && groupId) {
     try {
       const groupRef = doc(db, 'groups', groupId);
@@ -269,7 +325,6 @@ export async function leaveTeam(groupId: string, userId: string): Promise<void> 
 
   // Sync with server API
   try {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('worshipy_token') : null;
     const res = await fetch('/api/groups/leave', {
       method: 'POST',
       headers: {
@@ -280,7 +335,7 @@ export async function leaveTeam(groupId: string, userId: string): Promise<void> 
     if (res.ok) {
       const data = await res.json();
       if (data.token) {
-        localStorage.setItem('worshipy_token', data.token);
+        setSessionToken(data.token);
       }
     }
   } catch {}

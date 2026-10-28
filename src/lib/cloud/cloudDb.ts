@@ -934,16 +934,21 @@ export function joinWorshipGroupByCode(
     return { ok: false, error: 'User not found. Please sign in to join a worship team.' };
   }
 
-  // Strict User Rule: If user is ALREADY in a group, they cannot join another group unless they leave first
+  const normalizedCode = inviteCode.trim().toUpperCase();
+
+  // If user is already in a group:
   if (user.profile.groupId && store.groups[user.profile.groupId]) {
     const existingGroup = store.groups[user.profile.groupId];
+    // Smooth re-entry if testing with their own team's code
+    if (existingGroup.inviteCode.toUpperCase() === normalizedCode) {
+      return { ok: true, group: existingGroup };
+    }
     return {
       ok: false,
       error: `You are already a member of "${existingGroup.name}". You must leave this group before joining another team.`,
     };
   }
 
-  const normalizedCode = inviteCode.trim().toUpperCase();
   const targetGroup = Object.values(store.groups).find(
     (g) => g.inviteCode.toUpperCase() === normalizedCode
   );
