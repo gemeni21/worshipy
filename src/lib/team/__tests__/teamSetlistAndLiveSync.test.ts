@@ -12,6 +12,7 @@ import {
   updateLiveSessionState,
   clearAllLiveSessionsForTest,
   endLiveSession,
+  getLiveSessionSnapshot,
 } from '../../live/liveSessionServer.ts';
 import { resolveReferencePlayback } from '../../audio/referenceAudio.ts';
 import {
@@ -679,5 +680,33 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
         participantName: 'Late Bassist',
       });
     }, /already ended/);
+  });
+
+  it('14. non-leader members cannot terminate active live session, ensuring End Session action is leader-exclusive', () => {
+    const leaderLive = createLiveSession({
+      title: 'Easter Sunday Live',
+      leaderName: 'Pastor Timothy',
+      initialSongId: '1',
+    });
+    const sessionId = leaderLive.session.sessionId;
+
+    const memberJoin = joinLiveSession({
+      sessionId,
+      participantName: 'Keyboard Player',
+      instrument: 'keyboard',
+    });
+
+    // Member participant token cannot end session
+    assert.throws(() => {
+      endLiveSession(sessionId, memberJoin.participantToken);
+    }, /only the worship leader may end/i);
+
+    // Session remains active
+    const snapshot = getLiveSessionSnapshot(sessionId, leaderLive.participantToken);
+    assert.equal(snapshot.session.status, 'active');
+
+    // Leader participant token successfully ends session
+    const ended = endLiveSession(sessionId, leaderLive.participantToken);
+    assert.equal(ended.status, 'ended');
   });
 });

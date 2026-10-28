@@ -67,6 +67,7 @@ export interface StoredLiveCredentials {
   participantId: string;
   participantToken: string;
   inviteToken?: string;
+  isLeader?: boolean;
 }
 
 export interface CreateLiveSessionInput {

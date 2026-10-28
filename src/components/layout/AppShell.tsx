@@ -360,7 +360,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         window.localStorage.getItem(SESSION_CREDENTIALS_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed.sessionId === activeGroup.activeLiveSessionId && parsed.participantToken) {
+        if (
+          parsed.sessionId === activeGroup.activeLiveSessionId &&
+          parsed.participantToken &&
+          (parsed.isLeader === true || Boolean(parsed.inviteToken))
+        ) {
           setHasStoredLeaderCredentials(true);
           return;
         }

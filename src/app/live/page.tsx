@@ -407,6 +407,7 @@ function LiveSyncWorkspace({
             sessionId: data.session.sessionId,
             participantId: data.participantId,
             participantToken: data.participantToken,
+            isLeader: Boolean(target.isLeader),
           };
           window.sessionStorage.setItem(
             SESSION_CREDENTIALS_STORAGE_KEY,
@@ -754,6 +755,7 @@ function LiveSyncWorkspace({
           participantId: data.participantId,
           participantToken: data.participantToken,
           inviteToken: data.inviteToken,
+          isLeader: true,
         };
         window.sessionStorage.setItem(
           SESSION_CREDENTIALS_STORAGE_KEY,
@@ -835,6 +837,7 @@ function LiveSyncWorkspace({
           sessionId: data.session.sessionId,
           participantId: data.participantId,
           participantToken: data.participantToken,
+          isLeader: false,
         };
         window.sessionStorage.setItem(
           SESSION_CREDENTIALS_STORAGE_KEY,
