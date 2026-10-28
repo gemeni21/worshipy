@@ -36,6 +36,8 @@ import {
   getCachedTeam,
 } from '@/lib/team/teamService';
 import type { TeamPracticeTake } from '@/types/auth';
+import { PracticeWaveformPlayer } from '@/components/practice/PracticeWaveformPlayer';
+import type { PracticeTake } from '@/lib/audio/practiceStorage';
 
 export default function TeamHubPage() {
   const {
@@ -67,9 +69,6 @@ export default function TeamHubPage() {
 
   // Shared Practice Takes State
   const [sharedTakes, setSharedTakes] = useState<TeamPracticeTake[]>([]);
-  const [playingTakeId, setPlayingTakeId] = useState<string | null>(null);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Upload Rehearsal Take Modal
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -212,33 +211,26 @@ export default function TeamHubPage() {
     }
   };
 
-  // Audio Playback handler
-  const handleTogglePlay = (take: TeamPracticeTake) => {
-    if (!take.audioUrl) return;
-
-    if (playingTakeId === take.id) {
-      audioRef.current?.pause();
-      setPlayingTakeId(null);
-    } else {
-      if (!audioRef.current) {
-        audioRef.current = new Audio();
-      }
-      audioRef.current.src = take.audioUrl;
-      audioRef.current.playbackRate = playbackSpeed;
-      audioRef.current.play().catch(() => {});
-      setPlayingTakeId(take.id);
-
-      audioRef.current.onended = () => {
-        setPlayingTakeId(null);
-      };
-    }
-  };
-
-  const handleSpeedChange = (speed: number) => {
-    setPlaybackSpeed(speed);
-    if (audioRef.current) {
-      audioRef.current.playbackRate = speed;
-    }
+  // Convert TeamPracticeTake to PracticeTake for the waveform player
+  const teamTakeToPracticeTake = (take: TeamPracticeTake, church?: string): PracticeTake => {
+    return {
+      id: take.id,
+      songSlug: take.songId || 'team-take',
+      songTitle: take.songTitle,
+      fileName: take.title,
+      key: 'G',
+      durationSeconds: take.durationSeconds || 180,
+      createdAt: new Date(take.createdAt).getTime() || Date.now(),
+      audioUrl: take.audioUrl,
+      sourceType: 'link',
+      mimeType: 'audio/mpeg',
+      notes: take.notes,
+      waveformPeaks: [],
+      churchName: church,
+      createdBy: take.authorName,
+      isLeaderTake: take.isLeaderTake,
+      instrumentTag: take.instrumentTag,
+    };
   };
 
   const copyCode = async () => {
@@ -804,32 +796,6 @@ export default function TeamHubPage() {
               </button>
             </div>
 
-            {/* Playback Speed Controls */}
-            {playingTakeId && (
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-[var(--brand-surface)] border border-[var(--brand-accent)]/30 text-xs">
-                <span className="font-semibold text-[var(--brand-accent)] flex items-center gap-1.5">
-                  <Radio className="w-4 h-4 animate-pulse" />
-                  <span>Now Playing Rehearsal Audio</span>
-                </span>
-                <div className="flex items-center gap-1">
-                  {[0.75, 0.9, 1.0, 1.1, 1.25].map((speed) => (
-                    <button
-                      key={speed}
-                      type="button"
-                      onClick={() => handleSpeedChange(speed)}
-                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold cursor-pointer ${
-                        playbackSpeed === speed
-                          ? 'bg-[var(--brand-accent)] text-black'
-                          : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                      }`}
-                    >
-                      {speed}x
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Shared Takes List */}
             {sharedTakes.length === 0 ? (
               <div className="py-12 text-center space-y-3">
@@ -850,83 +816,17 @@ export default function TeamHubPage() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {sharedTakes.map((take) => {
-                  const isPlaying = playingTakeId === take.id;
+                  const practiceTake = teamTakeToPracticeTake(take, currentTeam?.churchName);
                   const canDelete = isLeader || Boolean(user && take.authorId === user.id);
 
                   return (
-                    <div
+                    <PracticeWaveformPlayer
                       key={take.id}
-                      className="p-4 rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-subtle)] space-y-2.5 transition-all hover:border-[var(--border-subtle)]/80"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-sm text-[var(--text-primary)] truncate">
-                              {take.songTitle}
-                            </span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)]">
-                              {take.title}
-                            </span>
-                            {take.isLeaderTake && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/15 text-amber-300 border border-amber-400/30 flex items-center gap-1">
-                                <Crown className="w-2.5 h-2.5" />
-                                <span>Official Rehearsal</span>
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                            Recorded by <span className="font-semibold text-[var(--text-primary)]">{take.authorName}</span> ({take.instrumentTag || 'Band'}) • {new Date(take.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {take.audioUrl && (
-                            <button
-                              type="button"
-                              onClick={() => handleTogglePlay(take)}
-                              className={`p-2 rounded-xl cursor-pointer transition-all ${
-                                isPlaying
-                                  ? 'bg-[var(--brand-accent)] text-black'
-                                  : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:brightness-110'
-                              }`}
-                              title={isPlaying ? 'Pause' : 'Play Take'}
-                            >
-                              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                            </button>
-                          )}
-
-                          {take.audioUrl && (
-                            <a
-                              href={take.audioUrl}
-                              download={`${take.songTitle}-${take.title}.mp3`}
-                              className="p-2 rounded-xl border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
-                              title="Download Take Audio"
-                            >
-                              <Download className="w-4 h-4" />
-                            </a>
-                          )}
-
-                          {canDelete && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTake(take.id)}
-                              className="p-2 rounded-xl text-neutral-500 hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer transition-colors"
-                              title="Delete Take"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {take.notes && (
-                        <p className="text-xs text-[var(--text-secondary)] bg-[var(--bg-surface)] p-2.5 rounded-xl border border-[var(--border-subtle)] leading-relaxed">
-                          {take.notes}
-                        </p>
-                      )}
-                    </div>
+                      take={practiceTake}
+                      onDelete={canDelete ? () => handleDeleteTake(take.id) : undefined}
+                    />
                   );
                 })}
               </div>

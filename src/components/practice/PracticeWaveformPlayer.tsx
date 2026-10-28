@@ -22,6 +22,7 @@ import {
   VolumeX,
   Pencil,
   X,
+  Crown,
 } from 'lucide-react';
 import {
   PracticeTake,
@@ -490,15 +491,17 @@ export function PracticeWaveformPlayer({
                 <span className="font-bold text-sm text-[var(--text-primary)] truncate">
                   {songTitle}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingTitle(true)}
-                  title="Edit song name"
-                  aria-label="Edit song name"
-                  className="p-1 rounded-md text-[var(--text-secondary)] opacity-70 group-hover/title:opacity-100 hover:text-[var(--brand-accent)] hover:bg-[var(--bg-subtle)] transition-all cursor-pointer"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                </button>
+                {onTitleUpdated && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingTitle(true)}
+                    title="Edit song name"
+                    aria-label="Edit song name"
+                    className="p-1 rounded-md text-[var(--text-secondary)] opacity-70 group-hover/title:opacity-100 hover:text-[var(--brand-accent)] hover:bg-[var(--bg-subtle)] transition-all cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 {titleSavedToast && (
                   <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-400 animate-in fade-in">
                     <Check className="w-3 h-3" /> Saved
@@ -529,6 +532,19 @@ export function PracticeWaveformPlayer({
               Key of {take.key}
               {take.capo ? ` • Capo ${take.capo}` : ''}
             </span>
+
+            {take.isLeaderTake && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/15 text-amber-300 border border-amber-400/30">
+                <Crown className="w-3 h-3" />
+                <span>Official Rehearsal</span>
+              </span>
+            )}
+
+            {take.instrumentTag && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+                <span>{take.instrumentTag}</span>
+              </span>
+            )}
 
             {take.churchName && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
@@ -791,14 +807,16 @@ export function PracticeWaveformPlayer({
       {!compact && (
         <div className="pt-2 border-t border-[var(--border-subtle)]/70">
           {!isEditingNotes && !notes ? (
-            <button
-              type="button"
-              onClick={() => setIsEditingNotes(true)}
-              className="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--brand-accent)] transition-colors cursor-pointer"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Add practice notes (e.g. vocal harmonies, transition timing)...</span>
-            </button>
+            onNotesUpdated ? (
+              <button
+                type="button"
+                onClick={() => setIsEditingNotes(true)}
+                className="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--brand-accent)] transition-colors cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Add practice notes (e.g. vocal harmonies, transition timing)...</span>
+              </button>
+            ) : null
           ) : isEditingNotes ? (
             <div className="space-y-2">
               <textarea
@@ -832,17 +850,23 @@ export function PracticeWaveformPlayer({
             </div>
           ) : (
             <div
-              onClick={() => setIsEditingNotes(true)}
-              title="Click to edit notes"
-              className="group flex items-start justify-between gap-2 p-2 rounded-xl bg-[var(--bg-subtle)]/60 hover:bg-[var(--bg-subtle)] text-xs text-[var(--text-primary)] cursor-pointer transition-colors"
+              onClick={() => {
+                if (onNotesUpdated) setIsEditingNotes(true);
+              }}
+              title={onNotesUpdated ? 'Click to edit notes' : undefined}
+              className={`group flex items-start justify-between gap-2 p-2 rounded-xl bg-[var(--bg-subtle)]/60 text-xs text-[var(--text-primary)] transition-colors ${
+                onNotesUpdated ? 'hover:bg-[var(--bg-subtle)] cursor-pointer' : ''
+              }`}
             >
               <div className="flex items-start gap-1.5">
                 <FileText className="w-3.5 h-3.5 mt-0.5 text-[var(--text-secondary)] shrink-0" />
                 <p className="whitespace-pre-wrap">{notes}</p>
               </div>
-              <span className="text-[10px] text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 transition-opacity">
-                Edit
-              </span>
+              {onNotesUpdated && (
+                <span className="text-[10px] text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 transition-opacity">
+                  Edit
+                </span>
+              )}
             </div>
           )}
 
