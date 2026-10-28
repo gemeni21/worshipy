@@ -499,14 +499,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         if (data.group) {
           const cached = getCachedTeam();
+          // Always union-merge known members so polling never wipes out active musicians
           const currentMembers = activeGroup?.members || cached?.members || [];
           const incomingMembers = data.group.members || [];
-          if (currentMembers.length > incomingMembers.length) {
-            const map = new Map<string, any>();
-            for (const m of currentMembers) map.set(m.userId, m);
-            for (const m of incomingMembers) map.set(m.userId, m);
-            data.group.members = Array.from(map.values());
+          const map = new Map<string, any>();
+          for (const m of currentMembers) map.set(m.userId, m);
+          for (const m of incomingMembers) map.set(m.userId, m);
+          data.group.members = Array.from(map.values());
+
+          // Preserve active setlist if server response omitted it
+          if (data.group.activeSetlist === undefined && (activeGroup?.activeSetlist || cached?.activeSetlist)) {
+            data.group.activeSetlist = activeGroup?.activeSetlist || cached?.activeSetlist;
           }
+
           setActiveGroup(data.group);
           setCachedTeam(data.group);
         }

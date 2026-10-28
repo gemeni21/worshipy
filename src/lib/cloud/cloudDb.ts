@@ -655,6 +655,13 @@ export function reviewSongSubmission(params: {
     };
 
     store.approvedGlobalSongs[publishedSong.id] = publishedSong;
+    if (store.removedGlobalSongs) {
+      delete store.removedGlobalSongs[publishedSong.id];
+      delete store.removedGlobalSongs[submission.song.id];
+      if (submission.song.slug) {
+        delete store.removedGlobalSongs[submission.song.slug];
+      }
+    }
   } else if (params.status === 'rejected' || params.status === 'removed') {
     // If rejected or removed, ensure it is removed from global if previously approved
     const publishedId = `global_${submission.song.id}`;
@@ -1028,8 +1035,21 @@ export function leaveWorshipGroup(userId: string): { ok: boolean; error?: string
 
 export function getWorshipGroup(groupId: string): WorshipGroup | null {
   const store = ensureDataStore();
-  if (!store.groups) return null;
-  return store.groups[groupId] || null;
+  if (!store.groups) store.groups = {};
+  if (store.groups[groupId]) return store.groups[groupId];
+
+  try {
+    if (fs.existsSync(STORE_FILE)) {
+      const raw = fs.readFileSync(STORE_FILE, 'utf-8');
+      const parsed: CloudStoreSchema = JSON.parse(raw);
+      if (parsed.groups && parsed.groups[groupId]) {
+        store.groups[groupId] = parsed.groups[groupId];
+        return parsed.groups[groupId];
+      }
+    }
+  } catch {}
+
+  return null;
 }
 
 export function updateWorshipGroupBranding(
@@ -1093,7 +1113,20 @@ export function updateWorshipGroupBranding(
     group.members.some((m) => m.userId === userId && m.role === 'leader');
 
   if (!isLeader) {
-    return { ok: false, error: 'Only the team creator or leader can customize the church branding.' };
+    // If a non-leader band member is simply synchronizing the member roster/presence, permit it
+    const isOnlyMembersUpdate =
+      updates.members !== undefined &&
+      updates.customAppTitle === undefined &&
+      updates.customAppLogoUrl === undefined &&
+      updates.churchName === undefined &&
+      updates.groupName === undefined &&
+      updates.inviteCode === undefined &&
+      updates.activeSetlist === undefined &&
+      updates.activeLiveSessionId === undefined;
+
+    if (!isOnlyMembersUpdate) {
+      return { ok: false, error: 'Only the team creator or leader can customize church branding or setlists.' };
+    }
   }
 
   if (Array.isArray(updates.members) && updates.members.length > 0) {

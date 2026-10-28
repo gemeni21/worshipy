@@ -274,7 +274,13 @@ function LiveSyncWorkspace({
           .then(async (res) => {
             if (!res.ok) {
               const errData = await res.json().catch(() => null);
-              if (res.status === 410 || errData?.code === 'SESSION_ENDED') {
+              if (
+                res.status === 401 ||
+                res.status === 403 ||
+                res.status === 404 ||
+                res.status === 410 ||
+                errData?.code === 'SESSION_ENDED'
+              ) {
                 window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
                 window.localStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
               }
@@ -610,6 +616,55 @@ function LiveSyncWorkspace({
     simulatedDisconnect,
     fetchLatestSnapshot,
   ]);
+
+  // Active session presence heartbeat loop: keeps participant online in Connected Team roster across all workers
+  useEffect(() => {
+    if (
+      !activeSessionId ||
+      !participantToken ||
+      activeSessionStatus === 'ended' ||
+      simulatedDisconnect
+    ) {
+      return;
+    }
+
+    const sendHeartbeat = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        return;
+      }
+      fetch(apiUrl(`/api/live/sessions/${encodeURIComponent(activeSessionId)}`), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${participantToken}`,
+        },
+        body: JSON.stringify({
+          action: 'update-presence',
+          connectionState: 'connected',
+        }),
+      }).catch(() => {});
+    };
+
+    // Send initial heartbeat and schedule recurring 15s interval
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 15000);
+
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        sendHeartbeat();
+      }
+    };
+    const onFocus = () => sendHeartbeat();
+
+    window.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [activeSessionId, participantToken, activeSessionStatus, simulatedDisconnect]);
 
   // Smoothly scroll to the active semantic section when in Follow Leader mode
   const sharedSectionId = session?.sharedState.activeSectionId;
@@ -1621,8 +1676,9 @@ function LiveSyncWorkspace({
   );
 
   // Check if active song has a reference audio track in team lineup or personal setlists
+  const currentTeamLineup = activeGroup?.activeSetlist || getCachedTeam()?.activeSetlist;
   const activeReferenceAudioUrl =
-    activeGroup?.activeSetlist?.items.find((i) => i.songId === activeSongId)?.referenceAudioUrl ||
+    currentTeamLineup?.items.find((i) => i.songId === activeSongId)?.referenceAudioUrl ||
     setlists.flatMap((s) => s.items).find((i) => i.songId === activeSongId && i.referenceAudioUrl)?.referenceAudioUrl;
 
   const activeSectionObj =
@@ -1707,15 +1763,22 @@ function LiveSyncWorkspace({
   };
 
   const handleSelectSongInQueue = (targetSongId: string) => {
+    // Preserve planned song transposition from team lineup or personal setlist
+    const activeLineup = effectiveGroup?.activeSetlist || activeSelectedSetlist;
+    const lineupItem =
+      activeLineup?.items?.find((i) => i.songId === targetSongId) ||
+      setlists.flatMap((s) => s.items).find((i) => i.songId === targetSongId);
+    const targetSemitones = lineupItem?.preferredSemitones ?? 0;
+
     if (canControlOfficialState && viewMode === 'follow') {
       sendOfficialStateUpdate({
         songId: targetSongId,
-        officialSemitones: 0,
+        officialSemitones: targetSemitones,
       });
     } else {
       if (viewMode === 'follow') handleSwitchToIndependent();
       setIndependentSongId(targetSongId);
-      setIndependentSemitones(0);
+      setIndependentSemitones(targetSemitones);
     }
   };
 

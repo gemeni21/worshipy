@@ -496,4 +496,70 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     assert.ok(networkOrigin.startsWith('http://'));
     assert.ok(networkOrigin.endsWith(':3000'));
   });
+
+  it('16. resolves active session over ended historical sessions and supports sessionId join', () => {
+    // 1. Create and end session 1
+    const oldSession = createLiveSession({
+      title: 'Previous Rehearsal',
+      leaderName: 'Leader Aaron',
+      initialSongId: 'song-01',
+    });
+    endLiveSession(oldSession.session.sessionId, oldSession.participantToken);
+
+    // 2. Create active session 2 with the same or new code
+    const activeSession = createLiveSession({
+      title: 'Active Worship Stage',
+      leaderName: 'Leader Aaron',
+      initialSongId: 'song-02',
+    });
+
+    // 3. Member joins using sessionId directly
+    const memberJoin = joinLiveSession({
+      sessionId: activeSession.session.sessionId,
+      participantName: 'Drummer Leo',
+      instrument: 'bass',
+    });
+    assert.equal(memberJoin.session.sessionId, activeSession.session.sessionId);
+    assert.equal(memberJoin.session.status, 'active');
+    assert.equal(memberJoin.session.sharedState.songId, 'song-02');
+
+    // 4. Member joins using joinCode directly
+    const codeJoin = joinLiveSession({
+      joinCode: activeSession.session.joinCode,
+      participantName: 'Pianist Maya',
+      instrument: 'keyboard',
+    });
+    assert.equal(codeJoin.session.sessionId, activeSession.session.sessionId);
+    assert.equal(codeJoin.session.status, 'active');
+  });
+
+  it('17. participant heartbeat keeps presence connected and updates lastSeenAt without desync', async () => {
+    const session = createLiveSession({
+      title: 'Sunday Service',
+      leaderName: 'Pastor Sarah',
+      initialSongId: 'song-01',
+    });
+
+    const member = joinLiveSession({
+      joinCode: session.session.joinCode,
+      participantName: 'Acoustic Guitarist',
+      instrument: 'guitar',
+    });
+
+    const initialParticipant = member.session.participants.find((p) => p.id === member.participantId);
+    assert.ok(initialParticipant);
+    assert.equal(initialParticipant.connectionState, 'connected');
+
+    // Simulate presence heartbeat tick
+    const updated = updateParticipantPresence(
+      session.session.sessionId,
+      member.participantToken,
+      { connectionState: 'connected' }
+    );
+
+    const participantAfter = updated.participants.find((p) => p.id === member.participantId);
+    assert.ok(participantAfter);
+    assert.equal(participantAfter.connectionState, 'connected');
+    assert.ok(new Date(participantAfter.lastSeenAt).getTime() >= new Date(initialParticipant.lastSeenAt).getTime());
+  });
 });

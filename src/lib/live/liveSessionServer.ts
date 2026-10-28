@@ -23,8 +23,8 @@ import type {
 } from '../../types/live.ts';
 
 const DEFAULT_SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
-const STALE_THRESHOLD_MS = 25 * 1000; // 25 seconds without heartbeat -> reconnecting
-const DISCONNECT_THRESHOLD_MS = 60 * 1000; // 60 seconds -> disconnected
+const STALE_THRESHOLD_MS = 35 * 1000; // 35 seconds without heartbeat -> reconnecting
+const DISCONNECT_THRESHOLD_MS = 90 * 1000; // 90 seconds -> disconnected
 
 export class LiveSyncError extends Error {
   statusCode: number;
@@ -146,11 +146,17 @@ function getSessionRecord(sessionId: string): InternalSessionRecord | undefined 
 
 function findSessionByJoinCode(cleanCode: string): InternalSessionRecord | undefined {
   const store = getStore();
+  // Prefer active session first to avoid matching ended historical sessions
   let record = Array.from(store.sessions.values()).find(
-    (s) => s.joinCode.toUpperCase() === cleanCode
+    (s) => s.status === 'active' && s.joinCode.toUpperCase() === cleanCode
   );
   if (!record) {
     syncStoreFromDisk();
+    record = Array.from(store.sessions.values()).find(
+      (s) => s.status === 'active' && s.joinCode.toUpperCase() === cleanCode
+    );
+  }
+  if (!record) {
     record = Array.from(store.sessions.values()).find(
       (s) => s.joinCode.toUpperCase() === cleanCode
     );
@@ -510,28 +516,31 @@ export function joinLiveSession(
         'INVITATION_REVOKED'
       );
     }
-  } else if (input.joinCode) {
-    const cleanCode = input.joinCode.trim().toUpperCase();
-    targetSession = findSessionByJoinCode(cleanCode);
-    if (!targetSession) {
-      throw new LiveSyncError(
-        `No live session found matching join code "${cleanCode}".`,
-        404,
-        'SESSION_NOT_FOUND'
-      );
+  } else if (input.joinCode || input.sessionId) {
+    if (input.sessionId) {
+      const candidate = getSessionRecord(input.sessionId);
+      if (candidate && candidate.status === 'active') {
+        targetSession = candidate;
+      }
     }
-  } else if (input.sessionId) {
-    targetSession = getSessionRecord(input.sessionId);
+    if (!targetSession && input.joinCode) {
+      const cleanCode = input.joinCode.trim().toUpperCase();
+      targetSession = findSessionByJoinCode(cleanCode);
+    }
+    if (!targetSession && input.sessionId) {
+      targetSession = getSessionRecord(input.sessionId);
+    }
     if (!targetSession) {
+      const codeOrId = input.joinCode ? `join code "${input.joinCode.trim().toUpperCase()}"` : 'session ID';
       throw new LiveSyncError(
-        'Live session not found.',
+        `No live session found matching ${codeOrId}.`,
         404,
         'SESSION_NOT_FOUND'
       );
     }
   } else {
     throw new LiveSyncError(
-      'Provide a join code or invitation token to join.',
+      'Provide a join code, session ID, or invitation token to join.',
       400,
       'MISSING_JOIN_CREDENTIALS'
     );
@@ -955,6 +964,9 @@ export function updateParticipantPresence(
     );
   }
 
+  const prevInstrument = participant.instrument;
+  const prevConnectionState = participant.connectionState;
+
   participant.lastSeenAt = new Date().toISOString();
   if (updates.instrument) {
     participant.instrument = updates.instrument;
@@ -965,8 +977,16 @@ export function updateParticipantPresence(
     participant.connectionState = 'connected';
   }
 
-  persistStoreToDisk();
-  broadcastSessionEvent(sessionId, 'presence_updated');
+  const hasMeaningfulChange =
+    (updates.instrument && updates.instrument !== prevInstrument) ||
+    participant.connectionState !== prevConnectionState;
+
+  // Persist and broadcast if instrument or connection state transitioned;
+  // keep routine heartbeats lightweight in-memory to prevent disk/network thrashing
+  if (hasMeaningfulChange) {
+    persistStoreToDisk();
+    broadcastSessionEvent(sessionId, 'presence_updated');
+  }
 
   return sanitizeSnapshot(record);
 }
