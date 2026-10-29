@@ -459,18 +459,84 @@ export async function updateTeamBranding(
   return updatedGroup;
 }
 
+export const DISMISSED_SUGGESTIONS_KEY = 'worshipy_dismissed_suggestions';
+
+export function getDismissedSuggestionIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(DISMISSED_SUGGESTIONS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        return new Set(arr);
+      }
+    }
+  } catch {}
+  return new Set();
+}
+
+export function recordDismissedSuggestionId(suggestionId: string): void {
+  if (typeof window === 'undefined' || !suggestionId) return;
+  try {
+    const current = getDismissedSuggestionIds();
+    current.add(suggestionId);
+    const trimmed = Array.from(current).slice(-100);
+    localStorage.setItem(DISMISSED_SUGGESTIONS_KEY, JSON.stringify(trimmed));
+  } catch {}
+}
+
 /**
- * Merges incoming and current setlist suggestions with terminal state invariance:
- * Once a suggestion reaches 'approved' or 'declined', stale responses (e.g. 'pending')
- * can never demote or resurrect it back to 'pending'.
+ * Merges incoming and current setlist suggestions with terminal state invariance & tombstone protection:
+ * 1. Once a suggestion reaches 'approved' or 'declined', stale responses (e.g. 'pending')
+ *    can never demote or resurrect it back to 'pending'.
+ * 2. If a suggestion's setlist matches the active team lineup, it is normalized to 'approved'.
+ * 3. Dismissed or deleted suggestions are never resurrected from older local caches.
  */
 export function mergeSuggestedSetlists(
   incoming?: TeamSetlistSuggestion[],
-  current?: TeamSetlistSuggestion[]
+  current?: TeamSetlistSuggestion[],
+  activeSetlist?: TeamActiveSetlist | null,
+  explicitDismissedIds?: string[] | Set<string>
 ): TeamSetlistSuggestion[] {
-  if (!incoming && !current) return [];
-  if (!incoming) return current ? [...current] : [];
-  if (!current) return [...incoming];
+  const dismissedIds = getDismissedSuggestionIds();
+  if (explicitDismissedIds) {
+    if (Array.isArray(explicitDismissedIds)) {
+      for (const id of explicitDismissedIds) dismissedIds.add(id);
+    } else {
+      for (const id of explicitDismissedIds) dismissedIds.add(id);
+    }
+  }
+
+  const isDismissed = (item?: TeamSetlistSuggestion) => {
+    return !item || !item.id || dismissedIds.has(item.id);
+  };
+
+  const cleanIncoming = (incoming || []).filter((item) => !isDismissed(item));
+  const cleanCurrent = (current || []).filter((item) => !isDismissed(item));
+
+  const isActiveLineupMatch = (item: TeamSetlistSuggestion) => {
+    if (!activeSetlist || !item?.setlist) return false;
+    if (activeSetlist.id && item.setlist.id === activeSetlist.id) return true;
+    if (
+      activeSetlist.name &&
+      item.setlist.name &&
+      activeSetlist.name.trim().toLowerCase() === item.setlist.name.trim().toLowerCase()
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  const normalizeItem = (item: TeamSetlistSuggestion): TeamSetlistSuggestion => {
+    if (isActiveLineupMatch(item) && item.status !== 'declined') {
+      return { ...item, status: 'approved' };
+    }
+    return item;
+  };
+
+  if (cleanIncoming.length === 0 && cleanCurrent.length === 0) return [];
+  if (cleanIncoming.length === 0 && !incoming) return cleanCurrent.map(normalizeItem);
+  if (cleanCurrent.length === 0 && !current) return cleanIncoming.map(normalizeItem);
 
   const map = new Map<string, TeamSetlistSuggestion>();
 
@@ -479,36 +545,63 @@ export function mergeSuggestedSetlists(
     return 1;
   };
 
-  for (const item of incoming) {
+  // 1. Seed with incoming items
+  for (const item of cleanIncoming) {
     if (item && item.id) {
-      map.set(item.id, item);
+      if (isActiveLineupMatch(item) && item.status !== 'declined') {
+        map.set(item.id, { ...item, status: 'approved' });
+      } else {
+        map.set(item.id, item);
+      }
     }
   }
 
-  for (const item of current) {
+  // 2. Reconcile with current items
+  for (const item of cleanCurrent) {
     if (!item || !item.id) continue;
     const existing = map.get(item.id);
     if (!existing) {
-      map.set(item.id, item);
+      // If incoming was provided (even if empty), an item missing from incoming was deleted/dismissed.
+      // Only keep it if it is a fresh optimistic suggestion (created within last 30s) and pending.
+      const isFreshOptimistic =
+        item.status === 'pending' &&
+        item.suggestedAt &&
+        Date.now() - new Date(item.suggestedAt).getTime() < 30000;
+
+      if (!incoming || isFreshOptimistic) {
+        if (isActiveLineupMatch(item) && item.status !== 'declined') {
+          map.set(item.id, { ...item, status: 'approved' });
+        } else {
+          map.set(item.id, item);
+        }
+      }
     } else {
       const existingPri = getPriority(existing.status);
       const itemPri = getPriority(item.status);
+
+      let mergedItem: TeamSetlistSuggestion;
       if (itemPri > existingPri) {
         // Current is approved/declined while incoming is pending -> retain terminal resolved status!
-        map.set(item.id, { ...existing, ...item });
+        mergedItem = { ...existing, ...item };
       } else if (existingPri > itemPri) {
         // Incoming is approved/declined while current was pending -> retain incoming terminal status
-        map.set(item.id, { ...item, ...existing });
+        mergedItem = { ...item, ...existing };
       } else {
         // Same priority: prefer the one with later timestamp
         const itemTime = item.reviewedAt || item.suggestedAt || '';
         const existTime = existing.reviewedAt || existing.suggestedAt || '';
         if (itemTime >= existTime) {
-          map.set(item.id, { ...existing, ...item });
+          mergedItem = { ...existing, ...item };
         } else {
-          map.set(item.id, { ...item, ...existing });
+          mergedItem = { ...item, ...existing };
         }
       }
+
+      if (isActiveLineupMatch(mergedItem) && mergedItem.status !== 'declined') {
+        mergedItem.status = 'approved';
+      }
+
+      map.set(item.id, mergedItem);
     }
   }
 
@@ -1038,6 +1131,9 @@ export async function deleteTeamSetlistSuggestion(
   groupId: string,
   suggestionId: string
 ): Promise<{ ok: boolean; group?: WorshipGroup; error?: string }> {
+  // Immediately record tombstone so background polling and caches drop it at once
+  recordDismissedSuggestionId(suggestionId);
+
   const token = getSessionToken();
   const db = getFirebaseFirestore();
   const current = getCachedTeam();
@@ -1436,7 +1532,8 @@ export function subscribeToTeam(
 
     let effectiveSuggestions = mergeSuggestedSetlists(
       fresh.suggestedSetlists,
-      currentCached?.id === fresh.id ? currentCached.suggestedSetlists : undefined
+      currentCached?.id === fresh.id ? currentCached.suggestedSetlists : undefined,
+      effectiveSetlist
     );
 
     const mergedGroup: WorshipGroup = {
@@ -1566,19 +1663,19 @@ export function subscribeToTeam(
           }
 
           if (Array.isArray(firestoreData.practiceTakes)) {
-            const suggestionsMeta = firestoreData.practiceTakes.find(
-              (t: any) => t.id === SETLIST_SUGGESTIONS_META_TAKE_ID
-            );
-            if (suggestionsMeta?.notes) {
-              try {
-                const parsedSuggestions = JSON.parse(suggestionsMeta.notes);
-                if (Array.isArray(parsedSuggestions)) {
-                  suggestedSetlists = mergeSuggestedSetlists(
-                    suggestedSetlists,
-                    parsedSuggestions
-                  );
-                }
-              } catch {}
+            // Meta-take fallback: only parse if suggestedSetlists is undefined in Firestore doc
+            if (firestoreData.suggestedSetlists === undefined) {
+              const suggestionsMeta = firestoreData.practiceTakes.find(
+                (t: any) => t.id === SETLIST_SUGGESTIONS_META_TAKE_ID
+              );
+              if (suggestionsMeta?.notes) {
+                try {
+                  const parsedSuggestions = JSON.parse(suggestionsMeta.notes);
+                  if (Array.isArray(parsedSuggestions)) {
+                    suggestedSetlists = parsedSuggestions;
+                  }
+                } catch {}
+              }
             }
 
             const liveMeta = firestoreData.practiceTakes.find(

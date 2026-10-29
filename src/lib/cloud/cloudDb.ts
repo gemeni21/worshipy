@@ -1256,22 +1256,32 @@ export function updateWorshipGroupBranding(
   if (updates.suggestedSetlists !== undefined) {
     const currentList = Array.isArray(group.suggestedSetlists) ? group.suggestedSetlists : [];
     const incomingList = Array.isArray(updates.suggestedSetlists) ? updates.suggestedSetlists : [];
-    const map = new Map<string, TeamSetlistSuggestion>();
-    for (const item of incomingList) if (item && item.id) map.set(item.id, item);
-    for (const item of currentList) {
+    const currentMap = new Map<string, TeamSetlistSuggestion>();
+    for (const item of currentList) if (item && item.id) currentMap.set(item.id, item);
+
+    const mergedList: TeamSetlistSuggestion[] = [];
+    for (const item of incomingList) {
       if (!item || !item.id) continue;
-      const existing = map.get(item.id);
-      if (!existing) {
-        map.set(item.id, item);
-      } else {
+      const currentItem = currentMap.get(item.id);
+      if (currentItem) {
         const itemPri = item.status === 'approved' || item.status === 'declined' ? 2 : 1;
-        const exPri = existing.status === 'approved' || existing.status === 'declined' ? 2 : 1;
-        if (itemPri > exPri) {
-          map.set(item.id, { ...existing, ...item });
+        const currentPri = currentItem.status === 'approved' || currentItem.status === 'declined' ? 2 : 1;
+        if (currentPri > itemPri) {
+          // Retain terminal status if current in database is approved/declined
+          mergedList.push({
+            ...item,
+            status: currentItem.status,
+            reviewedAt: currentItem.reviewedAt,
+            reviewedBy: currentItem.reviewedBy,
+            reviewedByName: currentItem.reviewedByName,
+            reviewNote: currentItem.reviewNote,
+          });
+          continue;
         }
       }
+      mergedList.push(item);
     }
-    group.suggestedSetlists = Array.from(map.values()).sort(
+    group.suggestedSetlists = mergedList.sort(
       (a, b) => new Date(b.suggestedAt || 0).getTime() - new Date(a.suggestedAt || 0).getTime()
     );
   }

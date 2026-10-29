@@ -242,7 +242,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const refreshActiveGroup = useCallback(async () => {
-    const targetGroupId = user?.groupId || activeGroup?.id || getCachedTeam()?.id;
+    const cached = getCachedTeam();
+    const targetGroupId = user?.groupId || cached?.id;
     if (!targetGroupId) {
       if (user) {
         await resolveUserTeam(user);
@@ -255,32 +256,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         if (data.group) {
-          const cached = getCachedTeam();
-          // Always union-merge known members so polling never wipes out active musicians
-          const currentMembers = activeGroup?.members || cached?.members || [];
-          const incomingMembers = data.group.members || [];
-          const map = new Map<string, any>();
-          for (const m of currentMembers) map.set(m.userId, m);
-          for (const m of incomingMembers) map.set(m.userId, m);
-          data.group.members = Array.from(map.values());
+          setActiveGroup((prevGroup) => {
+            const currentCached = getCachedTeam();
+            // Always union-merge known members so polling never wipes out active musicians
+            const currentMembers = prevGroup?.members || currentCached?.members || [];
+            const incomingMembers = data.group.members || [];
+            const map = new Map<string, any>();
+            for (const m of currentMembers) map.set(m.userId, m);
+            for (const m of incomingMembers) map.set(m.userId, m);
+            data.group.members = Array.from(map.values());
 
-          // Preserve active setlist ONLY if server response omitted it (undefined) AND local state wasn't explicitly cleared (null)
-          if (data.group.activeSetlist === undefined) {
-            if (activeGroup?.activeSetlist === null || cached?.activeSetlist === null) {
-              data.group.activeSetlist = null;
-            } else if (activeGroup?.activeSetlist || cached?.activeSetlist) {
-              data.group.activeSetlist = activeGroup?.activeSetlist || cached?.activeSetlist;
+            // Preserve active setlist ONLY if server response omitted it (undefined) AND local state wasn't explicitly cleared (null)
+            if (data.group.activeSetlist === undefined) {
+              if (prevGroup?.activeSetlist === null || currentCached?.activeSetlist === null) {
+                data.group.activeSetlist = null;
+              } else if (prevGroup?.activeSetlist || currentCached?.activeSetlist) {
+                data.group.activeSetlist = prevGroup?.activeSetlist || currentCached?.activeSetlist;
+              }
             }
-          }
 
-          // Intelligently merge suggested setlists so approved/declined lineups are never demoted back to pending
-          data.group.suggestedSetlists = mergeSuggestedSetlists(
-            data.group.suggestedSetlists,
-            activeGroup?.suggestedSetlists || cached?.suggestedSetlists
-          );
+            // Intelligently merge suggested setlists with terminal invariance & active lineup normalization
+            data.group.suggestedSetlists = mergeSuggestedSetlists(
+              data.group.suggestedSetlists,
+              prevGroup?.suggestedSetlists || currentCached?.suggestedSetlists,
+              data.group.activeSetlist
+            );
 
-          setActiveGroup(data.group);
-          setCachedTeam(data.group);
+            setCachedTeam(data.group);
+            return data.group;
+          });
         }
       } else if (res.status === 404 && user) {
         await resolveUserTeam(user);
@@ -288,7 +292,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
-  }, [user, activeGroup, authFetch, resolveUserTeam]);
+  }, [user?.id, user?.groupId, authFetch, resolveUserTeam]);
 
   // Fetch submissions (user sees theirs, admin sees all)
   const refreshSubmissions = useCallback(async () => {

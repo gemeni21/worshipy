@@ -49,10 +49,13 @@ import {
   sharePracticeTakeToTeam,
   deleteSharedPracticeTake,
   getCachedTeam,
+  setCachedTeam,
   reviewTeamSetlistSuggestion,
   deleteTeamSetlistSuggestion,
+  getDismissedSuggestionIds,
+  recordDismissedSuggestionId,
 } from '@/lib/team/teamService';
-import type { TeamPracticeTake, GroupMember, TeamSetlistSuggestion } from '@/types/auth';
+import type { TeamPracticeTake, GroupMember, TeamSetlistSuggestion, WorshipGroup } from '@/types/auth';
 import { PracticeWaveformPlayer } from '@/components/practice/PracticeWaveformPlayer';
 import type { PracticeTake } from '@/lib/audio/practiceStorage';
 
@@ -131,19 +134,44 @@ export default function TeamHubPage() {
   const currentTeam = activeGroup || getCachedTeam();
 
   const pendingSuggestions = useMemo(() => {
-    return (currentTeam?.suggestedSetlists || []).filter((s) => s.status === 'pending');
-  }, [currentTeam?.suggestedSetlists]);
+    const activeSetlistId = currentTeam?.activeSetlist?.id;
+    const activeSetlistName = currentTeam?.activeSetlist?.name?.trim().toLowerCase();
+    const dismissedIds = getDismissedSuggestionIds();
+
+    return (currentTeam?.suggestedSetlists || []).filter((s) => {
+      if (!s || !s.id) return false;
+      if (dismissedIds.has(s.id)) return false;
+      if (s.status !== 'pending') return false;
+      // If already promoted to official active lineup, never show as pending!
+      if (activeSetlistId && s.setlist?.id === activeSetlistId) return false;
+      if (activeSetlistName && s.setlist?.name?.trim().toLowerCase() === activeSetlistName) return false;
+      return true;
+    });
+  }, [currentTeam?.suggestedSetlists, currentTeam?.activeSetlist]);
 
   const userPendingSuggestion = useMemo(() => {
     if (!user?.id) return null;
-    return (currentTeam?.suggestedSetlists || []).find(
-      (s) => s.status === 'pending' && s.suggestedBy === user.id
-    );
-  }, [currentTeam?.suggestedSetlists, user?.id]);
+    const activeSetlistId = currentTeam?.activeSetlist?.id;
+    const activeSetlistName = currentTeam?.activeSetlist?.name?.trim().toLowerCase();
+    const dismissedIds = getDismissedSuggestionIds();
+
+    return (currentTeam?.suggestedSetlists || []).find((s) => {
+      if (!s || !s.id) return false;
+      if (dismissedIds.has(s.id)) return false;
+      if (s.suggestedBy !== user.id) return false;
+      if (s.status !== 'pending') return false;
+      if (activeSetlistId && s.setlist?.id === activeSetlistId) return false;
+      if (activeSetlistName && s.setlist?.name?.trim().toLowerCase() === activeSetlistName) return false;
+      return true;
+    });
+  }, [currentTeam?.suggestedSetlists, user?.id, currentTeam?.activeSetlist]);
 
   const userSuggestions = useMemo(() => {
     if (!user?.id) return [];
-    return (currentTeam?.suggestedSetlists || []).filter((s) => s.suggestedBy === user.id);
+    const dismissedIds = getDismissedSuggestionIds();
+    return (currentTeam?.suggestedSetlists || []).filter(
+      (s) => s.suggestedBy === user.id && !dismissedIds.has(s.id)
+    );
   }, [currentTeam?.suggestedSetlists, user?.id]);
 
   useEffect(() => {
@@ -174,6 +202,48 @@ export default function TeamHubPage() {
   ) => {
     if (!currentTeam?.id) return;
     setIsReviewingAction(true);
+
+    // Optimistically update local activeGroup & cachedTeam immediately for zero flicker
+    const existing = currentTeam.suggestedSetlists || [];
+    const targetIdx = existing.findIndex((s) => s.id === suggestionId);
+    if (targetIdx !== -1) {
+      const target = existing[targetIdx];
+      const now = new Date().toISOString();
+      const updatedSuggestion: TeamSetlistSuggestion = {
+        ...target,
+        status: action === 'approve' ? 'approved' : 'declined',
+        reviewedAt: now,
+        reviewedBy: user?.id,
+        reviewedByName: user?.displayName || 'Worship Leader',
+        ...(action === 'decline' && declineNote.trim() ? { reviewNote: declineNote.trim() } : {}),
+      };
+      const updatedList = [...existing];
+      updatedList[targetIdx] = updatedSuggestion;
+
+      const optimisticGroup: WorshipGroup = {
+        ...currentTeam,
+        suggestedSetlists: updatedList,
+        ...(action === 'approve'
+          ? {
+              activeSetlist: {
+                id: target.setlist.id,
+                name: target.setlist.name,
+                description: target.setlist.description,
+                publishedAt: now,
+                publishedBy: target.suggestedBy,
+                publishedByName: target.suggestedByName,
+                items: target.setlist.items || [],
+              },
+            }
+          : {}),
+      };
+
+      setCachedTeam(optimisticGroup);
+    }
+
+    setReviewingSuggestionId(null);
+    setDeclineNote('');
+
     try {
       const res = await reviewTeamSetlistSuggestion(
         currentTeam.id,
@@ -183,8 +253,6 @@ export default function TeamHubPage() {
       );
       if (res.ok) {
         await refreshActiveGroup();
-        setReviewingSuggestionId(null);
-        setDeclineNote('');
         setSuggestionFeedbackMsg(
           action === 'approve'
             ? 'Setlist approved! It is now the official Worship Team lineup.'
@@ -203,6 +271,15 @@ export default function TeamHubPage() {
   const handleWithdrawSuggestion = async (suggestionId: string) => {
     if (!currentTeam?.id) return;
     if (!window.confirm('Withdraw your lineup suggestion for the team?')) return;
+    recordDismissedSuggestionId(suggestionId);
+
+    const updatedList = (currentTeam.suggestedSetlists || []).filter((s) => s.id !== suggestionId);
+    const optimisticGroup: WorshipGroup = {
+      ...currentTeam,
+      suggestedSetlists: updatedList,
+    };
+    setCachedTeam(optimisticGroup);
+
     try {
       const res = await deleteTeamSetlistSuggestion(currentTeam.id, suggestionId);
       if (res.ok) {
@@ -218,6 +295,15 @@ export default function TeamHubPage() {
 
   const handleDismissSuggestion = async (suggestionId: string) => {
     if (!currentTeam?.id) return;
+    recordDismissedSuggestionId(suggestionId);
+
+    const updatedList = (currentTeam.suggestedSetlists || []).filter((s) => s.id !== suggestionId);
+    const optimisticGroup: WorshipGroup = {
+      ...currentTeam,
+      suggestedSetlists: updatedList,
+    };
+    setCachedTeam(optimisticGroup);
+
     try {
       const res = await deleteTeamSetlistSuggestion(currentTeam.id, suggestionId);
       if (res.ok) {
@@ -273,19 +359,14 @@ export default function TeamHubPage() {
     return Array.from(map.values());
   }, [currentTeam?.members, teamPresence]);
 
-  // Actively synchronize team state (lineup & live status) across devices and tabs
+  // Revalidate team state on mount or when user returns to this tab
   useEffect(() => {
     refreshActiveGroup();
-    const interval = setInterval(() => {
-      refreshActiveGroup();
-    }, 2500);
-
     const onFocus = () => refreshActiveGroup();
     window.addEventListener('focus', onFocus);
     window.addEventListener('visibilitychange', onFocus);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('visibilitychange', onFocus);
     };

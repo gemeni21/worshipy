@@ -2082,4 +2082,293 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     assert.equal(validated.groupName, 'Revival Fellowship');
     assert.equal(validated.groupRole, 'leader');
   });
+
+  it('39. leader approves suggestion -> background polling with stale pending payload NEVER flips status back to pending', () => {
+    const leader = registerUser({
+      email: `lead_poll_test_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor Sam',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Praise Band');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const member = registerUser({
+      email: `singer_poll_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Hannah Singer',
+    });
+
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      members: [
+        { userId: leader.profile.id, email: leader.profile.email, displayName: 'Pastor Sam', role: 'leader', joinedAt: new Date().toISOString() },
+        { userId: member.profile.id, email: member.profile.email, displayName: 'Hannah Singer', role: 'member', joinedAt: new Date().toISOString() },
+      ],
+    });
+
+    const suggestRes = suggestSetlistForGroup(member.profile.id, groupId, {
+      setlist: {
+        id: 'setlist_sunday_lineup',
+        name: 'Sunday Morning Praise',
+        publishedAt: new Date().toISOString(),
+        publishedBy: member.profile.id,
+        items: [{ songId: 'song-1', addedAt: new Date().toISOString() }],
+      },
+      note: 'Songs for this Sunday service',
+    });
+    assert.ok(suggestRes.ok && suggestRes.suggestion);
+    const suggestionId = suggestRes.suggestion.id;
+
+    // Leader approves the proposal
+    const approveRes = reviewSetlistSuggestion(
+      leader.profile.id,
+      groupId,
+      suggestionId,
+      'approve'
+    );
+    assert.ok(approveRes.ok && approveRes.group);
+    const currentApprovedState = approveRes.group;
+
+    // Simulate an out-of-order stale background poll or cached snapshot arriving where status was still 'pending'
+    const stalePendingIncoming = [
+      {
+        ...suggestRes.suggestion,
+        status: 'pending' as const,
+        suggestedAt: suggestRes.suggestion.suggestedAt,
+      },
+    ];
+
+    // Merge incoming stale with current approved state
+    const reconciled = mergeSuggestedSetlists(
+      stalePendingIncoming,
+      currentApprovedState.suggestedSetlists,
+      currentApprovedState.activeSetlist
+    );
+
+    // Terminal invariance: status MUST stay approved
+    const target = reconciled.find((s) => s.id === suggestionId);
+    assert.ok(target);
+    assert.equal(target.status, 'approved');
+
+    // Pending review queue must be 0 (modal must NOT reappear)
+    const pending = reconciled.filter((s) => s.status === 'pending');
+    assert.equal(pending.length, 0);
+  });
+
+  it('40. suggestion with setlist matching activeSetlist is automatically recognized as approved', () => {
+    const activeSetlist: TeamActiveSetlist = {
+      id: 'active_lineup_99',
+      name: 'Sunday Morning Worship',
+      publishedAt: '2026-10-30T00:00:00Z',
+      publishedBy: 'user_leader',
+      publishedByName: 'Pastor John',
+      items: [{ songId: 'song-grace', addedAt: '2026-10-30T00:00:00Z' }],
+    };
+
+    // Stale suggestion object has status: 'pending' but its setlist is active on the team
+    const staleSuggestion = {
+      id: 'sugg_match_active',
+      setlist: activeSetlist,
+      suggestedBy: 'user_member',
+      suggestedByName: 'Musician Mark',
+      suggestedAt: '2026-10-29T23:50:00Z',
+      status: 'pending' as const,
+    };
+
+    // When merged with activeSetlist passed, it must normalize to 'approved'
+    const merged = mergeSuggestedSetlists([staleSuggestion], undefined, activeSetlist);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].status, 'approved');
+
+    // Also works when setlist name matches even if id is different
+    const staleSuggestionSameName = {
+      id: 'sugg_match_name',
+      setlist: {
+        id: 'different_id',
+        name: 'sunday morning worship ',
+        publishedAt: '2026-10-30T00:00:00Z',
+        publishedBy: 'user_member',
+        items: [{ songId: 'song-grace', addedAt: '2026-10-30T00:00:00Z' }],
+      },
+      suggestedBy: 'user_member',
+      suggestedByName: 'Musician Mark',
+      suggestedAt: '2026-10-29T23:55:00Z',
+      status: 'pending' as const,
+    };
+
+    const mergedByName = mergeSuggestedSetlists([staleSuggestionSameName], undefined, activeSetlist);
+    assert.equal(mergedByName.length, 1);
+    assert.equal(mergedByName[0].status, 'approved');
+  });
+
+  it('41. dismissed/deleted suggestion is tracked with tombstone and never resurrected by stale cache', () => {
+    const dismissedId = 'sugg_to_be_dismissed_123';
+    const otherId = 'sugg_valid_456';
+
+    const staleCurrentCache = [
+      {
+        id: dismissedId,
+        setlist: {
+          id: 'setlist_old',
+          name: 'Old Proposal',
+          publishedAt: '2026-10-20T00:00:00Z',
+          publishedBy: 'user_1',
+          items: [{ songId: 'song-1', addedAt: '2026-10-20T00:00:00Z' }],
+        },
+        suggestedBy: 'user_1',
+        suggestedByName: 'Singer',
+        suggestedAt: '2026-10-20T00:00:00Z',
+        status: 'approved' as const,
+      },
+      {
+        id: otherId,
+        setlist: {
+          id: 'setlist_keep',
+          name: 'Keep Proposal',
+          publishedAt: '2026-10-29T00:00:00Z',
+          publishedBy: 'user_2',
+          items: [{ songId: 'song-2', addedAt: '2026-10-29T00:00:00Z' }],
+        },
+        suggestedBy: 'user_2',
+        suggestedByName: 'Bassist',
+        suggestedAt: '2026-10-29T00:00:00Z',
+        status: 'pending' as const,
+      },
+    ];
+
+    // Server returns empty list (incoming = []) because items were reviewed/deleted
+    // Merge with explicitDismissedIds including dismissedId
+    const result = mergeSuggestedSetlists([], staleCurrentCache, null, [dismissedId]);
+
+    // The dismissed suggestion must NOT be resurrected!
+    assert.equal(result.some((s) => s.id === dismissedId), false);
+    // Non-fresh (<30s) items omitted by server incoming are also not resurrected
+    assert.equal(result.length, 0);
+  });
+
+  it('42. multiple member suggestions lifecycle: Member A approved, Member B declined, Member B dismissed', () => {
+    const leader = registerUser({
+      email: `leader_multi_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor James',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Main Sanctuary Band');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const memberA = registerUser({
+      email: `memberA_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Alice Keys',
+    });
+
+    const memberB = registerUser({
+      email: `memberB_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Bob Drums',
+    });
+
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      members: [
+        { userId: leader.profile.id, email: leader.profile.email, displayName: 'Pastor James', role: 'leader', joinedAt: new Date().toISOString() },
+        { userId: memberA.profile.id, email: memberA.profile.email, displayName: 'Alice Keys', role: 'member', joinedAt: new Date().toISOString() },
+        { userId: memberB.profile.id, email: memberB.profile.email, displayName: 'Bob Drums', role: 'member', joinedAt: new Date().toISOString() },
+      ],
+    });
+
+    // Member A suggests Setlist A
+    const sugARes = suggestSetlistForGroup(memberA.profile.id, groupId, {
+      setlist: {
+        id: 'setlist_A',
+        name: 'Alice Sunday Lineup',
+        publishedAt: new Date().toISOString(),
+        publishedBy: memberA.profile.id,
+        items: [{ songId: 'song-A1', addedAt: new Date().toISOString() }],
+      },
+      note: 'Piano and vocal focused',
+    });
+    assert.ok(sugARes.ok && sugARes.suggestion);
+
+    // Member B suggests Setlist B
+    const sugBRes = suggestSetlistForGroup(memberB.profile.id, groupId, {
+      setlist: {
+        id: 'setlist_B',
+        name: 'Bob Rock Lineup',
+        publishedAt: new Date().toISOString(),
+        publishedBy: memberB.profile.id,
+        items: [{ songId: 'song-B1', addedAt: new Date().toISOString() }],
+      },
+      note: 'High energy praise',
+    });
+    assert.ok(sugBRes.ok && sugBRes.suggestion);
+
+    // Leader approves Setlist A
+    const approveA = reviewSetlistSuggestion(leader.profile.id, groupId, sugARes.suggestion.id, 'approve');
+    assert.ok(approveA.ok && approveA.group);
+    assert.equal(approveA.group.activeSetlist?.name, 'Alice Sunday Lineup');
+
+    // Only Setlist B should be pending now
+    const pendingAfterA = (approveA.group.suggestedSetlists || []).filter((s) => s.status === 'pending');
+    assert.equal(pendingAfterA.length, 1);
+    assert.equal(pendingAfterA[0].id, sugBRes.suggestion.id);
+
+    // Leader declines Setlist B with feedback
+    const declineB = reviewSetlistSuggestion(
+      leader.profile.id,
+      groupId,
+      sugBRes.suggestion.id,
+      'decline',
+      'Great energy, let us use this for Youth Night'
+    );
+    assert.ok(declineB.ok && declineB.group);
+
+    // No pending suggestions remain for review
+    const pendingAfterB = (declineB.group.suggestedSetlists || []).filter((s) => s.status === 'pending');
+    assert.equal(pendingAfterB.length, 0);
+
+    // Member B dismisses / closes their declined proposal
+    const deleteB = deleteSetlistSuggestion(memberB.profile.id, groupId, sugBRes.suggestion.id);
+    assert.ok(deleteB.ok && deleteB.group);
+
+    // Only Setlist A (approved) remains in suggestions, active lineup remains intact
+    assert.equal(deleteB.group.suggestedSetlists?.length, 1);
+    assert.equal(deleteB.group.suggestedSetlists?.[0].id, sugARes.suggestion.id);
+    assert.equal(deleteB.group.suggestedSetlists?.[0].status, 'approved');
+    assert.equal(deleteB.group.activeSetlist?.name, 'Alice Sunday Lineup');
+  });
+
+  it('43. leader clearing active setlist updates store with null and prevents auto-resurrection into pending', () => {
+    const leader = registerUser({
+      email: `leader_clear_test_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor Tim',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Harvest Worship');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    // Leader publishes setlist
+    const publishRes = updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeSetlist: {
+        id: 'lineup_to_clear',
+        name: 'Harvest Festival Lineup',
+        publishedAt: new Date().toISOString(),
+        publishedBy: leader.profile.id,
+        items: [{ songId: 'song-1', addedAt: new Date().toISOString() }],
+      },
+    });
+    assert.ok(publishRes.ok && publishRes.group?.activeSetlist);
+
+    // Leader clears the lineup
+    const clearRes = updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeSetlist: null,
+    });
+    assert.ok(clearRes.ok && clearRes.group);
+    assert.equal(clearRes.group.activeSetlist, null);
+
+    // Reloading group from store confirms activeSetlist is null
+    const reloaded = getWorshipGroup(groupId);
+    assert.ok(reloaded);
+    assert.equal(reloaded.activeSetlist, null);
+  });
 });
