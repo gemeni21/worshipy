@@ -553,7 +553,7 @@ function isStandaloneSectionHeading(trimmedLine: string): {
   label: string;
 } | null {
   // Match lines like `[Verse 1]`, `[Chorus]`, `[Bridge]`, `[Intro]`, `[Outro]` or `Verse 1:`, `Chorus:`
-  const bracketHeading = trimmedLine.match(/^\[([A-Za-z][A-Za-z0-9\s\-()#]{1,28})\]$/);
+  const bracketHeading = trimmedLine.match(/^\[([A-Za-z][A-Za-z0-9\s\-()#/]{1,28})\]$/);
   if (bracketHeading) {
     const inner = bracketHeading[1].trim();
     if (!isRecognizedChordToken(inner)) {
@@ -570,7 +570,7 @@ function isStandaloneSectionHeading(trimmedLine: string): {
   }
 
   const colonHeading = trimmedLine.match(
-    /^(Intro|Verse(?:\s+\d+)?|Pre-?Chorus(?:\s+\d+)?|Chorus(?:\s+\d+)?|Bridge(?:\s+\d+)?|Tag|Interlude|Instrumental|Outro|Koro|Talata(?:\s+\d+)?|Tulay):$/i
+    /^(Intro|Verse(?:\s+\d+)?|Pre-?Chorus(?:\s+\d+)?|Chorus(?:\s+\d+)?|Bridge(?:\s+\d+)?|Tag(?:\s*\/\s*Vamp|\s+\d+)?|Vamp(?:\s+\d+)?|Spontaneous(?:\s+Tag|\s+Bridge|\s+Worship)?|Interlude(?:\s+\d+)?|Instrumental(?:\s+\d+)?|Outro|Koro|Talata(?:\s+\d+)?|Tulay)(?:\s*\([^)]+\))?:$/i
   );
   if (colonHeading) {
     const label = colonHeading[1].trim();
@@ -1001,16 +1001,16 @@ export function parseChordPro(
             };
             sections.push(currentSection);
           } else {
-            const targetSec = ensureSection('verse');
-            if (targetSec.lines.length === 0 && !targetSec.cue) {
-              targetSec.cue = rawValue;
-            } else {
-              targetSec.lines.push({
-                id: `line-${sectionCounter}-${targetSec.lines.length + 1}`,
-                annotation: rawValue,
-                segments: [{ text: '' }],
-              });
-            }
+      const targetSec = ensureSection('verse');
+      if (targetSec.lines.length === 0 && !targetSec.cue) {
+        targetSec.cue = rawValue;
+      } else {
+        targetSec.lines.push({
+          id: `line-${sectionCounter}-${targetSec.lines.length + 1}`,
+          annotation: rawValue,
+          segments: [{ text: '' }],
+        });
+      }
           }
         }
         continue;
@@ -1078,11 +1078,28 @@ export function parseChordPro(
     if (parsedLine.warnings.length > 0) {
       warnings.push(...parsedLine.warnings);
     }
-    targetSection.lines.push({
-      id: `line-${sectionCounter}-${targetSection.lines.length + 1}`,
-      isInstrumental: parsedLine.isInstrumental,
-      segments: parsedLine.segments,
-    });
+
+    // Check if the preceding line was a standalone `{comment: ...}` annotation line with empty text
+    const prevLine =
+      targetSection.lines.length > 0
+        ? targetSection.lines[targetSection.lines.length - 1]
+        : null;
+    if (
+      prevLine &&
+      prevLine.annotation &&
+      prevLine.segments.length === 1 &&
+      !prevLine.segments[0].chord &&
+      prevLine.segments[0].text === ''
+    ) {
+      prevLine.isInstrumental = parsedLine.isInstrumental;
+      prevLine.segments = parsedLine.segments;
+    } else {
+      targetSection.lines.push({
+        id: `line-${sectionCounter}-${targetSection.lines.length + 1}`,
+        isInstrumental: parsedLine.isInstrumental,
+        segments: parsedLine.segments,
+      });
+    }
   }
 
   // Trim trailing empty blank lines at the very end of each section while preserving internal blank lines

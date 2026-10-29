@@ -3,6 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { getAllSongs, getSongById, getSongBySlug } from '../catalog/songCatalog.ts';
+import {
+  MAX_LIVE_ARRANGEMENT_CHORDPRO_LENGTH,
+  resolveSongWithLiveOverride,
+} from '../chordpro/liveArrangement.ts';
 import { normalizeSemitones } from '../music/transposition.ts';
 import { findGroupByActiveLiveSession, getWorshipGroup, setGroupLiveSession } from '../cloud/cloudDb.ts';
 
@@ -18,6 +22,7 @@ import type {
   JoinLiveSessionResponse,
   LiveParticipant,
   LiveSessionSnapshot,
+  LiveSongArrangementOverride,
   LiveStreamEventType,
   LiveStreamMessage,
   UpdateSharedStateInput,
@@ -1005,6 +1010,68 @@ export function updateLiveSessionState(
     targetSong = findSongByIdOrSlug(currentState.songId) ?? getAllSongs()[0];
   }
 
+  const nowIso = new Date().toISOString();
+
+  // Merge or clear live song arrangement overrides
+  const nextOverrides: Record<string, LiveSongArrangementOverride> = {
+    ...(currentState.songArrangementOverrides || {}),
+  };
+
+  if (
+    typeof input.clearSongArrangementOverrideSongId === 'string' &&
+    input.clearSongArrangementOverrideSongId.trim()
+  ) {
+    const clearSong = findSongByIdOrSlug(
+      input.clearSongArrangementOverrideSongId.trim()
+    );
+    const clearKey =
+      clearSong?.id ?? input.clearSongArrangementOverrideSongId.trim();
+    delete nextOverrides[clearKey];
+  }
+
+  if (input.songArrangementOverride) {
+    const rawChordPro = input.songArrangementOverride.chordPro;
+    if (
+      typeof rawChordPro !== 'string' ||
+      !rawChordPro.trim() ||
+      rawChordPro.length > MAX_LIVE_ARRANGEMENT_CHORDPRO_LENGTH
+    ) {
+      throw new LiveSyncError(
+        'Invalid live song arrangement override payload.',
+        400,
+        'INVALID_ARRANGEMENT'
+      );
+    }
+
+    const overrideSong = input.songArrangementOverride.songId
+      ? findSongByIdOrSlug(input.songArrangementOverride.songId)
+      : targetSong;
+    const overrideSongId =
+      overrideSong?.id ??
+      input.songArrangementOverride.songId?.trim() ??
+      targetSong.id;
+
+    const cleanNote =
+      typeof input.songArrangementOverride.arrangementNote === 'string'
+        ? input.songArrangementOverride.arrangementNote.trim().slice(0, 240)
+        : undefined;
+
+    nextOverrides[overrideSongId] = {
+      songId: overrideSongId,
+      chordPro: rawChordPro,
+      ...(cleanNote ? { arrangementNote: cleanNote } : {}),
+      updatedAt: nowIso,
+      updatedBy: caller.id,
+      updatedByName: caller.name,
+    };
+  }
+
+  // Resolve targetSong with any active live arrangement override so custom sections are recognized
+  targetSong = resolveSongWithLiveOverride(
+    targetSong,
+    nextOverrides[targetSong.id]
+  );
+
   const songChanged =
     input.songId !== undefined && targetSong.id !== currentState.songId;
 
@@ -1048,6 +1115,11 @@ export function updateLiveSessionState(
     );
     if (existingSection) {
       nextSection = existingSection;
+    } else if (currentState.activeSectionId) {
+      nextSection = {
+        id: currentState.activeSectionId,
+        label: currentState.activeSectionLabel || currentState.activeSectionId,
+      } as (typeof targetSong.sections)[number];
     }
   }
 
@@ -1058,7 +1130,6 @@ export function updateLiveSessionState(
       ? currentState.setlistSongIds
       : [...currentState.setlistSongIds, targetSong.id];
 
-  const nowIso = new Date().toISOString();
   caller.lastSeenAt = nowIso;
   caller.connectionState = 'connected';
 
@@ -1066,7 +1137,7 @@ export function updateLiveSessionState(
   record.sharedState = {
     songId: targetSong.id,
     songSlug: targetSong.slug,
-    arrangementId: 'default',
+    arrangementId: nextOverrides[targetSong.id] ? 'live-custom' : 'default',
     officialSemitones: nextSemitones,
     enharmonicPreference: nextSpelling,
     activeSectionId: nextSection.id,
@@ -1074,6 +1145,9 @@ export function updateLiveSessionState(
     activeLineIndex:
       typeof input.activeLineIndex === 'number' ? input.activeLineIndex : 0,
     setlistSongIds: nextSetlist,
+    ...(Object.keys(nextOverrides).length > 0
+      ? { songArrangementOverrides: nextOverrides }
+      : {}),
     updatedAt: nowIso,
     updatedBy: caller.id,
   };

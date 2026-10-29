@@ -17,6 +17,13 @@ import {
   updateParticipantPresence,
 } from '../liveSessionServer.ts';
 import { getSongById } from '../../catalog/songCatalog.ts';
+import {
+  convertDisplayedSongToBaseChordPro,
+  formatSongLineForQuickEdit,
+  replaceChordInSongSectionLine,
+  resolveSongWithLiveOverride,
+  updateLineInSongSection,
+} from '../../chordpro/liveArrangement.ts';
 import { transposeSong } from '../../music/transposition.ts';
 import {
   getBassGuidanceForChord,
@@ -564,5 +571,327 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     assert.ok(participantAfter);
     assert.equal(participantAfter.connectionState, 'connected');
     assert.ok(new Date(participantAfter.lastSeenAt).getTime() >= new Date(initialParticipant.lastSeenAt).getTime());
+  });
+
+  it('18. broadcasts real-time live chord and lyric arrangement overrides to all connected followers', () => {
+    const created = createLiveSession({
+      title: 'Live Arrangement Rehearsal',
+      leaderName: 'Leader Caleb',
+      initialSongId: 'song-01', // Original Key: G
+    });
+
+    const follower = joinLiveSession({
+      joinCode: created.session.joinCode,
+      participantName: 'Pianist Hannah',
+      instrument: 'keyboard',
+    });
+
+    const events: LiveStreamMessage[] = [];
+    const { unsubscribe } = subscribeToLiveSession(
+      created.session.sessionId,
+      follower.participantToken,
+      (msg) => {
+        events.push(msg);
+      }
+    );
+
+    const customChordPro = [
+      '{title: Ang Buhay Ko Ay Kay Kristo}',
+      '{key: G}',
+      '',
+      'Verse 1:',
+      '[G]Binago Mo ang [D/F#]puso ko [Em7]Panginoon [Cadd9]Hesus',
+      '',
+      'Tag / Vamp:',
+      '{comment: Spontaneous build 3x}',
+      '[C]Purihin [D]Ka [Em7]Hesus [G/B]magpakailanman',
+    ].join('\n');
+
+    const updated = updateLiveSessionState(
+      created.session.sessionId,
+      created.participantToken,
+      {
+        songArrangementOverride: {
+          songId: 'song-01',
+          chordPro: customChordPro,
+          arrangementNote: 'Acoustic start, spontaneous Tag 3x at the end',
+        },
+      }
+    );
+
+    unsubscribe();
+
+    assert.equal(updated.sharedState.arrangementId, 'live-custom');
+    const override = updated.sharedState.songArrangementOverrides?.['song-01'];
+    assert.ok(override);
+    assert.equal(override.updatedByName, 'Leader Caleb');
+    assert.equal(override.arrangementNote, 'Acoustic start, spontaneous Tag 3x at the end');
+
+    // Verify SSE broadcast delivered the override to followers
+    const stateUpdatedEvents = events.filter((e) => e.type === 'state_updated');
+    assert.equal(stateUpdatedEvents.length, 1);
+    assert.ok(
+      stateUpdatedEvents[0].session.sharedState.songArrangementOverrides?.[
+        'song-01'
+      ]
+    );
+
+    // Resolve song for follower and verify new chords, lyrics, and Tag section
+    const baseSong = getSongById('song-01')!;
+    const resolvedSong = resolveSongWithLiveOverride(baseSong, override);
+    assert.equal(resolvedSong.originalKey, 'G');
+    assert.equal(resolvedSong.sections.length, 2);
+    assert.equal(resolvedSong.sections[1].label, 'Tag / Vamp');
+    assert.equal(resolvedSong.sections[1].cue, 'Spontaneous build 3x');
+    assert.equal(resolvedSong.sections[0].lines[0].segments[1].chord, 'D/F#');
+    assert.ok(resolvedSong.sections[0].lines[0].segments[1].text.includes('puso ko'));
+
+    // Verify unauthorized follower cannot broadcast or clear an arrangement override
+    assert.throws(
+      () => {
+        updateLiveSessionState(
+          created.session.sessionId,
+          follower.participantToken,
+          {
+            clearSongArrangementOverrideSongId: 'song-01',
+          }
+        );
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof LiveSyncError);
+        assert.equal(err.code, 'FORBIDDEN_NOT_LEADER');
+        return true;
+      }
+    );
+  });
+
+  it('19. prevents double-transposition when Leader edits chords while viewing in a transposed key (e.g., G transposed +2 to A)', () => {
+    const baseSong = getSongById('song-01')!; // Original Key: G
+    assert.equal(baseSong.originalKey, 'G');
+
+    // Leader is currently in Official Key of A (+2 semitones from G)
+    const { song: displayedInA, displayedKey } = transposeSong(baseSong, 2, 'auto');
+    assert.equal(displayedKey, 'A');
+
+    // Leader uses 1-tap inline chord swap to change the first chord in Verse 1 from 'A' to 'F#m7'
+    // and edits line 1 lyrics & chords in Key of A
+    const firstSecId = displayedInA.sections[0].id;
+    const afterChordSwap = replaceChordInSongSectionLine(
+      displayedInA,
+      firstSecId,
+      0,
+      0,
+      'F#m7'
+    );
+    assert.equal(afterChordSwap.sections[0].lines[0].segments[0].chord, 'F#m7');
+
+    const afterLineEdit = updateLineInSongSection(
+      afterChordSwap,
+      firstSecId,
+      0,
+      '[F#m7]New worship [Dmaj7]lyric in [E]key of [A]A',
+      'Soft keys only'
+    );
+
+    // Convert edited song (in Key of A, +2 semitones) back to canonical base ChordPro (Key of G, 0 semitones)
+    const baseChordPro = convertDisplayedSongToBaseChordPro(afterLineEdit, baseSong, 2);
+
+    // Resolve override on baseSong (Key of G)
+    const resolvedBase = resolveSongWithLiveOverride(baseSong, {
+      songId: baseSong.id,
+      chordPro: baseChordPro,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'leader-1',
+    });
+
+    // In base key (G), F#m7 (-2) -> Em7, Dmaj7 (-2) -> Cmaj7, E (-2) -> D, A (-2) -> G
+    const baseSegs = resolvedBase.sections[0].lines[0].segments;
+    assert.equal(baseSegs[0].chord, 'Em7');
+    assert.equal(baseSegs[1].chord, 'Cmaj7');
+    assert.equal(baseSegs[2].chord, 'D');
+    assert.equal(baseSegs[3].chord, 'G');
+
+    // Now when Live Sync renders `transposeSong(resolvedBase, +2, 'auto')` for followers in Key of A,
+    // they see the EXACT chords the leader typed in A (zero double-transposition!)
+    const { song: followerViewInA, displayedKey: followerKey } = transposeSong(
+      resolvedBase,
+      2,
+      'auto'
+    );
+    assert.equal(followerKey, 'A');
+    const followerSegs = followerViewInA.sections[0].lines[0].segments;
+    assert.equal(followerSegs[0].chord, 'F#m7');
+    assert.equal(followerSegs[1].chord, 'Dmaj7');
+    assert.equal(followerSegs[2].chord, 'E');
+    assert.equal(followerSegs[3].chord, 'A');
+    assert.equal(followerViewInA.sections[0].lines[0].annotation, 'Soft keys only');
+
+    // And if leader steps key up +2 more to B (+4 from G), chords transpose cleanly to G#m7, Emaj7, F#, B
+    const { song: followerViewInB, displayedKey: keyB } = transposeSong(
+      resolvedBase,
+      4,
+      'auto'
+    );
+    assert.equal(keyB, 'B');
+    const segsInB = followerViewInB.sections[0].lines[0].segments;
+    assert.equal(segsInB[0].chord, 'G#m7');
+    assert.equal(segsInB[1].chord, 'Emaj7');
+    assert.equal(segsInB[2].chord, 'F#');
+    assert.equal(segsInB[3].chord, 'B');
+  });
+
+  it('20. preserves custom section selection on key changes, supports multi-song overrides across queue switches, and reverts cleanly', () => {
+    const created = createLiveSession({
+      title: 'Multi-Song Custom Arrangement Flow',
+      leaderName: 'Leader David',
+      initialSongId: 'song-01',
+      setlistSongIds: ['song-01', 'song-02'],
+    });
+
+    // 1. Leader adds a custom "Spontaneous Tag" section to song-01 and selects it
+    const song1CustomChordPro = [
+      '{title: Song 1 Custom}',
+      '{key: G}',
+      '',
+      'Verse 1:',
+      '[G]First verse [C]line',
+      '',
+      'Spontaneous Tag:',
+      '[Em7]We exalt [D]You [C]Lord',
+    ].join('\n');
+
+    const afterOverride1 = updateLiveSessionState(
+      created.session.sessionId,
+      created.participantToken,
+      {
+        songArrangementOverride: {
+          songId: 'song-01',
+          chordPro: song1CustomChordPro,
+        },
+        activeSectionId: 'sec-2', // 'Spontaneous Tag' in parsed ChordPro
+      }
+    );
+
+    assert.equal(afterOverride1.sharedState.activeSectionId, 'sec-2');
+    assert.equal(afterOverride1.sharedState.activeSectionLabel, 'Spontaneous Tag');
+
+    // 2. Leader transposes song-01 up +2 semitones WITHOUT passing activeSectionId
+    // Verify activeSectionId stays on 'sec-2' ('Spontaneous Tag') and does NOT reset to 'sec-1'!
+    const afterKeyChange = updateLiveSessionState(
+      created.session.sessionId,
+      created.participantToken,
+      {
+        officialSemitones: 2,
+      }
+    );
+    assert.equal(afterKeyChange.sharedState.officialSemitones, 2);
+    assert.equal(afterKeyChange.sharedState.activeSectionId, 'sec-2');
+    assert.equal(afterKeyChange.sharedState.activeSectionLabel, 'Spontaneous Tag');
+
+    // 3. Leader switches to song-02 in the queue and customizes song-02 as well
+    const song2CustomChordPro = [
+      '{title: Song 2 Custom}',
+      '{key: C}',
+      '',
+      'Chorus:',
+      '[F]Holy [G]forever [Am7]Lord',
+    ].join('\n');
+
+    const onSong2 = updateLiveSessionState(
+      created.session.sessionId,
+      created.participantToken,
+      {
+        songId: 'song-02',
+        songArrangementOverride: {
+          songId: 'song-02',
+          chordPro: song2CustomChordPro,
+          arrangementNote: 'Start directly on Chorus',
+        },
+      }
+    );
+
+    assert.equal(onSong2.sharedState.songId, 'song-02');
+    assert.ok(onSong2.sharedState.songArrangementOverrides?.['song-01']);
+    assert.ok(onSong2.sharedState.songArrangementOverrides?.['song-02']);
+
+    // 4. Leader switches back to song-01 -> song-01's custom arrangement is still intact!
+    const backToSong1 = updateLiveSessionState(
+      created.session.sessionId,
+      created.participantToken,
+      {
+        songId: 'song-01',
+      }
+    );
+    assert.equal(backToSong1.sharedState.songId, 'song-01');
+    assert.equal(backToSong1.sharedState.arrangementId, 'live-custom');
+    assert.ok(backToSong1.sharedState.songArrangementOverrides?.['song-01']);
+
+    // 5. Leader reverts song-01 back to the original chart -> song-01 override is removed while song-02 override remains
+    const afterRevertSong1 = updateLiveSessionState(
+      created.session.sessionId,
+      created.participantToken,
+      {
+        clearSongArrangementOverrideSongId: 'song-01',
+      }
+    );
+    assert.equal(afterRevertSong1.sharedState.arrangementId, 'default');
+    assert.equal(afterRevertSong1.sharedState.songArrangementOverrides?.['song-01'], undefined);
+    assert.ok(afterRevertSong1.sharedState.songArrangementOverrides?.['song-02']);
+  });
+
+  it('21. handles instrumental-to-lyric conversion, chord removal, and rejects empty/oversized arrangement payloads', () => {
+    const baseSong = getSongById('song-01')!;
+    const secId = baseSong.sections[0].id;
+
+    // 1. Update line to purely instrumental chords -> isInstrumental becomes true
+    const instrumentalSong = updateLineInSongSection(
+      baseSong,
+      secId,
+      0,
+      '[G] [C] [Em7] [D]'
+    );
+    assert.equal(instrumentalSong.sections[0].lines[0].isInstrumental, true);
+    assert.equal(
+      formatSongLineForQuickEdit(instrumentalSong.sections[0].lines[0]),
+      '[G] [C] [Em7] [D]'
+    );
+
+    // 2. Remove a chord from segment 1 via replaceChordInSongSectionLine('', '')
+    const afterRemoveChord = replaceChordInSongSectionLine(
+      instrumentalSong,
+      secId,
+      0,
+      1,
+      ''
+    );
+    assert.equal(afterRemoveChord.sections[0].lines[0].segments[1].chord, undefined);
+
+    // 3. Server rejects empty chordPro override with 400 INVALID_ARRANGEMENT
+    const created = createLiveSession({
+      title: 'Validation Session',
+      leaderName: 'Leader Mark',
+      initialSongId: 'song-01',
+    });
+
+    assert.throws(
+      () => {
+        updateLiveSessionState(
+          created.session.sessionId,
+          created.participantToken,
+          {
+            songArrangementOverride: {
+              songId: 'song-01',
+              chordPro: '   ',
+            },
+          }
+        );
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof LiveSyncError);
+        assert.equal(err.code, 'INVALID_ARRANGEMENT');
+        assert.equal(err.statusCode, 400);
+        return true;
+      }
+    );
   });
 });

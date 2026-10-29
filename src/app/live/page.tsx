@@ -37,11 +37,21 @@ import {
   WifiOff,
   XCircle,
   Loader2,
+  Edit3,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { apiUrl, getCloudHubUrl } from '@/lib/api/apiClient';
 import { getAllSongs, getSongById } from '@/lib/catalog/songCatalog';
+import { getSuggestedChordsForKey } from '@/lib/chordpro/chordPro';
+import {
+  convertDisplayedSongToBaseChordPro,
+  formatSongLineForQuickEdit,
+  replaceChordInSongSectionLine,
+  resolveSongWithLiveOverride,
+  updateLineInSongSection,
+} from '@/lib/chordpro/liveArrangement';
 import {
   formatSignedSemitones,
   getDestinationKeyOptions,
@@ -56,6 +66,7 @@ import {
   getKeyboardVoicing,
 } from '@/lib/music/instrumentGuidance';
 import { LiveSyncQrModal } from '@/components/live/LiveSyncQrModal';
+import { LiveArrangementEditorModal } from '@/components/live/LiveArrangementEditorModal';
 import { ReferenceAudioPlayer } from '@/components/audio/ReferenceAudioPlayer';
 import {
   setTeamActiveLiveSession,
@@ -103,7 +114,7 @@ function LiveSyncWorkspace({
   initialStartSemitones: number;
   initialStartSetlistId: string;
 }) {
-  const { setlists } = useApp();
+  const { setlists, saveCustomSong } = useApp();
   const allSongs = getAllSongs();
 
   // Active session & credentials state
@@ -245,6 +256,21 @@ function LiveSyncWorkspace({
     'code' | 'link' | 'network' | null
   >(null);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [showArrangementModal, setShowArrangementModal] = useState(false);
+  const [isQuickEditMode, setIsQuickEditMode] = useState(false);
+  const [activeChordEditTarget, setActiveChordEditTarget] = useState<{
+    sectionId: string;
+    lineIndex: number;
+    segmentIndex: number;
+    currentChord: string;
+  } | null>(null);
+  const [customChordInput, setCustomChordInput] = useState('');
+  const [activeLineEditTarget, setActiveLineEditTarget] = useState<{
+    sectionId: string;
+    lineIndex: number;
+    bracketedText: string;
+    annotation: string;
+  } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAutoConnecting, setIsAutoConnecting] = useState(false);
   const autoJoinInFlightRef = useRef(false);
@@ -1785,9 +1811,23 @@ function LiveSyncWorkspace({
       ? session.sharedState.activeSectionId
       : independentSectionId || session.sharedState.activeSectionId;
 
-  const sourceSong = getSongById(activeSongId) ?? allSongs[0];
-  const officialSong =
-    getSongById(session.sharedState.songId) ?? sourceSong;
+  const rawSourceSong = getSongById(activeSongId) ?? allSongs[0];
+  const rawOfficialSong =
+    getSongById(session.sharedState.songId) ?? rawSourceSong;
+
+  const activeSongOverride =
+    session.sharedState.songArrangementOverrides?.[rawSourceSong.id];
+  const officialSongOverride =
+    session.sharedState.songArrangementOverrides?.[rawOfficialSong.id];
+
+  const sourceSong = resolveSongWithLiveOverride(
+    rawSourceSong,
+    activeSongOverride
+  );
+  const officialSong = resolveSongWithLiveOverride(
+    rawOfficialSong,
+    officialSongOverride
+  );
 
   const {
     song: displaySong,
@@ -1903,6 +1943,8 @@ function LiveSyncWorkspace({
   };
 
   const handleSelectSongInQueue = (targetSongId: string) => {
+    setActiveChordEditTarget(null);
+    setActiveLineEditTarget(null);
     // Preserve planned song transposition from team lineup or personal setlist
     const activeLineup = effectiveGroup?.activeSetlist || activeSelectedSetlist;
     const lineupItem =
@@ -1927,6 +1969,82 @@ function LiveSyncWorkspace({
     if (session.sharedState.setlistSongIds.includes(songToAddId)) return;
     sendOfficialStateUpdate({
       setlistSongIds: [...session.sharedState.setlistSongIds, songToAddId],
+    });
+  };
+
+  const diatonicSuggestionsForDisplayedKey = getSuggestedChordsForKey(displayedKey);
+
+  const handleBroadcastLiveOverride = async (payload: {
+    songId: string;
+    chordPro: string;
+    arrangementNote?: string;
+  }) => {
+    if (!canControlOfficialState) return;
+    await sendOfficialStateUpdate({
+      songArrangementOverride: payload,
+    });
+  };
+
+  const handleRevertSongToOriginal = async (targetSongId: string) => {
+    if (!canControlOfficialState) return;
+    setActiveChordEditTarget(null);
+    setActiveLineEditTarget(null);
+    await sendOfficialStateUpdate({
+      clearSongArrangementOverrideSongId: targetSongId,
+    });
+  };
+
+  const handleInlineChordChange = async (
+    sectionId: string,
+    lineIndex: number,
+    segmentIndex: number,
+    newConcertChord: string
+  ) => {
+    if (!canControlOfficialState) return;
+    const updatedDisplayedSong = replaceChordInSongSectionLine(
+      displaySong,
+      sectionId,
+      lineIndex,
+      segmentIndex,
+      newConcertChord
+    );
+    const baseChordPro = convertDisplayedSongToBaseChordPro(
+      updatedDisplayedSong,
+      rawSourceSong,
+      activeSemitones
+    );
+    setActiveChordEditTarget(null);
+    setCustomChordInput('');
+    await sendOfficialStateUpdate({
+      songArrangementOverride: {
+        songId: rawSourceSong.id,
+        chordPro: baseChordPro,
+        arrangementNote: activeSongOverride?.arrangementNote,
+      },
+    });
+  };
+
+  const handleInlineLineSave = async () => {
+    if (!canControlOfficialState || !activeLineEditTarget) return;
+    const updatedDisplayedSong = updateLineInSongSection(
+      displaySong,
+      activeLineEditTarget.sectionId,
+      activeLineEditTarget.lineIndex,
+      activeLineEditTarget.bracketedText,
+      activeLineEditTarget.annotation
+    );
+    const baseChordPro = convertDisplayedSongToBaseChordPro(
+      updatedDisplayedSong,
+      rawSourceSong,
+      activeSemitones
+    );
+    setActiveLineEditTarget(null);
+    await sendOfficialStateUpdate({
+      songArrangementOverride: {
+        songId: rawSourceSong.id,
+        chordPro: baseChordPro,
+        arrangementNote: activeSongOverride?.arrangementNote,
+      },
     });
   };
 
@@ -2256,9 +2374,44 @@ function LiveSyncWorkspace({
                 )}
               </div>
 
-              {/* Prev / Next Song in Setlist Controls (Leader) */}
+              {/* Prev / Next Song in Setlist Controls & Live Arrangement Studio (Leader) */}
               {canControlOfficialState && viewMode === 'follow' && (
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsQuickEditMode((prev) => !prev);
+                      setActiveChordEditTarget(null);
+                      setActiveLineEditTarget(null);
+                    }}
+                    aria-pressed={isQuickEditMode}
+                    data-testid="live-quick-edit-toggle"
+                    className={`px-3 py-2 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                      isQuickEditMode
+                        ? 'bg-[var(--brand-accent)] text-[#0c0c10] border-[var(--brand-accent)] shadow-xs'
+                        : 'border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
+                    }`}
+                    title="Tap any chord or lyric line directly on the live chart to modify it for the entire band"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>
+                      {isQuickEditMode
+                        ? 'Exit Quick Tap Edit'
+                        : 'Quick-Tap Edit Chart'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowArrangementModal(true)}
+                    data-testid="open-live-arrangement-studio-btn"
+                    className="px-3 py-2 rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                    title="Open full Live Chords & Lyrics Arrangement Studio (add sections, repeat Bridge/Tag, edit ChordPro)"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Arrange Chords &amp; Lyrics</span>
+                  </button>
+
                   <button
                     type="button"
                     disabled={currentSongSetlistIndex <= 0}
@@ -2291,6 +2444,81 @@ function LiveSyncWorkspace({
                 </div>
               )}
             </div>
+
+            {/* Active Live Arrangement Banner (Shown to all band members when leader customizes chords/lyrics) */}
+            {activeSongOverride && (
+              <div
+                data-testid="live-arrangement-active-banner"
+                className="rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 font-bold text-[var(--brand-accent)]">
+                    <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Live Arrangement Active</span>
+                  </span>
+                  {activeSongOverride.updatedByName && (
+                    <span className="text-[var(--text-secondary)]">
+                      · Arranged live by{' '}
+                      <strong className="text-[var(--text-primary)]">
+                        {activeSongOverride.updatedByName}
+                      </strong>
+                    </span>
+                  )}
+                  {activeSongOverride.arrangementNote && (
+                    <span className="px-2 py-0.5 rounded-md bg-[var(--bg-surface)] border border-[var(--border-subtle)] font-semibold text-[var(--text-primary)]">
+                      “{activeSongOverride.arrangementNote}”
+                    </span>
+                  )}
+                </div>
+
+                {canControlOfficialState && viewMode === 'follow' && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowArrangementModal(true)}
+                      className="text-xs font-bold text-[var(--brand-accent)] hover:underline cursor-pointer"
+                    >
+                      Edit Arrangement
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRevertSongToOriginal(rawSourceSong.id)}
+                      className="text-xs font-semibold text-rose-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Revert to Original</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Quick-Tap Edit Mode Helper Bar */}
+            {canControlOfficialState && viewMode === 'follow' && isQuickEditMode && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-300">
+                <div className="flex items-center gap-2">
+                  <Edit3 className="w-4 h-4 shrink-0" />
+                  <span>
+                    <strong>Quick-Tap Live Edit Active:</strong> Click any{' '}
+                    <strong>chord badge</strong> on the chart below to swap it
+                    instantly in <strong>Key of {displayedKey}</strong>, or click{' '}
+                    <strong>Edit Line</strong> to change lyrics &amp; chords on the
+                    spot.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsQuickEditMode(false);
+                    setActiveChordEditTarget(null);
+                    setActiveLineEditTarget(null);
+                  }}
+                  className="underline font-bold cursor-pointer shrink-0"
+                >
+                  Done
+                </button>
+              </div>
+            )}
 
             {/* Transposition & Section Bar */}
             <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
@@ -2604,6 +2832,11 @@ function LiveSyncWorkspace({
                   <div className="space-y-4">
                     {section.lines.map((line, lineIdx) => {
                       const instrumental = isLineInstrumental(line);
+                      const isEditingThisLine =
+                        canControlOfficialState &&
+                        viewMode === 'follow' &&
+                        activeLineEditTarget?.sectionId === section.id &&
+                        activeLineEditTarget?.lineIndex === lineIdx;
 
                       const formatDisplayedChord = (rawChord?: string) => {
                         if (!rawChord) return '\u00A0';
@@ -2630,43 +2863,334 @@ function LiveSyncWorkspace({
                         return rawChord;
                       };
 
-                      if (instrumental) {
+                      const renderChordPickerPopover = (
+                        segIdx: number,
+                        currentChord: string
+                      ) => {
+                        const isTarget =
+                          canControlOfficialState &&
+                          viewMode === 'follow' &&
+                          activeChordEditTarget?.sectionId === section.id &&
+                          activeChordEditTarget?.lineIndex === lineIdx &&
+                          activeChordEditTarget?.segmentIndex === segIdx;
+
+                        if (!isTarget) return null;
+
                         return (
-                          <div key={lineIdx} className="chart-line-scroll py-1">
-                            <div className="inline-flex items-center gap-2 font-mono font-bold">
-                              <span className="text-xs font-sans uppercase text-[var(--text-secondary)]">
-                                Chords:
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            data-testid="inline-chord-picker-popover"
+                            className="mt-1.5 mb-2 p-3 rounded-xl border-2 border-[var(--brand-accent)] bg-[var(--bg-surface)] shadow-xl space-y-2.5 z-30 max-w-md"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-[var(--brand-accent)]">
+                                Swap Chord ({currentChord || 'None'}) in Key of{' '}
+                                {displayedKey}:
                               </span>
-                              {line.segments.map((seg, segIdx) => (
-                                <span
-                                  key={segIdx}
-                                  className="px-2.5 py-1 rounded-lg bg-[var(--chord-bg)] text-[var(--chord-color)] border border-[var(--border-subtle)]"
+                              <button
+                                type="button"
+                                onClick={() => setActiveChordEditTarget(null)}
+                                className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                              >
+                                Close
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {diatonicSuggestionsForDisplayedKey.map((sug) => (
+                                <button
+                                  key={sug}
+                                  type="button"
+                                  onClick={() =>
+                                    handleInlineChordChange(
+                                      section.id,
+                                      lineIdx,
+                                      segIdx,
+                                      sug
+                                    )
+                                  }
+                                  className={`px-2.5 py-1 rounded-lg font-mono font-bold text-xs border cursor-pointer transition-colors ${
+                                    sug === currentChord
+                                      ? 'bg-[var(--brand-accent)] text-[#0c0c10] border-[var(--brand-accent)]'
+                                      : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
+                                  }`}
                                 >
-                                  | {formatDisplayedChord(seg.chord)}
-                                </span>
+                                  {sug}
+                                </button>
                               ))}
-                              <span>|</span>
+                              {currentChord && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleInlineChordChange(
+                                      section.id,
+                                      lineIdx,
+                                      segIdx,
+                                      ''
+                                    )
+                                  }
+                                  className="px-2.5 py-1 rounded-lg font-sans font-semibold text-xs border border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 cursor-pointer"
+                                >
+                                  Remove Chord
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1.5 pt-1">
+                              <input
+                                type="text"
+                                aria-label="Custom chord symbol"
+                                value={customChordInput}
+                                onChange={(e) =>
+                                  setCustomChordInput(e.target.value)
+                                }
+                                placeholder="Custom chord (e.g. D/F#, Asus4, Bm7)"
+                                className="flex-1 h-8 px-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] font-mono text-xs"
+                              />
+                              <button
+                                type="button"
+                                disabled={!customChordInput.trim()}
+                                onClick={() =>
+                                  handleInlineChordChange(
+                                    section.id,
+                                    lineIdx,
+                                    segIdx,
+                                    customChordInput.trim()
+                                  )
+                                }
+                                className="px-3 h-8 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-xs cursor-pointer disabled:opacity-40"
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      };
+
+                      if (isEditingThisLine && activeLineEditTarget) {
+                        return (
+                          <div
+                            key={lineIdx}
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-3 rounded-xl border-2 border-[var(--brand-accent)] bg-[var(--bg-subtle)] space-y-2.5"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-[var(--brand-accent)]">
+                                Live Edit Line #{lineIdx + 1} (Use [Chord]
+                                before lyrics in Key of {displayedKey})
+                              </span>
+                              <div className="flex flex-wrap gap-1">
+                                {diatonicSuggestionsForDisplayedKey.map(
+                                  (chord) => (
+                                    <button
+                                      key={chord}
+                                      type="button"
+                                      onClick={() =>
+                                        setActiveLineEditTarget((prev) =>
+                                          prev
+                                            ? {
+                                                ...prev,
+                                                bracketedText: `${prev.bracketedText}[${chord}]`,
+                                              }
+                                            : null
+                                        )
+                                      }
+                                      className="px-2 py-0.5 rounded bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 font-mono font-bold text-[11px] cursor-pointer"
+                                    >
+                                      +{chord}
+                                    </button>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                            <input
+                              type="text"
+                              aria-label="Edit line chords and lyrics"
+                              value={activeLineEditTarget.bracketedText}
+                              onChange={(e) =>
+                                setActiveLineEditTarget((prev) =>
+                                  prev
+                                    ? { ...prev, bracketedText: e.target.value }
+                                    : null
+                                )
+                              }
+                              className="w-full h-10 px-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-mono text-xs sm:text-sm"
+                            />
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setActiveLineEditTarget(null)}
+                                className="px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs font-semibold cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleInlineLineSave}
+                                className="px-3.5 py-1.5 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] text-xs font-bold cursor-pointer"
+                              >
+                                Broadcast Line Update
+                              </button>
                             </div>
                           </div>
                         );
                       }
 
+                      if (instrumental) {
+                        const activePopoverSegIdx =
+                          activeChordEditTarget?.sectionId === section.id &&
+                          activeChordEditTarget?.lineIndex === lineIdx
+                            ? activeChordEditTarget.segmentIndex
+                            : null;
+                        return (
+                          <div key={lineIdx} className="chart-line-scroll py-1">
+                            <div className="inline-flex flex-wrap items-center gap-2 font-mono font-bold">
+                              <span className="text-xs font-sans uppercase text-[var(--text-secondary)]">
+                                Chords:
+                              </span>
+                              {line.segments.map((seg, segIdx) => {
+                                const canTapChord =
+                                  canControlOfficialState &&
+                                  viewMode === 'follow' &&
+                                  isQuickEditMode;
+                                return (
+                                  <span
+                                    key={segIdx}
+                                    onClick={(e) => {
+                                      if (!canTapChord) return;
+                                      e.stopPropagation();
+                                      setCustomChordInput(seg.chord || '');
+                                      setActiveChordEditTarget({
+                                        sectionId: section.id,
+                                        lineIndex: lineIdx,
+                                        segmentIndex: segIdx,
+                                        currentChord: seg.chord || '',
+                                      });
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg bg-[var(--chord-bg)] text-[var(--chord-color)] border ${
+                                      canTapChord
+                                        ? 'border-[var(--brand-accent)] hover:bg-[var(--brand-surface)] cursor-pointer'
+                                        : 'border-[var(--border-subtle)]'
+                                    }`}
+                                  >
+                                    | {formatDisplayedChord(seg.chord)}
+                                  </span>
+                                );
+                              })}
+                              <span>|</span>
+                              {canControlOfficialState &&
+                                viewMode === 'follow' &&
+                                isQuickEditMode && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveLineEditTarget({
+                                        sectionId: section.id,
+                                        lineIndex: lineIdx,
+                                        bracketedText:
+                                          formatSongLineForQuickEdit(line),
+                                        annotation: line.annotation || '',
+                                      });
+                                    }}
+                                    className="ml-2 px-2 py-0.5 rounded-md border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] font-sans text-[11px] font-semibold cursor-pointer"
+                                  >
+                                    Edit Line
+                                  </button>
+                                )}
+                            </div>
+                            {activePopoverSegIdx !== null &&
+                              renderChordPickerPopover(
+                                activePopoverSegIdx,
+                                line.segments[activePopoverSegIdx]?.chord || ''
+                              )}
+                          </div>
+                        );
+                      }
+
+                      const activePopoverSegIdx =
+                        activeChordEditTarget?.sectionId === section.id &&
+                        activeChordEditTarget?.lineIndex === lineIdx
+                          ? activeChordEditTarget.segmentIndex
+                          : null;
+
                       return (
                         <div key={lineIdx} className="chart-line-scroll">
-                          <div className="chart-line-segments">
-                            {line.segments.map((seg, segIdx) => (
-                              <span key={segIdx} className="chart-segment">
-                                <span className="chart-chord-row">
-                                  {seg.chord
-                                    ? formatDisplayedChord(seg.chord)
-                                    : '\u00A0'}
-                                </span>
-                                <span className="chart-lyric-row">
-                                  {seg.text || '\u00A0'}
-                                </span>
-                              </span>
-                            ))}
+                          {line.annotation && (
+                            <div className="text-[11px] italic text-[var(--brand-accent)] mb-0.5">
+                              [{line.annotation}]
+                            </div>
+                          )}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="chart-line-segments">
+                              {line.segments.map((seg, segIdx) => {
+                                const canTapChord =
+                                  canControlOfficialState &&
+                                  viewMode === 'follow' &&
+                                  isQuickEditMode;
+                                return (
+                                  <span key={segIdx} className="chart-segment">
+                                    <span
+                                      onClick={(e) => {
+                                        if (!canTapChord) return;
+                                        e.stopPropagation();
+                                        setCustomChordInput(seg.chord || '');
+                                        setActiveChordEditTarget({
+                                          sectionId: section.id,
+                                          lineIndex: lineIdx,
+                                          segmentIndex: segIdx,
+                                          currentChord: seg.chord || '',
+                                        });
+                                      }}
+                                      className={`chart-chord-row ${
+                                        canTapChord
+                                          ? 'px-1 rounded border border-dashed border-[var(--brand-accent)]/50 hover:bg-[var(--brand-surface)] cursor-pointer'
+                                          : ''
+                                      }`}
+                                      title={
+                                        canTapChord
+                                          ? 'Click to change or add chord here'
+                                          : undefined
+                                      }
+                                    >
+                                      {seg.chord
+                                        ? formatDisplayedChord(seg.chord)
+                                        : canTapChord
+                                        ? '+chord'
+                                        : '\u00A0'}
+                                    </span>
+                                    <span className="chart-lyric-row">
+                                      {seg.text || '\u00A0'}
+                                    </span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+
+                            {canControlOfficialState &&
+                              viewMode === 'follow' &&
+                              isQuickEditMode && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveLineEditTarget({
+                                      sectionId: section.id,
+                                      lineIndex: lineIdx,
+                                      bracketedText:
+                                        formatSongLineForQuickEdit(line),
+                                      annotation: line.annotation || '',
+                                    });
+                                  }}
+                                  className="shrink-0 px-2 py-1 rounded-lg border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] text-[11px] font-semibold cursor-pointer"
+                                >
+                                  Edit Line
+                                </button>
+                              )}
                           </div>
+                          {activePopoverSegIdx !== null &&
+                            renderChordPickerPopover(
+                              activePopoverSegIdx,
+                              line.segments[activePopoverSegIdx]?.chord || ''
+                            )}
                         </div>
                       );
                     })}
@@ -2697,6 +3221,9 @@ function LiveSyncWorkspace({
             <ol className="space-y-2">
               {currentSetlistSongs.map((s, idx) => {
                 const isOfficialCurrent = s.id === session.sharedState.songId;
+                const hasCustomOverride = Boolean(
+                  session.sharedState.songArrangementOverrides?.[s.id]
+                );
                 return (
                   <li key={`${s.id}-${idx}`}>
                     <button
@@ -2709,8 +3236,18 @@ function LiveSyncWorkspace({
                       }`}
                     >
                       <div className="min-w-0">
-                        <div className="font-semibold text-sm truncate">
-                          {idx + 1}. {s.title}
+                        <div className="font-semibold text-sm truncate flex items-center gap-1.5">
+                          <span className="truncate">
+                            {idx + 1}. {s.title}
+                          </span>
+                          {hasCustomOverride && (
+                            <span
+                              title="Custom live arrangement active"
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 shrink-0"
+                            >
+                              Arranged
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-[var(--text-secondary)]">
                           Orig Key: {s.originalKey} · {s.language.label}
@@ -2867,6 +3404,25 @@ function LiveSyncWorkspace({
           sessionCode={session.joinCode}
           joinUrl={fullJoinLink}
           sessionTitle={session.title}
+        />
+      )}
+
+      {/* Real-Time Live Arrangement Chords & Lyrics Studio Modal */}
+      {session && (
+        <LiveArrangementEditorModal
+          isOpen={showArrangementModal}
+          onClose={() => setShowArrangementModal(false)}
+          baseSong={rawSourceSong}
+          displayedSong={displaySong}
+          displayedSemitones={activeSemitones}
+          displayedKey={displayedKey}
+          initialArrangementNote={activeSongOverride?.arrangementNote}
+          hasActiveOverride={Boolean(activeSongOverride)}
+          onBroadcastOverride={handleBroadcastLiveOverride}
+          onRevertToOriginal={handleRevertSongToOriginal}
+          onSaveCopyToMySongs={async (customSong) => {
+            await saveCustomSong(customSong);
+          }}
         />
       )}
     </div>

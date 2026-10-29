@@ -18,6 +18,21 @@ export interface LiveParticipant {
   lastSeenAt: string;
 }
 
+export interface LiveSongArrangementOverride {
+  /** Song ID this live arrangement override applies to */
+  songId: string;
+  /** ChordPro text stored in the song's base originalKey (semitones = 0) */
+  chordPro: string;
+  /** Optional rehearsal note or arrangement label (e.g., "Acoustic Build + Extra Tag") */
+  arrangementNote?: string;
+  /** ISO timestamp when this override was broadcast */
+  updatedAt: string;
+  /** Participant ID of the leader/co-leader who broadcast this change */
+  updatedBy: string;
+  /** Display name of the leader/co-leader who broadcast this change */
+  updatedByName?: string;
+}
+
 export interface LiveSharedMusicalState {
   /** Stable SongRecord ID from the catalog */
   songId: string;
@@ -37,6 +52,8 @@ export interface LiveSharedMusicalState {
   activeLineIndex: number;
   /** Ordered list of song IDs in the live session setlist/queue */
   setlistSongIds: string[];
+  /** Optional map of real-time song arrangement overrides (chords & lyrics) keyed by songId */
+  songArrangementOverrides?: Record<string, LiveSongArrangementOverride>;
   /** Timestamp of last state update */
   updatedAt: string;
   /** Participant ID who made the last authoritative change */
@@ -115,6 +132,14 @@ export interface UpdateSharedStateInput {
   activeSectionLabel?: string;
   activeLineIndex?: number;
   setlistSongIds?: string[];
+  /** Broadcast or update a live chord & lyric arrangement override for a song */
+  songArrangementOverride?: {
+    songId: string;
+    chordPro: string;
+    arrangementNote?: string;
+  };
+  /** Clear/revert a live arrangement override for a specific song ID */
+  clearSongArrangementOverrideSongId?: string;
   /** Optional optimistic concurrency check */
   expectedRevision?: number;
 }
