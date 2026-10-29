@@ -69,6 +69,7 @@ interface AuthContextValue {
   connectCloudStorage: (config: CloudStorageConfig) => Promise<void>;
   // Group / Worship Team Collaboration
   activeGroup: WorshipGroup | null;
+  isResolvingTeam: boolean;
   teamPresence: Record<string, TeamPresenceRecord>;
   onlineMembersCount: number;
   broadcastSongActivity: (songTitle: string) => void;
@@ -123,6 +124,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
+  // Group / Worship Team Collaboration
+  const [activeGroup, setActiveGroup] = useState<WorshipGroup | null>(() => getCachedTeam());
+  const [teamPresence, setTeamPresence] = useState<Record<string, TeamPresenceRecord>>({});
+  const [isResolvingTeam, setIsResolvingTeam] = useState<boolean>(false);
+
+  const onlineMembersCount = useMemo(() => {
+    return Object.values(teamPresence).filter((p) => p.online).length;
+  }, [teamPresence]);
+
   // Helper to fetch with token
   const authFetch = useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
@@ -133,6 +143,152 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const resolvedInput = typeof input === 'string' ? apiUrl(input) : input;
     return fetch(resolvedInput, { ...init, headers });
   }, []);
+
+  // Centralized team resolution helper across server and Firestore
+  const resolveUserTeam = useCallback(
+    async (targetUser?: UserProfile | null): Promise<WorshipGroup | null> => {
+      const u = targetUser || user;
+      if (!u) return null;
+
+      setIsResolvingTeam(true);
+      try {
+        const cached = getCachedTeam();
+        const targetId = u.groupId || activeGroup?.id || cached?.id;
+
+        // 1. Direct group fetch if an ID is known
+        if (targetId) {
+          try {
+            const res = await authFetch(`/api/groups/${targetId}`, { cache: 'no-store' });
+            if (res.ok) {
+              const data = await res.json();
+              if (data?.group) {
+                const group: WorshipGroup = data.group;
+                setActiveGroup(group);
+                setCachedTeam(group);
+                return group;
+              }
+            }
+          } catch {}
+        }
+
+        // 2. Discover user's group on the server via session token
+        try {
+          const res = await authFetch('/api/groups/my-group', { cache: 'no-store' });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.group) {
+              const group: WorshipGroup = data.group;
+              setActiveGroup(group);
+              setCachedTeam(group);
+              const isLeader =
+                group.ownerId === u.id ||
+                (Array.isArray(group.members) &&
+                  group.members.some(
+                    (m: any) =>
+                      (m.userId === u.id ||
+                        (u.email && m.email?.toLowerCase() === u.email.toLowerCase())) &&
+                      m.role === 'leader'
+                  ));
+              const updatedUser: UserProfile = {
+                ...u,
+                groupId: group.id,
+                groupName: group.name,
+                groupRole: isLeader ? 'leader' : 'member',
+              };
+              setUser(updatedUser);
+              try {
+                localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
+              } catch {}
+              return group;
+            }
+          }
+        } catch {}
+
+        // 3. Discover user's group in Firestore (by memberIds, ownerId, or member email)
+        try {
+          const firestoreGroup = await findUserTeamInFirestore(u.id, u.email);
+          if (firestoreGroup) {
+            setActiveGroup(firestoreGroup);
+            setCachedTeam(firestoreGroup);
+            const isLeader =
+              firestoreGroup.ownerId === u.id ||
+              (Array.isArray(firestoreGroup.members) &&
+                firestoreGroup.members.some(
+                  (m: any) =>
+                    (m.userId === u.id ||
+                      (u.email && m.email?.toLowerCase() === u.email.toLowerCase())) &&
+                    m.role === 'leader'
+                ));
+            const updatedUser: UserProfile = {
+              ...u,
+              groupId: firestoreGroup.id,
+              groupName: firestoreGroup.name,
+              groupRole: isLeader ? 'leader' : 'member',
+            };
+            setUser(updatedUser);
+            try {
+              localStorage.setItem(USER_CACHE_KEY, JSON.stringify(updatedUser));
+            } catch {}
+            return firestoreGroup;
+          }
+        } catch {}
+
+        return null;
+      } finally {
+        setIsResolvingTeam(false);
+      }
+    },
+    [user, activeGroup?.id, authFetch]
+  );
+
+  const refreshActiveGroup = useCallback(async () => {
+    const targetGroupId = user?.groupId || activeGroup?.id || getCachedTeam()?.id;
+    if (!targetGroupId) {
+      if (user) {
+        await resolveUserTeam(user);
+      }
+      return;
+    }
+
+    try {
+      const res = await authFetch(`/api/groups/${targetGroupId}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.group) {
+          const cached = getCachedTeam();
+          // Always union-merge known members so polling never wipes out active musicians
+          const currentMembers = activeGroup?.members || cached?.members || [];
+          const incomingMembers = data.group.members || [];
+          const map = new Map<string, any>();
+          for (const m of currentMembers) map.set(m.userId, m);
+          for (const m of incomingMembers) map.set(m.userId, m);
+          data.group.members = Array.from(map.values());
+
+          // Preserve active setlist ONLY if server response omitted it (undefined) AND local state wasn't explicitly cleared (null)
+          if (data.group.activeSetlist === undefined) {
+            if (activeGroup?.activeSetlist === null || cached?.activeSetlist === null) {
+              data.group.activeSetlist = null;
+            } else if (activeGroup?.activeSetlist || cached?.activeSetlist) {
+              data.group.activeSetlist = activeGroup?.activeSetlist || cached?.activeSetlist;
+            }
+          }
+
+          // Intelligently merge suggested setlists so approved/declined lineups are never demoted back to pending
+          data.group.suggestedSetlists = mergeSuggestedSetlists(
+            data.group.suggestedSetlists,
+            activeGroup?.suggestedSetlists || cached?.suggestedSetlists
+          );
+
+          setActiveGroup(data.group);
+          setCachedTeam(data.group);
+        }
+      } else if (res.status === 404 && user) {
+        await resolveUserTeam(user);
+      }
+    } catch {
+      // ignore
+    }
+  }, [user, activeGroup, authFetch, resolveUserTeam]);
 
   // Fetch submissions (user sees theirs, admin sees all)
   const refreshSubmissions = useCallback(async () => {
@@ -191,45 +347,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setActiveGroup(cachedGroup);
             }
 
-            const targetGrpId = fullUser.groupId || cachedGroup?.id;
-            if (targetGrpId) {
-              fetch(`/api/groups/${targetGrpId}`, { cache: 'no-store' })
-                .then((r) => (r.ok ? r.json() : null))
-                .then((data) => {
-                  if (!cancelled && data?.group) {
-                    const currentMembers = cachedGroup?.members || [];
-                    const incomingMembers = data.group.members || [];
-                    if (currentMembers.length > incomingMembers.length) {
-                      const map = new Map<string, any>();
-                      for (const m of currentMembers) map.set(m.userId, m);
-                      for (const m of incomingMembers) map.set(m.userId, m);
-                      data.group.members = Array.from(map.values());
-                    }
-                    setActiveGroup(data.group);
-                    setCachedTeam(data.group);
-                  }
-                })
-                .catch(() => {});
-            } else if (fullUser.id && !fullUser.groupId) {
-              // Automatically check Firestore in background if not found locally
-              findUserTeamInFirestore(fullUser.id)
-                .then((foundTeam) => {
-                  if (!cancelled && foundTeam) {
-                    setActiveGroup(foundTeam);
-                    const withTeam: UserProfile = {
-                      ...fullUser,
-                      groupId: foundTeam.id,
-                      groupName: foundTeam.name,
-                      groupRole: foundTeam.ownerId === fullUser.id ? 'leader' : 'member',
-                    };
-                    setUser(withTeam);
-                    try {
-                      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(withTeam));
-                    } catch {}
-                  }
-                })
-                .catch(() => {});
-            }
+            // Immediately resolve team from server or Firestore
+            resolveUserTeam(fullUser).catch(() => {});
           }
         } else {
           // If server responded with error (e.g. temporary serverless hiccup), preserve cached session
@@ -297,9 +416,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.profile));
       setUser(data.profile);
+
+      try {
+        await resolveUserTeam(data.profile);
+      } catch (err) {
+        console.warn('Post-login team resolution note:', err);
+      }
+
       return data.profile;
     },
-    []
+    [resolveUserTeam]
   );
 
   // Register
@@ -325,9 +451,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.profile));
       setUser(data.profile);
+
+      try {
+        await resolveUserTeam(data.profile);
+      } catch (err) {
+        console.warn('Post-register team resolution note:', err);
+      }
+
       return data.profile;
     },
-    []
+    [resolveUserTeam]
   );
 
   // Logout
@@ -338,6 +471,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_CACHE_KEY);
     setUser(null);
+    setActiveGroup(null);
+    setTeamPresence({});
+    setCachedTeam(null);
     setSubmissions([]);
     setSyncStatus('idle');
   }, [authFetch]);
@@ -395,9 +531,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.user));
       setUser(data.user);
+
+      try {
+        await resolveUserTeam(data.user);
+      } catch (err) {
+        console.warn('Post-Google login team resolution note:', err);
+      }
+
       return data.user;
     },
-    []
+    [resolveUserTeam]
   );
 
   // Instant Passwordless Email Login or Register (Zero credentials / Google setup needed)
@@ -428,9 +571,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_CACHE_KEY, JSON.stringify(data.user));
       setUser(data.user);
+
+      try {
+        await resolveUserTeam(data.user);
+      } catch (err) {
+        console.warn('Post-instant email login team resolution note:', err);
+      }
+
       return data.user;
     },
-    []
+    [resolveUserTeam]
   );
 
   const signInWithGoogle = useCallback(
@@ -481,56 +631,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     [loginWithGoogle]
   );
-
-  // Group / Worship Team Collaboration
-  const [activeGroup, setActiveGroup] = useState<WorshipGroup | null>(() => getCachedTeam());
-  const [teamPresence, setTeamPresence] = useState<Record<string, TeamPresenceRecord>>({});
-
-  const onlineMembersCount = useMemo(() => {
-    return Object.values(teamPresence).filter((p) => p.online).length;
-  }, [teamPresence]);
-
-  const refreshActiveGroup = useCallback(async () => {
-    const targetGroupId = user?.groupId || activeGroup?.id || getCachedTeam()?.id;
-    if (!targetGroupId) return;
-
-    try {
-      const res = await authFetch(`/api/groups/${targetGroupId}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.group) {
-          const cached = getCachedTeam();
-          // Always union-merge known members so polling never wipes out active musicians
-          const currentMembers = activeGroup?.members || cached?.members || [];
-          const incomingMembers = data.group.members || [];
-          const map = new Map<string, any>();
-          for (const m of currentMembers) map.set(m.userId, m);
-          for (const m of incomingMembers) map.set(m.userId, m);
-          data.group.members = Array.from(map.values());
-
-          // Preserve active setlist ONLY if server response omitted it (undefined) AND local state wasn't explicitly cleared (null)
-          if (data.group.activeSetlist === undefined) {
-            if (activeGroup?.activeSetlist === null || cached?.activeSetlist === null) {
-              data.group.activeSetlist = null;
-            } else if (activeGroup?.activeSetlist || cached?.activeSetlist) {
-              data.group.activeSetlist = activeGroup?.activeSetlist || cached?.activeSetlist;
-            }
-          }
-
-          // Intelligently merge suggested setlists so approved/declined lineups are never demoted back to pending
-          data.group.suggestedSetlists = mergeSuggestedSetlists(
-            data.group.suggestedSetlists,
-            activeGroup?.suggestedSetlists || cached?.suggestedSetlists
-          );
-
-          setActiveGroup(data.group);
-          setCachedTeam(data.group);
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, [user?.groupId, activeGroup?.id, authFetch]);
 
   // Derive authoritative team ID from state or localStorage
   const effectiveGroupId = user?.groupId || activeGroup?.id || getCachedTeam()?.id;
@@ -856,6 +956,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateProfile,
       connectCloudStorage,
       activeGroup,
+      isResolvingTeam,
       teamPresence,
       onlineMembersCount,
       broadcastSongActivity,
@@ -890,6 +991,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       updateProfile,
       connectCloudStorage,
       activeGroup,
+      isResolvingTeam,
       teamPresence,
       onlineMembersCount,
       broadcastSongActivity,

@@ -13,6 +13,10 @@ import {
   reviewSetlistSuggestion,
   deleteSetlistSuggestion,
   joinWorshipGroupByCode,
+  findUserGroup,
+  verifyUserLogin,
+  loginOrRegisterWithGoogle,
+  validateSessionToken,
 } from '../../cloud/cloudDb.ts';
 import {
   createLiveSession,
@@ -1990,5 +1994,92 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     // Subsequent discovery returns inactive
     const postEnd = getActiveSessionInfo({ groupId });
     assert.equal(postEnd.active, false);
+  });
+
+  it('36. cross-device leader login: leader logs in on mobile device with clean storage and immediately discovers worship team', () => {
+    const leaderEmail = `leader_mobile_${Date.now()}@example.com`;
+    const password = 'Password123!';
+
+    // Desktop: Leader registers and creates team
+    const desktopLeader = registerUser({
+      email: leaderEmail,
+      password,
+      displayName: 'Mobile Leader',
+      churchName: 'Grace Cathedral',
+    });
+    const groupRes = createWorshipGroup(desktopLeader.profile.id, 'Grace Sanctuary Band', 'Grace Cathedral');
+    assert.equal(groupRes.ok, true);
+    assert.ok(groupRes.group);
+
+    // Mobile: User logs in on fresh mobile device (clean local storage, no cached group)
+    const mobileLogin = verifyUserLogin(leaderEmail, password);
+    assert.equal(mobileLogin.profile.id, desktopLeader.profile.id);
+    assert.equal(mobileLogin.profile.groupId, groupRes.group.id);
+    assert.equal(mobileLogin.profile.groupName, 'Grace Sanctuary Band');
+    assert.equal(mobileLogin.profile.groupRole, 'leader');
+
+    // Group lookup by userId or email returns exact team
+    const discovered = findUserGroup(mobileLogin.profile.id, mobileLogin.profile.email);
+    assert.ok(discovered);
+    assert.equal(discovered.id, groupRes.group.id);
+    assert.equal(discovered.name, 'Grace Sanctuary Band');
+  });
+
+  it('37. cross-device member login with Google: member logs in on mobile via Google and binds existing membership', () => {
+    // Desktop: Leader creates band
+    const leader = registerUser({
+      email: `leader_for_goog_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor Dave',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Hope Praise Team');
+    assert.ok(groupRes.group);
+
+    // Member joins on desktop
+    const memberEmail = `member_mobile_${Date.now()}@gmail.com`;
+    const memberDesktop = registerUser({
+      email: memberEmail,
+      password: 'Password123!',
+      displayName: 'Sarah Vocals',
+    });
+    const joinRes = joinWorshipGroupByCode(memberDesktop.profile.id, groupRes.group.inviteCode);
+    assert.equal(joinRes.ok, true);
+
+    // Member logs in on mobile phone using Google 1-click
+    const mobileGoogleLogin = loginOrRegisterWithGoogle({
+      email: memberEmail,
+      displayName: 'Sarah Vocals',
+      emailVerified: true,
+    });
+
+    assert.equal(mobileGoogleLogin.user.groupId, groupRes.group.id);
+    assert.equal(mobileGoogleLogin.user.groupName, 'Hope Praise Team');
+    assert.equal(mobileGoogleLogin.user.groupRole, 'member');
+
+    // Validating session token on mobile preserves group
+    const validated = validateSessionToken(mobileGoogleLogin.token);
+    assert.ok(validated);
+    assert.equal(validated.groupId, groupRes.group.id);
+    assert.equal(validated.groupName, 'Hope Praise Team');
+    assert.equal(validated.groupRole, 'member');
+  });
+
+  it('38. session validation restores and binds group when user profile initially lacked groupId', () => {
+    const leaderEmail = `leader_stateless_${Date.now()}@example.com`;
+    const leader = registerUser({
+      email: leaderEmail,
+      password: 'Password123!',
+      displayName: 'Stateless Leader',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Revival Fellowship');
+    assert.ok(groupRes.group);
+
+    // Verify session token carries group
+    const sessionToken = verifyUserLogin(leaderEmail, 'Password123!').token;
+    const validated = validateSessionToken(sessionToken);
+    assert.ok(validated);
+    assert.equal(validated.groupId, groupRes.group.id);
+    assert.equal(validated.groupName, 'Revival Fellowship');
+    assert.equal(validated.groupRole, 'leader');
   });
 });

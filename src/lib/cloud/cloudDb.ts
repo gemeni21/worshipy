@@ -225,10 +225,55 @@ export function findUserByEmail(email: string): UserProfile | null {
   return stored ? stored.profile : null;
 }
 
+export function findUserGroup(userId: string, email?: string): WorshipGroup | null {
+  const store = ensureDataStore();
+  if (!store.groups) return null;
+  const normalizedEmail = email?.toLowerCase().trim();
+
+  // 1. Direct owner match
+  for (const g of Object.values(store.groups)) {
+    if (g.ownerId === userId) return g;
+  }
+
+  // 2. Member match by userId or email
+  for (const g of Object.values(store.groups)) {
+    if (Array.isArray(g.members)) {
+      if (
+        g.members.some(
+          (m) =>
+            m.userId === userId ||
+            (normalizedEmail && m.email && m.email.toLowerCase() === normalizedEmail)
+        )
+      ) {
+        return g;
+      }
+    }
+  }
+
+  return null;
+}
+
 export function findUserById(id: string): UserProfile | null {
   const store = ensureDataStore();
   for (const stored of Object.values(store.users)) {
     if (stored.profile.id === id) {
+      if (!stored.profile.groupId && store.groups) {
+        const g = findUserGroup(stored.profile.id, stored.profile.email);
+        if (g) {
+          stored.profile.groupId = g.id;
+          stored.profile.groupName = g.name;
+          const isLeader =
+            g.ownerId === stored.profile.id ||
+            (Array.isArray(g.members) &&
+              g.members.some(
+                (m) =>
+                  (m.userId === stored.profile.id ||
+                    (stored.profile.email && m.email?.toLowerCase() === stored.profile.email.toLowerCase())) &&
+                  m.role === 'leader'
+              ));
+          stored.profile.groupRole = isLeader ? 'leader' : 'member';
+        }
+      }
       return stored.profile;
     }
   }
@@ -324,6 +369,24 @@ export function verifyUserLogin(email: string, password: string): { profile: Use
     throw new Error('Invalid email or password.');
   }
 
+  if (!stored.profile.groupId && store.groups) {
+    const g = findUserGroup(stored.profile.id, stored.profile.email);
+    if (g) {
+      stored.profile.groupId = g.id;
+      stored.profile.groupName = g.name;
+      const isLeader =
+        g.ownerId === stored.profile.id ||
+        (Array.isArray(g.members) &&
+          g.members.some(
+            (m) =>
+              (m.userId === stored.profile.id ||
+                (stored.profile.email && m.email?.toLowerCase() === stored.profile.email.toLowerCase())) &&
+              m.role === 'leader'
+          ));
+      stored.profile.groupRole = isLeader ? 'leader' : 'member';
+    }
+  }
+
   stored.profile.lastActiveAt = new Date().toISOString();
   const token = createSessionForUser(store, stored.profile.id);
   saveStore(store);
@@ -416,6 +479,25 @@ export function validateSessionToken(token: string): UserProfile | null {
                 lastActiveAt: new Date().toISOString(),
                 cloudStorage: { provider: 'none' },
               };
+
+              if (!profile.groupId && store.groups) {
+                const g = findUserGroup(profile.id, profile.email);
+                if (g) {
+                  profile.groupId = g.id;
+                  profile.groupName = g.name;
+                  const isLeader =
+                    g.ownerId === profile.id ||
+                    (Array.isArray(g.members) &&
+                      g.members.some(
+                        (m) =>
+                          (m.userId === profile.id ||
+                            (profile.email && m.email?.toLowerCase() === profile.email.toLowerCase())) &&
+                          m.role === 'leader'
+                      ));
+                  profile.groupRole = isLeader ? 'leader' : 'member';
+                }
+              }
+
               store.users[emailKey] = {
                 profile,
                 salt,
@@ -1600,6 +1682,24 @@ export function loginOrRegisterWithGoogle(googleUser: {
     }
     if (emailKey === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
       storedUser.profile.role = 'admin';
+    }
+  }
+
+  if (!storedUser.profile.groupId && store.groups) {
+    const g = findUserGroup(storedUser.profile.id, storedUser.profile.email);
+    if (g) {
+      storedUser.profile.groupId = g.id;
+      storedUser.profile.groupName = g.name;
+      const isLeader =
+        g.ownerId === storedUser.profile.id ||
+        (Array.isArray(g.members) &&
+          g.members.some(
+            (m) =>
+              (m.userId === storedUser.profile.id ||
+                (storedUser.profile.email && m.email?.toLowerCase() === storedUser.profile.email.toLowerCase())) &&
+              m.role === 'leader'
+          ));
+      storedUser.profile.groupRole = isLeader ? 'leader' : 'member';
     }
   }
 

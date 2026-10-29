@@ -1787,37 +1787,65 @@ export async function deleteSharedPracticeTake(
 /**
  * Automatically restores a user's team from Firestore if local cache is absent or out of sync
  */
-export async function findUserTeamInFirestore(userId: string): Promise<WorshipGroup | null> {
+export async function findUserTeamInFirestore(
+  userId: string,
+  userEmail?: string
+): Promise<WorshipGroup | null> {
   const db = getFirebaseFirestore();
-  if (!db || !userId) return null;
+  if (!db || (!userId && !userEmail)) return null;
 
   try {
     // 1. Check if user is in any team's memberIds array
-    const q1 = query(
-      collection(db, 'groups'),
-      where('memberIds', 'array-contains', userId),
-      limit(1)
-    );
-    const snap1 = await getDocs(q1);
-    if (!snap1.empty) {
-      const docSnap = snap1.docs[0];
-      const group = { id: docSnap.id, ...docSnap.data() } as WorshipGroup;
-      setCachedTeam(group);
-      return group;
+    if (userId) {
+      const q1 = query(
+        collection(db, 'groups'),
+        where('memberIds', 'array-contains', userId),
+        limit(1)
+      );
+      const snap1 = await getDocs(q1);
+      if (!snap1.empty) {
+        const docSnap = snap1.docs[0];
+        const group = { id: docSnap.id, ...docSnap.data() } as WorshipGroup;
+        setCachedTeam(group);
+        return group;
+      }
+
+      // 2. Fallback: check if user is the owner of a team
+      const q2 = query(
+        collection(db, 'groups'),
+        where('ownerId', '==', userId),
+        limit(1)
+      );
+      const snap2 = await getDocs(q2);
+      if (!snap2.empty) {
+        const docSnap = snap2.docs[0];
+        const group = { id: docSnap.id, ...docSnap.data() } as WorshipGroup;
+        setCachedTeam(group);
+        return group;
+      }
     }
 
-    // 2. Fallback: check if user is the owner of a team
-    const q2 = query(
-      collection(db, 'groups'),
-      where('ownerId', '==', userId),
-      limit(1)
-    );
-    const snap2 = await getDocs(q2);
-    if (!snap2.empty) {
-      const docSnap = snap2.docs[0];
-      const group = { id: docSnap.id, ...docSnap.data() } as WorshipGroup;
-      setCachedTeam(group);
-      return group;
+    // 3. Fallback: scan recent groups in Firestore checking members array for email or owner
+    const q3 = query(collection(db, 'groups'), limit(50));
+    const snap3 = await getDocs(q3);
+    const normalizedEmail = userEmail?.toLowerCase().trim();
+
+    for (const docSnap of snap3.docs) {
+      const data = docSnap.data();
+      const isOwner = Boolean(userId && data.ownerId === userId);
+      const isMember =
+        Array.isArray(data.members) &&
+        data.members.some(
+          (m: any) =>
+            (userId && m.userId === userId) ||
+            (normalizedEmail && m.email && m.email.toLowerCase() === normalizedEmail)
+        );
+
+      if (isOwner || isMember) {
+        const group = { id: docSnap.id, ...data } as WorshipGroup;
+        setCachedTeam(group);
+        return group;
+      }
     }
   } catch (err) {
     console.warn('Firestore user team lookup note:', err);

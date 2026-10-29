@@ -37,6 +37,7 @@ import {
   ChevronUp,
   Send,
   X,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { transposeKey } from '@/lib/music/transposition';
@@ -59,6 +60,7 @@ export default function TeamHubPage() {
   const {
     user,
     isAuthLoading,
+    isResolvingTeam,
     activeGroup,
     teamPresence,
     onlineMembersCount,
@@ -69,6 +71,8 @@ export default function TeamHubPage() {
     clearActiveTeamSetlist,
     refreshActiveGroup,
   } = useAuth();
+
+  const [isCheckingTeam, setIsCheckingTeam] = useState(true);
 
   const { getSongByIdOrSlug } = useApp();
   const [activeRefAudio, setActiveRefAudio] = useState<{
@@ -147,6 +151,22 @@ export default function TeamHubPage() {
     const timer = window.setTimeout(() => setSuggestionFeedbackMsg(null), 4500);
     return () => window.clearTimeout(timer);
   }, [suggestionFeedbackMsg]);
+
+  // Proactively check & resolve user's worship team across devices
+  useEffect(() => {
+    let active = true;
+    if (user && !currentTeam) {
+      setIsCheckingTeam(true);
+      refreshActiveGroup().finally(() => {
+        if (active) setIsCheckingTeam(false);
+      });
+    } else {
+      setIsCheckingTeam(false);
+    }
+    return () => {
+      active = false;
+    };
+  }, [user?.id, currentTeam?.id, refreshActiveGroup]);
 
   const handleReviewSuggestion = async (
     suggestionId: string,
@@ -554,12 +574,13 @@ export default function TeamHubPage() {
     );
   }
 
-  // If resolving user's team in background
-  if (user?.groupId && !currentTeam) {
+  // If resolving user's team in background or checking authentication
+  if (isAuthLoading || ((user?.groupId || isResolvingTeam || isCheckingTeam) && !currentTeam)) {
     return (
       <div className="max-w-4xl mx-auto p-12 text-center flex flex-col items-center justify-center min-h-[50vh] space-y-3">
         <Loader2 className="w-8 h-8 animate-spin text-[var(--brand-accent)]" />
-        <p className="text-xs text-[var(--text-secondary)] font-medium">Loading your team roster...</p>
+        <p className="text-xs text-[var(--text-secondary)] font-medium">Connecting to your worship team...</p>
+        <p className="text-[11px] text-[var(--text-muted)]">Syncing your band roster and active lineup across devices.</p>
       </div>
     );
   }
@@ -576,6 +597,19 @@ export default function TeamHubPage() {
           <p className="text-xs text-[var(--text-secondary)]">
             Create a team for your church or enter an invite code to join your band.
           </p>
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setIsCheckingTeam(true);
+                refreshActiveGroup().finally(() => setIsCheckingTeam(false));
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[var(--bg-subtle)] hover:bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Looking for an existing team? Refresh</span>
+            </button>
+          </div>
         </div>
 
         {formError && (

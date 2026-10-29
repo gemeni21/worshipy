@@ -369,7 +369,7 @@ function LiveSyncWorkspace({
 
   // 1. Periodically refresh active group state while on /live so leader going live triggers instantly
   useEffect(() => {
-    if (!targetGroupId || session) return;
+    if ((!targetGroupId && !user) || session) return;
     refreshActiveGroup();
     const interval = setInterval(() => {
       refreshActiveGroup();
