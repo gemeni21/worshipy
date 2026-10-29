@@ -36,6 +36,7 @@ import {
   Wifi,
   WifiOff,
   XCircle,
+  Loader2,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
@@ -230,6 +231,7 @@ function LiveSyncWorkspace({
   const [isAutoConnecting, setIsAutoConnecting] = useState(false);
   const autoJoinInFlightRef = useRef(false);
   const autoJoinAttemptedIdRef = useRef<string | null>(null);
+  const isRestoringStoredCredsRef = useRef(false);
   const [songToAddId, setSongToAddId] = useState(allSongs[0]?.id ?? '');
 
   // Discover local network origin (for band Wi-Fi synchronization)
@@ -257,6 +259,7 @@ function LiveSyncWorkspace({
       if (!raw) return;
       const stored = JSON.parse(raw) as StoredLiveCredentials;
       if (stored.sessionId && stored.participantToken) {
+        isRestoringStoredCredsRef.current = true;
         fetch(
           apiUrl(
             `/api/live/sessions/${encodeURIComponent(
@@ -291,10 +294,13 @@ function LiveSyncWorkspace({
               setInviteToken(data.inviteToken ?? stored.inviteToken ?? '');
             }
           })
-          .catch(() => {});
+          .catch(() => {})
+          .finally(() => {
+            isRestoringStoredCredsRef.current = false;
+          });
       }
     } catch {
-      // ignore
+      isRestoringStoredCredsRef.current = false;
     }
   }, [initialJoinCode, initialInviteToken]);
 
@@ -419,24 +425,31 @@ function LiveSyncWorkspace({
           );
         } else {
           console.warn('Live session join response not ok:', data);
-          setErrorAlert({
-            title: target.isAuto
-              ? 'Stage Sync Standby'
-              : 'Unable to Join Live Session',
-            message:
-              data?.error ??
-              (target.isAuto
-                ? 'Could not automatically join the live stage. You can tap "Connect to Live Stage Now" below or enter a code.'
-                : 'Invalid join code or live session.'),
-            code: data?.code,
-          });
+          if (target.isAuto) {
+            // Allow retry on subsequent poll if leader was just starting
+            setTimeout(() => {
+              autoJoinAttemptedIdRef.current = null;
+            }, 3000);
+          } else {
+            setErrorAlert({
+              title: 'Unable to Join Live Session',
+              message: data?.error ?? 'Invalid join code or live session.',
+              code: data?.code,
+            });
+          }
         }
       } catch (err) {
         console.warn('Live session join network error:', err);
-        setErrorAlert({
-          title: 'Connection Notice',
-          message: 'Network error while attempting to connect to the live stage.',
-        });
+        if (target.isAuto) {
+          setTimeout(() => {
+            autoJoinAttemptedIdRef.current = null;
+          }, 3000);
+        } else {
+          setErrorAlert({
+            title: 'Connection Notice',
+            message: 'Network error while attempting to connect to the live stage.',
+          });
+        }
       } finally {
         autoJoinInFlightRef.current = false;
         setIsAutoConnecting(false);
@@ -457,6 +470,7 @@ function LiveSyncWorkspace({
     );
 
     async function checkAndAutoJoin() {
+      if (isRestoringStoredCredsRef.current && !session) return;
       const grp = activeGroup || getCachedTeam();
       if (!grp?.id || session) return;
 
@@ -551,8 +565,6 @@ function LiveSyncWorkspace({
       es.onopen = () => {
         if (cancelled) return;
         setStreamStatus('connected');
-        // Pull authoritative snapshot on reconnect to ensure no missed revisions
-        fetchLatestSnapshot(activeSessionId, participantToken);
       };
 
       es.onmessage = (event) => {
@@ -895,11 +907,21 @@ function LiveSyncWorkspace({
           latestRevisionRef.current = data.session.revision;
           setSession(data.session);
         }
-        setErrorAlert({
-          title: 'Sync Update Rejected',
-          message: data.error ?? 'Could not update official state.',
-          code: data.code,
-        });
+        if (res.status === 404 || data.code === 'SESSION_NOT_FOUND') {
+          setErrorAlert({
+            title: 'Live Session Not Found',
+            message: isPrimaryLeader
+              ? 'This live stage session has ended or expired on the server. Tap "End Session" or start a new live stage below.'
+              : 'The live session has ended or could not be found on the server.',
+            code: data.code,
+          });
+        } else {
+          setErrorAlert({
+            title: 'Sync Update Rejected',
+            message: data.error ?? 'Could not update official state.',
+            code: data.code,
+          });
+        }
         return;
       }
 
@@ -1806,8 +1828,13 @@ function LiveSyncWorkspace({
                       : 'Connected · Browsing Independently'}
                   </span>
                 </span>
-              ) : (
+              ) : streamStatus === 'connecting' || streamStatus === 'idle' ? (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+                  <span>Connecting to Live Stage...</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
                   <WifiOff className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>
                     {simulatedDisconnect

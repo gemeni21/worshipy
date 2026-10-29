@@ -72,10 +72,11 @@ export async function PATCH(
     const body = (await req.json()) as PatchSessionBody;
 
     if (body.action === 'update-state') {
+      const stateInput = body.state ?? (body as any).statePatch ?? {};
       const updated = updateLiveSessionState(
         sessionId,
         token,
-        body.state ?? {}
+        stateInput
       );
       return NextResponse.json({ session: updated }, { status: 200 });
     }

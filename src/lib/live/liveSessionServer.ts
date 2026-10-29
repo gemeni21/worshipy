@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { getAllSongs, getSongById, getSongBySlug } from '../catalog/songCatalog.ts';
 import { normalizeSemitones } from '../music/transposition.ts';
+import { findGroupByActiveLiveSession } from '../cloud/cloudDb.ts';
 
 function findSongByIdOrSlug(idOrSlug?: string) {
   if (!idOrSlug) return undefined;
@@ -74,8 +75,10 @@ export function isUsingDefaultDevSecret(): boolean {
 }
 
 function getPersistenceFilePath(): string {
-  const baseDir = process.env.WORSHIPY_USER_DATA || process.cwd();
-  return path.join(baseDir, '.data', 'live-sessions.json');
+  if (process.env.WORSHIPY_TEST_PERSIST_PATH) {
+    return process.env.WORSHIPY_TEST_PERSIST_PATH;
+  }
+  return path.join(process.cwd(), '.data', 'live-sessions.json');
 }
 
 function getStore(): GlobalLiveStore {
@@ -93,8 +96,8 @@ function getStore(): GlobalLiveStore {
     store.initializedFromDisk = true;
     try {
       const filePath = getPersistenceFilePath();
-      if (fs.existsSync(filePath)) {
-        const raw = fs.readFileSync(filePath, 'utf8');
+      if (fs.existsSync(/* turbopackIgnore: true */ filePath)) {
+        const raw = fs.readFileSync(/* turbopackIgnore: true */ filePath, 'utf8');
         const parsed = JSON.parse(raw) as InternalSessionRecord[];
         if (Array.isArray(parsed)) {
           for (const rec of parsed) {
@@ -117,8 +120,8 @@ export function syncStoreFromDisk(): void {
   try {
     const store = getStore();
     const filePath = getPersistenceFilePath();
-    if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, 'utf8');
+    if (fs.existsSync(/* turbopackIgnore: true */ filePath)) {
+      const raw = fs.readFileSync(/* turbopackIgnore: true */ filePath, 'utf8');
       const parsed = JSON.parse(raw) as InternalSessionRecord[];
       if (Array.isArray(parsed)) {
         for (const rec of parsed) {
@@ -134,12 +137,92 @@ export function syncStoreFromDisk(): void {
   }
 }
 
+function reconstituteSessionFromTeamGroup(
+  group: any,
+  sessionId: string,
+  joinCode: string
+): InternalSessionRecord {
+  const nowIso = new Date().toISOString();
+  const leaderMember = (group.members || []).find((m: any) => m.role === 'leader');
+  const leaderName =
+    group.activeLiveSessionLeaderName ||
+    leaderMember?.displayName ||
+    'Worship Leader';
+  const leaderUserId = group.ownerId || leaderMember?.userId || 'leader_user';
+  const allSongs = getAllSongs();
+  const firstSong =
+    group.activeSetlist?.items?.[0]
+      ? findSongByIdOrSlug(group.activeSetlist.items[0].songId) ?? allSongs[0]
+      : allSongs[0];
+  const firstSection = firstSong?.sections?.[0] ?? { id: 'sec-1', label: 'Verse 1', type: 'verse' };
+
+  return {
+    sessionId,
+    joinCode,
+    title: group.activeSetlist?.name ? `${group.activeSetlist.name} Live` : `${group.name} Live Stage`,
+    leaderId: leaderUserId,
+    leaderName,
+    coLeaderIds: [],
+    createdAt: nowIso,
+    expiresAt:
+      group.activeLiveSessionExpiresAt ||
+      new Date(Date.now() + DEFAULT_SESSION_TTL_MS).toISOString(),
+    status: 'active',
+    inviteTokenVersion: 1,
+    revision: 1,
+    sharedState: {
+      songId: firstSong?.id || 'song-1',
+      songSlug: firstSong?.slug || 'song-1',
+      arrangementId: 'default',
+      officialSemitones: normalizeSemitones(group.activeSetlist?.items?.[0]?.preferredSemitones ?? 0),
+      enharmonicPreference: 'auto',
+      activeSectionId: firstSection.id,
+      activeSectionLabel: firstSection.label,
+      activeLineIndex: 0,
+      setlistSongIds: group.activeSetlist?.items?.map((i: any) => i.songId) ?? [firstSong?.id || 'song-1'],
+      updatedAt: nowIso,
+      updatedBy: leaderUserId,
+    },
+    participants: [
+      {
+        id: leaderUserId,
+        name: leaderName,
+        role: 'leader',
+        instrument: 'general',
+        connectionState: 'connected',
+        joinedAt: nowIso,
+        lastSeenAt: nowIso,
+      },
+    ],
+  };
+}
+
 function getSessionRecord(sessionId: string): InternalSessionRecord | undefined {
   const store = getStore();
   let record = store.sessions.get(sessionId);
   if (!record) {
     syncStoreFromDisk();
     record = store.sessions.get(sessionId);
+  }
+  if (!record) {
+    try {
+      const group = findGroupByActiveLiveSession(sessionId);
+      if (group && group.activeLiveSessionId === sessionId) {
+        const isExpired =
+          group.activeLiveSessionExpiresAt &&
+          new Date(group.activeLiveSessionExpiresAt).getTime() <= Date.now();
+        if (!isExpired && group.activeLiveSessionJoinCode) {
+          const recovered = reconstituteSessionFromTeamGroup(
+            group,
+            sessionId,
+            group.activeLiveSessionJoinCode
+          );
+          store.sessions.set(sessionId, recovered);
+          persistStoreToDisk();
+          record = recovered;
+        }
+      }
+    } catch {}
   }
   return record;
 }
@@ -161,6 +244,30 @@ function findSessionByJoinCode(cleanCode: string): InternalSessionRecord | undef
       (s) => s.joinCode.toUpperCase() === cleanCode
     );
   }
+  if (!record) {
+    try {
+      const group = findGroupByActiveLiveSession(cleanCode);
+      if (
+        group &&
+        group.activeLiveSessionId &&
+        group.activeLiveSessionJoinCode?.toUpperCase() === cleanCode
+      ) {
+        const isExpired =
+          group.activeLiveSessionExpiresAt &&
+          new Date(group.activeLiveSessionExpiresAt).getTime() <= Date.now();
+        if (!isExpired) {
+          const recovered = reconstituteSessionFromTeamGroup(
+            group,
+            group.activeLiveSessionId,
+            group.activeLiveSessionJoinCode
+          );
+          store.sessions.set(group.activeLiveSessionId, recovered);
+          persistStoreToDisk();
+          record = recovered;
+        }
+      }
+    } catch {}
+  }
   return record;
 }
 
@@ -173,8 +280,47 @@ function persistStoreToDisk(): void {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const records = Array.from(store.sessions.values());
-    fs.writeFileSync(filePath, JSON.stringify(records, null, 2), 'utf8');
+
+    // Merge existing records from disk so multi-worker server instances never delete each other's sessions
+    const sessionMap = new Map<string, InternalSessionRecord>();
+    if (fs.existsSync(/* turbopackIgnore: true */ filePath)) {
+      try {
+        const raw = fs.readFileSync(/* turbopackIgnore: true */ filePath, 'utf8');
+        const parsed = JSON.parse(raw) as InternalSessionRecord[];
+        if (Array.isArray(parsed)) {
+          for (const rec of parsed) {
+            sessionMap.set(rec.sessionId, rec);
+          }
+        }
+      } catch {}
+    }
+
+    // Merge in-memory sessions into disk map, preserving newer revisions
+    for (const memRec of store.sessions.values()) {
+      const existing = sessionMap.get(memRec.sessionId);
+      if (!existing || memRec.revision >= existing.revision) {
+        sessionMap.set(memRec.sessionId, memRec);
+      }
+    }
+
+    // Synchronize memory store with all merged records
+    for (const [sid, diskRec] of sessionMap.entries()) {
+      if (!store.sessions.has(sid)) {
+        store.sessions.set(sid, diskRec);
+      }
+    }
+
+    const records = Array.from(sessionMap.values());
+    const tempFile = `${filePath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
+    fs.writeFileSync(tempFile, JSON.stringify(records, null, 2), 'utf8');
+    try {
+      fs.renameSync(tempFile, filePath);
+    } catch {
+      fs.copyFileSync(tempFile, filePath);
+      try {
+        fs.unlinkSync(tempFile);
+      } catch {}
+    }
   } catch {
     // Non-fatal in read-only filesystems
   }

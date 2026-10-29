@@ -1470,6 +1470,21 @@ export function findWorshipGroupByCode(code: string): WorshipGroup | null {
   return Object.values(store.groups).find((g) => g.inviteCode.toUpperCase() === normalized) || null;
 }
 
+export function findGroupByActiveLiveSession(sessionIdOrCode: string): WorshipGroup | null {
+  const store = ensureDataStore();
+  if (!store.groups) return null;
+  const clean = sessionIdOrCode.trim();
+  const normalized = clean.toUpperCase();
+
+  return (
+    Object.values(store.groups).find(
+      (g) =>
+        g.activeLiveSessionId === clean ||
+        g.activeLiveSessionJoinCode?.toUpperCase() === normalized
+    ) || null
+  );
+}
+
 // Google & Instant Email 1-Click Authentication
 export function loginOrRegisterWithGoogle(googleUser: {
   email: string;

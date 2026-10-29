@@ -21,7 +21,18 @@ export async function GET(req: Request) {
     ? '443'
     : '80';
 
-  const primaryIp = addresses[0] || '127.0.0.1';
+  // Prefer standard local Wi-Fi / LAN subnets over link-local (169.254.x.x) or virtual bridges
+  const routableIps = addresses.filter(
+    (ip) => !ip.startsWith('169.254.') && !ip.startsWith('127.')
+  );
+  const primaryIp =
+    routableIps.find((ip) => ip.startsWith('192.168.')) ||
+    routableIps.find((ip) => ip.startsWith('10.')) ||
+    routableIps.find((ip) => /^172\.(1[6-9]|2\d|3[01])\./.test(ip)) ||
+    routableIps[0] ||
+    addresses[0] ||
+    '127.0.0.1';
+
   const networkOrigin = `${proto}://${primaryIp}${port !== '80' && port !== '443' ? `:${port}` : ''}`;
 
   return NextResponse.json({

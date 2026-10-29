@@ -22,6 +22,11 @@ export async function GET(
 
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
+        // Immediate flush byte so EventSource onopen triggers instantaneously
+        try {
+          controller.enqueue(encoder.encode(': stream-ready\n\n'));
+        } catch {}
+
         const sendEvent = (msg: LiveStreamMessage) => {
           try {
             const payload = `data: ${JSON.stringify(msg)}\n\n`;
