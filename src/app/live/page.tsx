@@ -527,8 +527,11 @@ function LiveSyncWorkspace({
               setCachedTeam(updated);
               broadcastTeamSync(updated);
             }
-          } else if (data.active === false && grp?.activeLiveSessionId) {
-            // Server reports no active session, clear local active session indicator
+          } else if (
+            data.active === false &&
+            (data.reason === 'ended' || (expiresAt && new Date(expiresAt).getTime() <= Date.now()))
+          ) {
+            // Server explicitly reports session ended or expired, clear local active session indicator
             setLiveGroup((prev) =>
               prev
                 ? {
@@ -588,16 +591,31 @@ function LiveSyncWorkspace({
 
     checkAndAutoJoin();
 
-    // Fast recurring polling (every 2.5s) to guarantee instant connection when leader goes live
+    // Cross-tab instantaneous stage sync
+    const handleTabSync = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.id === grpId) {
+        setLiveGroup(detail);
+        checkAndAutoJoin();
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('wmc_team_sync', handleTabSync);
+    }
+
+    // Fast recurring polling (every 1.5s in standby) to guarantee instant connection when leader goes live
     const pollTimer = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible' && !session) {
         checkAndAutoJoin();
       }
-    }, 2500);
+    }, 1500);
 
     return () => {
       cancelled = true;
       clearInterval(pollTimer);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('wmc_team_sync', handleTabSync);
+      }
     };
   }, [
     liveGroup?.id,
@@ -745,9 +763,13 @@ function LiveSyncWorkspace({
     const onVisible = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         sendHeartbeat();
+        fetchLatestSnapshot(activeSessionId, participantToken);
       }
     };
-    const onFocus = () => sendHeartbeat();
+    const onFocus = () => {
+      sendHeartbeat();
+      fetchLatestSnapshot(activeSessionId, participantToken);
+    };
 
     window.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onFocus);

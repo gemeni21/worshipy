@@ -459,6 +459,64 @@ export async function updateTeamBranding(
   return updatedGroup;
 }
 
+/**
+ * Merges incoming and current setlist suggestions with terminal state invariance:
+ * Once a suggestion reaches 'approved' or 'declined', stale responses (e.g. 'pending')
+ * can never demote or resurrect it back to 'pending'.
+ */
+export function mergeSuggestedSetlists(
+  incoming?: TeamSetlistSuggestion[],
+  current?: TeamSetlistSuggestion[]
+): TeamSetlistSuggestion[] {
+  if (!incoming && !current) return [];
+  if (!incoming) return current ? [...current] : [];
+  if (!current) return [...incoming];
+
+  const map = new Map<string, TeamSetlistSuggestion>();
+
+  const getPriority = (status?: string) => {
+    if (status === 'approved' || status === 'declined') return 2;
+    return 1;
+  };
+
+  for (const item of incoming) {
+    if (item && item.id) {
+      map.set(item.id, item);
+    }
+  }
+
+  for (const item of current) {
+    if (!item || !item.id) continue;
+    const existing = map.get(item.id);
+    if (!existing) {
+      map.set(item.id, item);
+    } else {
+      const existingPri = getPriority(existing.status);
+      const itemPri = getPriority(item.status);
+      if (itemPri > existingPri) {
+        // Current is approved/declined while incoming is pending -> retain terminal resolved status!
+        map.set(item.id, { ...existing, ...item });
+      } else if (existingPri > itemPri) {
+        // Incoming is approved/declined while current was pending -> retain incoming terminal status
+        map.set(item.id, { ...item, ...existing });
+      } else {
+        // Same priority: prefer the one with later timestamp
+        const itemTime = item.reviewedAt || item.suggestedAt || '';
+        const existTime = existing.reviewedAt || existing.suggestedAt || '';
+        if (itemTime >= existTime) {
+          map.set(item.id, { ...existing, ...item });
+        } else {
+          map.set(item.id, { ...item, ...existing });
+        }
+      }
+    }
+  }
+
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.suggestedAt || 0).getTime() - new Date(a.suggestedAt || 0).getTime()
+  );
+}
+
 export function sanitizeActiveSetlistForFirestore(setlist: any): TeamActiveSetlist | null {
   if (!setlist || typeof setlist !== 'object' || !setlist.id || !setlist.name) {
     return null;
@@ -783,6 +841,9 @@ async function syncSuggestionsToFirestore(
 
     const combinedTakes = [...newTakes, ...existingTakes].slice(0, 50);
     metaPayload.practiceTakes = combinedTakes;
+    group.practiceTakes = combinedTakes;
+    setCachedTeam(group);
+    broadcastTeamSync(group);
 
     try {
       await setDoc(groupRef, metaPayload, { merge: true });
@@ -1052,6 +1113,7 @@ export async function setTeamActiveLiveSession(
     activeLiveSessionExpiresAt: sessionInfo.expiresAt,
     activeLiveSessionLeaderName: sessionInfo.leaderName,
     activeSetlist: current?.activeSetlist,
+    suggestedSetlists: current?.suggestedSetlists,
   };
 
   setCachedTeam(updatedGroup);
@@ -1070,6 +1132,7 @@ export async function setTeamActiveLiveSession(
         activeLiveSessionExpiresAt: sessionInfo.expiresAt,
         activeLiveSessionLeaderName: sessionInfo.leaderName,
         activeSetlist: current?.activeSetlist,
+        suggestedSetlists: current?.suggestedSetlists,
         groupName: current?.name,
         inviteCode: current?.inviteCode,
         members: current?.members,
@@ -1081,6 +1144,10 @@ export async function setTeamActiveLiveSession(
         const mergedGroup = {
           ...data.group,
           activeSetlist: data.group.activeSetlist || current?.activeSetlist,
+          suggestedSetlists: mergeSuggestedSetlists(
+            data.group.suggestedSetlists,
+            current?.suggestedSetlists
+          ),
         };
         setCachedTeam(mergedGroup);
         broadcastTeamSync(mergedGroup);
@@ -1123,12 +1190,34 @@ export async function setTeamActiveLiveSession(
         };
       }
 
+      // Ensure suggestions meta-take is preserved with latest current suggestions
+      let cleanSuggestionsMeta = (current?.practiceTakes || []).find(
+        (t) => t.id === SETLIST_SUGGESTIONS_META_TAKE_ID
+      );
+      if (Array.isArray(current?.suggestedSetlists) && current.suggestedSetlists.length > 0) {
+        cleanSuggestionsMeta = {
+          id: SETLIST_SUGGESTIONS_META_TAKE_ID,
+          songId: '__system_meta__',
+          songTitle: 'Lineup Suggestions',
+          title: `${current.suggestedSetlists.length} Lineup Proposals`,
+          authorName: 'System',
+          authorId: 'system',
+          createdAt: new Date().toISOString(),
+          durationSeconds: 0,
+          notes: JSON.stringify(current.suggestedSetlists),
+        };
+      }
+
       const existingTakes = (current?.practiceTakes || []).filter(
-        (t) => t.id !== LIVE_SESSION_META_TAKE_ID && t.id !== SETLIST_META_TAKE_ID
+        (t) =>
+          t.id !== LIVE_SESSION_META_TAKE_ID &&
+          t.id !== SETLIST_META_TAKE_ID &&
+          t.id !== SETLIST_SUGGESTIONS_META_TAKE_ID
       );
       const combinedTakes = [
         metaTake,
         ...(cleanSetlistMeta ? [cleanSetlistMeta] : []),
+        ...(cleanSuggestionsMeta ? [cleanSuggestionsMeta] : []),
         ...existingTakes,
       ].slice(0, 50);
 
@@ -1143,6 +1232,9 @@ export async function setTeamActiveLiveSession(
       };
       if (cleanActiveSetlist) {
         firestorePayload.activeSetlist = cleanActiveSetlist;
+      }
+      if (Array.isArray(current?.suggestedSetlists) && current.suggestedSetlists.length > 0) {
+        firestorePayload.suggestedSetlists = current.suggestedSetlists;
       }
 
       try {
@@ -1186,6 +1278,7 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
     activeLiveSessionExpiresAt: undefined,
     activeLiveSessionLeaderName: undefined,
     activeSetlist: current?.activeSetlist,
+    suggestedSetlists: current?.suggestedSetlists,
   };
 
   setCachedTeam(updatedGroup);
@@ -1204,6 +1297,7 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
         activeLiveSessionExpiresAt: null,
         activeLiveSessionLeaderName: null,
         activeSetlist: current?.activeSetlist,
+        suggestedSetlists: current?.suggestedSetlists,
         groupName: current?.name,
         inviteCode: current?.inviteCode,
         members: current?.members,
@@ -1215,6 +1309,10 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
         const mergedGroup = {
           ...data.group,
           activeSetlist: data.group.activeSetlist || current?.activeSetlist,
+          suggestedSetlists: mergeSuggestedSetlists(
+            data.group.suggestedSetlists,
+            current?.suggestedSetlists
+          ),
         };
         setCachedTeam(mergedGroup);
         broadcastTeamSync(mergedGroup);
@@ -1225,9 +1323,33 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
   if (db && groupId) {
     try {
       const groupRef = doc(db, 'groups', groupId);
-      const cleanTakes = (current?.practiceTakes || []).filter(
-        (t) => t.id !== LIVE_SESSION_META_TAKE_ID
+
+      let cleanSuggestionsMeta = (current?.practiceTakes || []).find(
+        (t) => t.id === SETLIST_SUGGESTIONS_META_TAKE_ID
       );
+      if (Array.isArray(current?.suggestedSetlists) && current.suggestedSetlists.length > 0) {
+        cleanSuggestionsMeta = {
+          id: SETLIST_SUGGESTIONS_META_TAKE_ID,
+          songId: '__system_meta__',
+          songTitle: 'Lineup Suggestions',
+          title: `${current.suggestedSetlists.length} Lineup Proposals`,
+          authorName: 'System',
+          authorId: 'system',
+          createdAt: new Date().toISOString(),
+          durationSeconds: 0,
+          notes: JSON.stringify(current.suggestedSetlists),
+        };
+      }
+
+      const cleanTakes = (current?.practiceTakes || []).filter(
+        (t) =>
+          t.id !== LIVE_SESSION_META_TAKE_ID &&
+          t.id !== SETLIST_SUGGESTIONS_META_TAKE_ID
+      );
+      if (cleanSuggestionsMeta) {
+        cleanTakes.unshift(cleanSuggestionsMeta);
+      }
+
       const cleanActiveSetlist = sanitizeActiveSetlistForFirestore(current?.activeSetlist);
 
       const firestorePayload: any = {
@@ -1239,6 +1361,9 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
       };
       if (cleanActiveSetlist) {
         firestorePayload.activeSetlist = cleanActiveSetlist;
+      }
+      if (Array.isArray(current?.suggestedSetlists) && current.suggestedSetlists.length > 0) {
+        firestorePayload.suggestedSetlists = current.suggestedSetlists;
       }
       try {
         await updateDoc(groupRef, firestorePayload);
@@ -1309,10 +1434,10 @@ export function subscribeToTeam(
       }
     }
 
-    let effectiveSuggestions = fresh.suggestedSetlists;
-    if (effectiveSuggestions === undefined && currentCached?.id === fresh.id && currentCached.suggestedSetlists) {
-      effectiveSuggestions = currentCached.suggestedSetlists;
-    }
+    let effectiveSuggestions = mergeSuggestedSetlists(
+      fresh.suggestedSetlists,
+      currentCached?.id === fresh.id ? currentCached.suggestedSetlists : undefined
+    );
 
     const mergedGroup: WorshipGroup = {
       ...fresh,
@@ -1448,16 +1573,10 @@ export function subscribeToTeam(
               try {
                 const parsedSuggestions = JSON.parse(suggestionsMeta.notes);
                 if (Array.isArray(parsedSuggestions)) {
-                  if (
-                    !suggestedSetlists ||
-                    parsedSuggestions.some(
-                      (p) =>
-                        p.status === 'approved' &&
-                        suggestedSetlists?.find((s: any) => s.id === p.id)?.status === 'pending'
-                    )
-                  ) {
-                    suggestedSetlists = parsedSuggestions;
-                  }
+                  suggestedSetlists = mergeSuggestedSetlists(
+                    suggestedSetlists,
+                    parsedSuggestions
+                  );
                 }
               } catch {}
             }

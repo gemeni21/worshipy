@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { getAllSongs, getSongById, getSongBySlug } from '../catalog/songCatalog.ts';
 import { normalizeSemitones } from '../music/transposition.ts';
-import { findGroupByActiveLiveSession, getWorshipGroup } from '../cloud/cloudDb.ts';
+import { findGroupByActiveLiveSession, getWorshipGroup, setGroupLiveSession } from '../cloud/cloudDb.ts';
 
 function findSongByIdOrSlug(idOrSlug?: string) {
   if (!idOrSlug) return undefined;
@@ -607,13 +607,12 @@ export function createLiveSession(
 
   if (input.groupId) {
     try {
-      const group = getWorshipGroup(input.groupId);
-      if (group) {
-        group.activeLiveSessionId = sessionId;
-        group.activeLiveSessionJoinCode = joinCode;
-        group.activeLiveSessionExpiresAt = expiresAtIso;
-        group.activeLiveSessionLeaderName = leaderName;
-      }
+      setGroupLiveSession(input.groupId, {
+        sessionId,
+        joinCode,
+        expiresAt: expiresAtIso,
+        leaderName,
+      });
     } catch {}
   }
 
@@ -1257,13 +1256,7 @@ export function endLiveSession(
 
   if (record.groupId) {
     try {
-      const group = getWorshipGroup(record.groupId);
-      if (group && group.activeLiveSessionId === sessionId) {
-        group.activeLiveSessionId = undefined;
-        group.activeLiveSessionJoinCode = undefined;
-        group.activeLiveSessionExpiresAt = undefined;
-        group.activeLiveSessionLeaderName = undefined;
-      }
+      setGroupLiveSession(record.groupId, null);
     } catch {}
   }
 

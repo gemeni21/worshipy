@@ -34,6 +34,7 @@ import {
   updateTeamBranding,
   publishTeamSetlist,
   clearTeamSetlist,
+  mergeSuggestedSetlists,
 } from '@/lib/team/teamService';
 
 interface AuthContextValue {
@@ -516,10 +517,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
 
-          // Preserve suggested setlists if server response omitted it
-          if (data.group.suggestedSetlists === undefined && (activeGroup?.suggestedSetlists || cached?.suggestedSetlists)) {
-            data.group.suggestedSetlists = activeGroup?.suggestedSetlists || cached?.suggestedSetlists;
-          }
+          // Intelligently merge suggested setlists so approved/declined lineups are never demoted back to pending
+          data.group.suggestedSetlists = mergeSuggestedSetlists(
+            data.group.suggestedSetlists,
+            activeGroup?.suggestedSetlists || cached?.suggestedSetlists
+          );
 
           setActiveGroup(data.group);
           setCachedTeam(data.group);

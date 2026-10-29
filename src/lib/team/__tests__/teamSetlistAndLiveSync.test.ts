@@ -29,6 +29,7 @@ import {
   SETLIST_META_TAKE_ID,
   LIVE_SESSION_META_TAKE_ID,
   sanitizeActiveSetlistForFirestore,
+  mergeSuggestedSetlists,
 } from '../teamService.ts';
 import type { TeamActiveSetlist, TeamPracticeTake } from '../../../types/auth.ts';
 
@@ -1646,5 +1647,348 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     assert.equal(clean.items.length, 1);
     assert.equal(clean.items[0].songId, 'song-01');
     assert.equal(clean.items[0].preferredSemitones, 2);
+  });
+
+  it('32. leader approves suggestion -> casts live sync -> returns to team hub / refreshes -> suggestion remains approved and does NOT reappear in pending', () => {
+    const leader = registerUser({
+      email: `leader_live_loop_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor Samuel',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Praise Central', 'City Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const vocalist = registerUser({
+      email: `vocalist_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Joy Vocalist',
+    });
+
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      members: [
+        { userId: leader.profile.id, email: leader.profile.email, displayName: 'Pastor Samuel', role: 'leader', joinedAt: new Date().toISOString() },
+        { userId: vocalist.profile.id, email: vocalist.profile.email, displayName: 'Joy Vocalist', role: 'member', joinedAt: new Date().toISOString() },
+      ],
+    });
+
+    // 1. Vocalist suggests a setlist
+    const suggestRes = suggestSetlistForGroup(vocalist.profile.id, groupId, {
+      setlist: {
+        id: 'sugg_setlist_joy',
+        name: 'Joyful Praise Lineup',
+        publishedAt: new Date().toISOString(),
+        publishedBy: vocalist.profile.id,
+        items: [
+          { songId: 'song-01', addedAt: new Date().toISOString(), preferredSemitones: 2 },
+          { songId: 'song-02', addedAt: new Date().toISOString() },
+        ],
+      },
+      note: 'Upbeat arrangement for Sunday celebration',
+      targetServiceDate: 'Next Sunday',
+    });
+    assert.ok(suggestRes.ok && suggestRes.suggestion);
+    const suggestionId = suggestRes.suggestion.id;
+
+    // Verify it is currently pending
+    let currentGroup = getWorshipGroup(groupId)!;
+    let pending = (currentGroup.suggestedSetlists || []).filter((s) => s.status === 'pending');
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].id, suggestionId);
+
+    // 2. Leader reviews and approves the suggestion
+    const approveRes = reviewSetlistSuggestion(
+      leader.profile.id,
+      groupId,
+      suggestionId,
+      'approve'
+    );
+    assert.ok(approveRes.ok && approveRes.group);
+    currentGroup = approveRes.group;
+
+    // In the leader's local state, pendingSuggestions is now 0!
+    pending = (currentGroup.suggestedSetlists || []).filter((s) => s.status === 'pending');
+    assert.equal(pending.length, 0);
+    const approvedSugg = currentGroup.suggestedSetlists?.find((s) => s.id === suggestionId);
+    assert.ok(approvedSugg);
+    assert.equal(approvedSugg.status, 'approved');
+    assert.equal(currentGroup.activeSetlist?.name, 'Joyful Praise Lineup');
+
+    // 3. Leader casts Live Sync
+    const liveSessionRes = createLiveSession({
+      title: `${currentGroup.activeSetlist.name} Live`,
+      leaderName: 'Pastor Samuel',
+      initialSongId: currentGroup.activeSetlist.items[0].songId,
+      initialSemitones: currentGroup.activeSetlist.items[0].preferredSemitones,
+      setlistSongIds: currentGroup.activeSetlist.items.map((i) => i.songId),
+      groupId,
+    });
+    assert.ok(liveSessionRes.session);
+
+    // Simulate setTeamActiveLiveSession updating group branding
+    const patchRes = updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeLiveSessionId: liveSessionRes.session.sessionId,
+      activeLiveSessionJoinCode: liveSessionRes.session.joinCode,
+      activeLiveSessionExpiresAt: liveSessionRes.session.expiresAt,
+      activeLiveSessionLeaderName: 'Pastor Samuel',
+      activeSetlist: currentGroup.activeSetlist,
+      suggestedSetlists: currentGroup.suggestedSetlists,
+    });
+    assert.ok(patchRes.ok && patchRes.group);
+
+    // 4. Leader navigates back to Team Hub (/team) and refreshActiveGroup runs
+    // Simulate what happens when AuthContext fetches /api/groups/${groupId}
+    const serverGroup = getWorshipGroup(groupId)!;
+    assert.ok(serverGroup);
+
+    // Apply mergeSuggestedSetlists (what AuthContext.tsx now executes)
+    const mergedSuggestions = mergeSuggestedSetlists(
+      serverGroup.suggestedSetlists,
+      currentGroup.suggestedSetlists
+    );
+
+    const reloadedPending = mergedSuggestions.filter((s) => s.status === 'pending');
+    // CRITICAL ASSERTION: The approval modal must NOT reappear!
+    assert.equal(reloadedPending.length, 0);
+
+    const reloadedApproved = mergedSuggestions.find((s) => s.id === suggestionId);
+    assert.ok(reloadedApproved);
+    assert.equal(reloadedApproved.status, 'approved');
+    assert.equal(serverGroup.activeSetlist?.name, 'Joyful Praise Lineup');
+  });
+
+  it('33. member suggests setlist -> leader declines with note -> leader casts live sync -> suggestion remains declined', () => {
+    const leader = registerUser({
+      email: `leader_decline_loop_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor Anna',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Grace North', 'Grace Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const member = registerUser({
+      email: `member_tom_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Tom Bassist',
+    });
+
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      members: [
+        { userId: leader.profile.id, email: leader.profile.email, displayName: 'Pastor Anna', role: 'leader', joinedAt: new Date().toISOString() },
+        { userId: member.profile.id, email: member.profile.email, displayName: 'Tom Bassist', role: 'member', joinedAt: new Date().toISOString() },
+      ],
+    });
+
+    const suggestRes = suggestSetlistForGroup(member.profile.id, groupId, {
+      setlist: {
+        id: 'sugg_acoustic',
+        name: 'Acoustic Set',
+        publishedAt: new Date().toISOString(),
+        publishedBy: member.profile.id,
+        items: [{ songId: 'song-01', addedAt: new Date().toISOString() }],
+      },
+      note: 'Intimate worship set',
+    });
+    assert.ok(suggestRes.ok && suggestRes.suggestion);
+    const suggestionId = suggestRes.suggestion.id;
+
+    // Leader declines suggestion
+    const declineRes = reviewSetlistSuggestion(
+      leader.profile.id,
+      groupId,
+      suggestionId,
+      'decline',
+      'Saving this for next month youth retreat'
+    );
+    assert.ok(declineRes.ok && declineRes.group);
+
+    // Leader casts live session
+    const liveSessionRes = createLiveSession({
+      title: 'Midweek Service',
+      leaderName: 'Pastor Anna',
+      initialSongId: 'song-01',
+      groupId,
+    });
+    assert.ok(liveSessionRes.session);
+
+    updateWorshipGroupBranding(leader.profile.id, groupId, {
+      activeLiveSessionId: liveSessionRes.session.sessionId,
+      activeLiveSessionJoinCode: liveSessionRes.session.joinCode,
+      activeLiveSessionExpiresAt: liveSessionRes.session.expiresAt,
+      activeLiveSessionLeaderName: 'Pastor Anna',
+      suggestedSetlists: declineRes.group.suggestedSetlists,
+    });
+
+    // Leader returns to Team Hub
+    const fetched = getWorshipGroup(groupId)!;
+    const merged = mergeSuggestedSetlists(fetched.suggestedSetlists, declineRes.group.suggestedSetlists);
+    const pendingList = merged.filter((s) => s.status === 'pending');
+    assert.equal(pendingList.length, 0);
+
+    const declinedItem = merged.find((s) => s.id === suggestionId);
+    assert.ok(declinedItem);
+    assert.equal(declinedItem.status, 'declined');
+    assert.equal(declinedItem.reviewNote, 'Saving this for next month youth retreat');
+  });
+
+  it('34. mergeSuggestedSetlists enforces terminal state invariance across all permutations', () => {
+    const dummySetlist: TeamActiveSetlist = {
+      id: 'setlist_1',
+      name: 'Sunday Praise',
+      publishedAt: '2026-10-29T10:00:00Z',
+      publishedBy: 'user_1',
+      items: [{ songId: 'song-01', addedAt: '2026-10-29T10:00:00Z' }],
+    };
+
+    // 1. Current is approved, incoming is stale pending -> result must be approved
+    const currentApproved = [
+      {
+        id: 'sugg_1',
+        setlist: dummySetlist,
+        suggestedBy: 'user_1',
+        suggestedByName: 'Singer',
+        suggestedAt: '2026-10-29T10:00:00Z',
+        status: 'approved' as const,
+        reviewedBy: 'leader_1',
+        reviewedByName: 'Pastor',
+        reviewedAt: '2026-10-29T10:05:00Z',
+      },
+    ];
+
+    const incomingPending = [
+      {
+        id: 'sugg_1',
+        setlist: dummySetlist,
+        suggestedBy: 'user_1',
+        suggestedByName: 'Singer',
+        suggestedAt: '2026-10-29T10:00:00Z',
+        status: 'pending' as const,
+      },
+    ];
+
+    const result1 = mergeSuggestedSetlists(incomingPending, currentApproved);
+    assert.equal(result1.length, 1);
+    assert.equal(result1[0].status, 'approved');
+    assert.equal(result1[0].reviewedBy, 'leader_1');
+
+    // 2. Current is declined, incoming is stale pending -> result must be declined
+    const currentDeclined = [
+      {
+        ...currentApproved[0],
+        status: 'declined' as const,
+        reviewNote: 'Not this week',
+      },
+    ];
+    const result2 = mergeSuggestedSetlists(incomingPending, currentDeclined);
+    assert.equal(result2.length, 1);
+    assert.equal(result2[0].status, 'declined');
+    assert.equal(result2[0].reviewNote, 'Not this week');
+
+    // 3. Incoming is approved on another device, current is pending -> promotes to approved
+    const result3 = mergeSuggestedSetlists(currentApproved, incomingPending);
+    assert.equal(result3.length, 1);
+    assert.equal(result3[0].status, 'approved');
+
+    // 4. New proposal submitted by another user is preserved alongside resolved items
+    const incomingWithNewProposal = [
+      ...incomingPending,
+      {
+        id: 'sugg_2',
+        setlist: dummySetlist,
+        suggestedBy: 'user_2',
+        suggestedByName: 'Guitarist Bob',
+        suggestedAt: '2026-10-29T11:00:00Z',
+        status: 'pending' as const,
+      },
+    ];
+    const result4 = mergeSuggestedSetlists(incomingWithNewProposal, currentApproved);
+    assert.equal(result4.length, 2);
+    // sugg_2 is pending, sugg_1 is approved
+    const s1 = result4.find((s) => s.id === 'sugg_1');
+    const s2 = result4.find((s) => s.id === 'sugg_2');
+    assert.equal(s1?.status, 'approved');
+    assert.equal(s2?.status, 'pending');
+  });
+
+  it('35. immediate live sync connection and multi-member band synchronization', () => {
+    const leader = registerUser({
+      email: `lead_multisync_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Worship Pastor Luke',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Main Sanctuary Band', 'Hope Church');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    // Leader casts Live Session
+    const sessionRes = createLiveSession({
+      title: 'Sunday Worship Service',
+      leaderName: 'Worship Pastor Luke',
+      initialSongId: 'song-01',
+      initialSemitones: 0,
+      setlistSongIds: ['song-01', 'song-02'],
+      groupId,
+    });
+    assert.ok(sessionRes.session);
+    assert.equal(sessionRes.session.groupId, groupId);
+
+    // Active session lookup by groupId returns active session immediately (sub-millisecond)
+    const discovery = getActiveSessionInfo({ groupId });
+    assert.equal(discovery.active, true);
+    assert.equal(discovery.session?.sessionId, sessionRes.session.sessionId);
+    assert.equal(discovery.session?.leaderName, 'Worship Pastor Luke');
+
+    // Member 1 (Guitarist) joins
+    const guitarist = joinLiveSession({
+      sessionId: sessionRes.session.sessionId,
+      participantName: 'Dan Guitarist',
+      instrument: 'guitar',
+    });
+    assert.equal(guitarist.session.sessionId, sessionRes.session.sessionId);
+    assert.equal(guitarist.session.sharedState.songId, 'song-01');
+
+    // Member 2 (Bassist) joins using join code
+    const bassist = joinLiveSession({
+      joinCode: sessionRes.session.joinCode,
+      participantName: 'Ben Bassist',
+      instrument: 'bass',
+    });
+    assert.equal(bassist.session.sessionId, sessionRes.session.sessionId);
+
+    // Leader changes song to song-02, transposes +2, and highlights Chorus
+    const updateRes = updateLiveSessionState(
+      sessionRes.session.sessionId,
+      sessionRes.participantToken,
+      {
+        songId: 'song-02',
+        officialSemitones: 2,
+        activeSectionId: 'Chorus',
+        activeSectionLabel: 'Chorus',
+      }
+    );
+    assert.equal(updateRes.sharedState.songId, 'song-02');
+    assert.equal(updateRes.sharedState.officialSemitones, 2);
+    assert.equal(updateRes.sharedState.activeSectionLabel, 'Chorus');
+
+    // Both guitarist and bassist read updated state instantly
+    const guitarSnap = getLiveSessionSnapshot(sessionRes.session.sessionId, guitarist.participantToken);
+    const bassSnap = getLiveSessionSnapshot(sessionRes.session.sessionId, bassist.participantToken);
+
+    assert.equal(guitarSnap.session.sharedState.songId, 'song-02');
+    assert.equal(guitarSnap.session.sharedState.officialSemitones, 2);
+    assert.equal(guitarSnap.session.sharedState.activeSectionLabel, 'Chorus');
+
+    assert.equal(bassSnap.session.sharedState.songId, 'song-02');
+    assert.equal(bassSnap.session.sharedState.officialSemitones, 2);
+    assert.equal(bassSnap.session.sharedState.activeSectionLabel, 'Chorus');
+
+    // Leader ends session
+    const endRes = endLiveSession(sessionRes.session.sessionId, sessionRes.participantToken);
+    assert.equal(endRes.status, 'ended');
+
+    // Subsequent discovery returns inactive
+    const postEnd = getActiveSessionInfo({ groupId });
+    assert.equal(postEnd.active, false);
   });
 });

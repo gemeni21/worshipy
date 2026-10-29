@@ -56,22 +56,24 @@ const STORE_FILE = path.join(DATA_DIR, 'cloud-store.json');
 const SESSION_SECRET = process.env.SESSION_SECRET || 'worshipy_auth_secret_key_2026_salt';
 
 let inMemoryStoreCache: CloudStoreSchema | null = null;
+let lastStoreFileMtime = 0;
 
 function hashPassword(password: string, salt: string): string {
   return crypto.scryptSync(password, salt, 64).toString('hex');
 }
 
 function ensureDataStore(): CloudStoreSchema {
-  if (inMemoryStoreCache) {
-    return inMemoryStoreCache;
-  }
-
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
 
     if (fs.existsSync(STORE_FILE)) {
+      const stat = fs.statSync(STORE_FILE);
+      if (inMemoryStoreCache && stat.mtimeMs <= lastStoreFileMtime) {
+        return inMemoryStoreCache;
+      }
+
       const raw = fs.readFileSync(STORE_FILE, 'utf-8');
       const parsed: CloudStoreSchema = JSON.parse(raw);
       if (!parsed.removedGlobalSongs) parsed.removedGlobalSongs = {};
@@ -103,10 +105,12 @@ function ensureDataStore(): CloudStoreSchema {
         } catch {}
       }
 
+      lastStoreFileMtime = stat.mtimeMs;
       inMemoryStoreCache = parsed;
       return parsed;
     }
   } catch (err) {
+    if (inMemoryStoreCache) return inMemoryStoreCache;
     console.warn('Notice: Reading cloud store file fallback:', err);
   }
 
@@ -205,6 +209,9 @@ function saveStore(store: CloudStoreSchema): void {
         fs.unlinkSync(tempFile);
       } catch {}
     }
+    try {
+      lastStoreFileMtime = fs.statSync(STORE_FILE).mtimeMs;
+    } catch {}
   } catch (err) {
     console.warn('Notice: In-memory store cached, file write note:', err);
   }
@@ -1165,11 +1172,59 @@ export function updateWorshipGroupBranding(
     group.activeLiveSessionLeaderName = updates.activeLiveSessionLeaderName || undefined;
   }
   if (updates.suggestedSetlists !== undefined) {
-    group.suggestedSetlists = updates.suggestedSetlists;
+    const currentList = Array.isArray(group.suggestedSetlists) ? group.suggestedSetlists : [];
+    const incomingList = Array.isArray(updates.suggestedSetlists) ? updates.suggestedSetlists : [];
+    const map = new Map<string, TeamSetlistSuggestion>();
+    for (const item of incomingList) if (item && item.id) map.set(item.id, item);
+    for (const item of currentList) {
+      if (!item || !item.id) continue;
+      const existing = map.get(item.id);
+      if (!existing) {
+        map.set(item.id, item);
+      } else {
+        const itemPri = item.status === 'approved' || item.status === 'declined' ? 2 : 1;
+        const exPri = existing.status === 'approved' || existing.status === 'declined' ? 2 : 1;
+        if (itemPri > exPri) {
+          map.set(item.id, { ...existing, ...item });
+        }
+      }
+    }
+    group.suggestedSetlists = Array.from(map.values()).sort(
+      (a, b) => new Date(b.suggestedAt || 0).getTime() - new Date(a.suggestedAt || 0).getTime()
+    );
   }
 
   saveStore(store);
   return { ok: true, group };
+}
+
+export function setGroupLiveSession(
+  groupId: string,
+  sessionInfo: {
+    sessionId?: string;
+    joinCode?: string;
+    expiresAt?: string;
+    leaderName?: string;
+  } | null
+): WorshipGroup | null {
+  const store = ensureDataStore();
+  let group = store.groups?.[groupId] || getWorshipGroup(groupId);
+  if (!group) return null;
+
+  if (sessionInfo && sessionInfo.sessionId) {
+    group.activeLiveSessionId = sessionInfo.sessionId;
+    group.activeLiveSessionJoinCode = sessionInfo.joinCode;
+    group.activeLiveSessionExpiresAt = sessionInfo.expiresAt;
+    group.activeLiveSessionLeaderName = sessionInfo.leaderName;
+  } else {
+    group.activeLiveSessionId = undefined;
+    group.activeLiveSessionJoinCode = undefined;
+    group.activeLiveSessionExpiresAt = undefined;
+    group.activeLiveSessionLeaderName = undefined;
+  }
+
+  saveStore(store);
+  return group;
 }
 
 export function suggestSetlistForGroup(
