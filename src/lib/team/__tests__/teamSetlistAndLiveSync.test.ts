@@ -1244,4 +1244,67 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     assert.ok(refreshed);
     assert.ok(!refreshed.activeSetlist);
   });
+
+  it('25. member closing an approved suggestion removes it from suggestions without unpublishing the active lineup from the team', () => {
+    const leader = registerUser({
+      email: `leader_${Date.now()}_close@example.com`,
+      password: 'Password123!',
+      displayName: 'Worship Leader Mark',
+    });
+    const groupRes = createWorshipGroup(leader.profile.id, 'Praise Team', 'Grace Community');
+    assert.ok(groupRes.group);
+    const groupId = groupRes.group.id;
+
+    const singer = registerUser({
+      email: `singer_${Date.now()}_close@example.com`,
+      password: 'Password123!',
+      displayName: 'Lead Singer Rachel',
+    });
+
+    const joinRes = joinWorshipGroupByCode(singer.profile.id, groupRes.group.inviteCode);
+    assert.ok(joinRes.ok);
+
+    // 1. Singer suggests a setlist
+    const proposeRes = suggestSetlistForGroup(singer.profile.id, groupId, {
+      setlist: {
+        id: 'sunday_lineup_proposal',
+        name: 'Sunday Morning Celebration',
+        publishedAt: new Date().toISOString(),
+        publishedBy: singer.profile.id,
+        publishedByName: 'Rachel',
+        items: [
+          { songId: 'song-101', addedAt: new Date().toISOString(), preferredSemitones: 0 },
+          { songId: 'song-102', addedAt: new Date().toISOString(), preferredSemitones: 2 },
+        ],
+      },
+      note: 'Keys matched for morning vocal energy',
+    });
+    assert.ok(proposeRes.ok && proposeRes.suggestion);
+    const suggestionId = proposeRes.suggestion.id;
+
+    // 2. Leader approves the proposal -> it becomes the team activeSetlist
+    const approveRes = reviewSetlistSuggestion(leader.profile.id, groupId, suggestionId, 'approve');
+    assert.ok(approveRes.ok && approveRes.group);
+    assert.equal(approveRes.group.activeSetlist?.name, 'Sunday Morning Celebration');
+    assert.equal(approveRes.group.suggestedSetlists?.find((s) => s.id === suggestionId)?.status, 'approved');
+
+    // 3. Member Rachel sees it is approved and clicks "Close" (deleteSetlistSuggestion)
+    const closeRes = deleteSetlistSuggestion(singer.profile.id, groupId, suggestionId);
+    assert.ok(closeRes.ok && closeRes.group);
+
+    // 4. Verify suggestion is dismissed from suggestedSetlists
+    const isStillInSuggestions = closeRes.group.suggestedSetlists?.some((s) => s.id === suggestionId);
+    assert.equal(isStillInSuggestions, false, 'Dismissed suggestion should no longer be in suggestedSetlists');
+
+    // 5. CRITICAL: The team active lineup MUST remain untouched and active!
+    assert.ok(closeRes.group.activeSetlist, 'Team activeSetlist must not be cleared by member closing their approved proposal');
+    assert.equal(closeRes.group.activeSetlist?.name, 'Sunday Morning Celebration');
+    assert.equal(closeRes.group.activeSetlist?.items.length, 2);
+
+    // 6. Verify persisted store consistency
+    const refreshed = getWorshipGroup(groupId);
+    assert.ok(refreshed);
+    assert.equal(refreshed.activeSetlist?.name, 'Sunday Morning Celebration');
+    assert.equal(refreshed.suggestedSetlists?.some((s) => s.id === suggestionId), false);
+  });
 });

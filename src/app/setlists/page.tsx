@@ -648,16 +648,50 @@ export default function SetlistsPage() {
                         </>
                       )}
                       {sug.status === 'approved' && (
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
-                          <Check className="w-3 h-3 text-emerald-400" />
-                          <span>Approved</span>
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Approved</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const res = await deleteTeamSetlistSuggestion(activeGroup.id, sug.id);
+                              if (res.ok) {
+                                await refreshActiveGroup();
+                                setStatusMessage('Lineup proposal closed.');
+                              }
+                            }}
+                            className="py-1 px-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] shrink-0 cursor-pointer transition-colors flex items-center gap-1"
+                            title="Close this proposal"
+                          >
+                            <X className="w-3 h-3" />
+                            <span>Close</span>
+                          </button>
+                        </div>
                       )}
                       {sug.status === 'declined' && (
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
-                          <X className="w-3 h-3 text-rose-400" />
-                          <span>Declined</span>
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
+                            <X className="w-3 h-3 text-rose-400" />
+                            <span>Declined</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const res = await deleteTeamSetlistSuggestion(activeGroup.id, sug.id);
+                              if (res.ok) {
+                                await refreshActiveGroup();
+                                setStatusMessage('Declined proposal closed.');
+                              }
+                            }}
+                            className="py-1 px-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] shrink-0 cursor-pointer transition-colors flex items-center gap-1"
+                            title="Close this proposal"
+                          >
+                            <X className="w-3 h-3" />
+                            <span>Close</span>
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>

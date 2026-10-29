@@ -196,6 +196,21 @@ export default function TeamHubPage() {
     }
   };
 
+  const handleDismissSuggestion = async (suggestionId: string) => {
+    if (!currentTeam?.id) return;
+    try {
+      const res = await deleteTeamSetlistSuggestion(currentTeam.id, suggestionId);
+      if (res.ok) {
+        await refreshActiveGroup();
+        setSuggestionFeedbackMsg('Lineup proposal dismissed.');
+      } else {
+        setSuggestionFeedbackMsg(res.error || 'Failed to dismiss proposal');
+      }
+    } catch (err) {
+      setSuggestionFeedbackMsg(err instanceof Error ? err.message : 'Error dismissing proposal');
+    }
+  };
+
   const handleClearActiveSetlist = async () => {
     if (!currentTeam?.id || !currentTeam.activeSetlist) return;
     if (
@@ -1075,7 +1090,7 @@ export default function TeamHubPage() {
                           </div>
 
                           {/* Status Badge */}
-                          <div className="shrink-0 self-start sm:self-center">
+                          <div className="shrink-0 self-start sm:self-center flex items-center gap-2">
                             {sug.status === 'pending' && (
                               <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
                                 <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
@@ -1093,6 +1108,17 @@ export default function TeamHubPage() {
                                 <X className="w-3.5 h-3.5 text-rose-400" />
                                 <span>Declined</span>
                               </span>
+                            )}
+
+                            {sug.status !== 'pending' && (
+                              <button
+                                type="button"
+                                onClick={() => handleDismissSuggestion(sug.id)}
+                                title="Dismiss proposal from review queue"
+                                className="p-1 rounded-lg hover:bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
                             )}
                           </div>
                         </div>
@@ -1174,6 +1200,42 @@ export default function TeamHubPage() {
                               </>
                             )}
 
+                            {!isOwnSuggestion && sug.status === 'approved' && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Approved as Official Lineup</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDismissSuggestion(sug.id)}
+                                  className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                                  title="Dismiss from review queue"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Close</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {!isOwnSuggestion && sug.status === 'declined' && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-rose-400 flex items-center gap-1">
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Declined</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDismissSuggestion(sug.id)}
+                                  className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                                  title="Dismiss from review queue"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Close</span>
+                                </button>
+                              </div>
+                            )}
+
                             {/* Submitter viewing their own suggestion */}
                             {isOwnSuggestion && (
                               <>
@@ -1187,10 +1249,32 @@ export default function TeamHubPage() {
                                   </button>
                                 )}
                                 {sug.status === 'approved' && (
-                                  <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
-                                    <Check className="w-3.5 h-3.5" />
-                                    <span>Approved as Official Lineup</span>
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span>Approved as Official Lineup</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDismissSuggestion(sug.id)}
+                                      className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                                      title="Close this proposal notification"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                      <span>Close</span>
+                                    </button>
+                                  </div>
+                                )}
+                                {sug.status === 'declined' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDismissSuggestion(sug.id)}
+                                    className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                                    title="Dismiss declined proposal"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Close</span>
+                                  </button>
                                 )}
                               </>
                             )}
@@ -1385,7 +1469,7 @@ export default function TeamHubPage() {
                           </div>
 
                           {/* Member Status Badge: "For Approval" or "Approved" */}
-                          <div className="shrink-0 self-start sm:self-center">
+                          <div className="shrink-0 self-start sm:self-center flex items-center gap-2">
                             {sug.status === 'pending' && (
                               <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
                                 <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
@@ -1403,6 +1487,17 @@ export default function TeamHubPage() {
                                 <X className="w-3.5 h-3.5 text-rose-400" />
                                 <span>Declined</span>
                               </span>
+                            )}
+
+                            {(sug.status === 'approved' || sug.status === 'declined') && (
+                              <button
+                                type="button"
+                                onClick={() => handleDismissSuggestion(sug.id)}
+                                title="Close proposal"
+                                className="p-1 rounded-lg hover:bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
                             )}
                           </div>
                         </div>
@@ -1449,10 +1544,32 @@ export default function TeamHubPage() {
                               </button>
                             )}
                             {sug.status === 'approved' && (
-                              <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
-                                <Check className="w-3.5 h-3.5" />
-                                <span>Approved by Worship Leader</span>
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Approved by Worship Leader</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDismissSuggestion(sug.id)}
+                                  className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                                  title="Close this proposal notification"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Close</span>
+                                </button>
+                              </div>
+                            )}
+                            {sug.status === 'declined' && (
+                              <button
+                                type="button"
+                                onClick={() => handleDismissSuggestion(sug.id)}
+                                className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                                title="Dismiss declined proposal"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Close</span>
+                              </button>
                             )}
                           </div>
                         </div>
