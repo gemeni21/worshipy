@@ -459,6 +459,36 @@ export async function updateTeamBranding(
   return updatedGroup;
 }
 
+export function sanitizeActiveSetlistForFirestore(setlist: any): TeamActiveSetlist | null {
+  if (!setlist || typeof setlist !== 'object' || !setlist.id || !setlist.name) {
+    return null;
+  }
+  const cleanItems = (Array.isArray(setlist.items) ? setlist.items : [])
+    .slice(0, 100)
+    .map((item: any) => ({
+      songId: String(item.songId || '').slice(0, 128),
+      ...(item.songTitle ? { songTitle: String(item.songTitle).slice(0, 200) } : {}),
+      ...(item.songArtist ? { songArtist: String(item.songArtist).slice(0, 200) } : {}),
+      ...(item.addedAt ? { addedAt: String(item.addedAt) } : {}),
+      ...(item.notes ? { notes: String(item.notes).slice(0, 1000) } : {}),
+      ...(typeof item.preferredSemitones === 'number' ? { preferredSemitones: item.preferredSemitones } : {}),
+      ...(item.referenceAudioUrl ? { referenceAudioUrl: String(item.referenceAudioUrl).slice(0, 2048) } : {}),
+    }));
+
+  const clean: TeamActiveSetlist = {
+    id: String(setlist.id).slice(0, 128),
+    name: String(setlist.name).slice(0, 100),
+    publishedAt: String(setlist.publishedAt || setlist.createdAt || new Date().toISOString()),
+    publishedBy: String(setlist.publishedBy || 'leader').slice(0, 128),
+    items: cleanItems,
+    ...(setlist.description ? { description: String(setlist.description).slice(0, 1000) } : {}),
+    ...(setlist.publishedByName ? { publishedByName: String(setlist.publishedByName).slice(0, 100) } : {}),
+    ...(setlist.createdAt ? { createdAt: String(setlist.createdAt) } : {}),
+    ...(setlist.updatedAt ? { updatedAt: String(setlist.updatedAt) } : {}),
+  };
+  return clean;
+}
+
 /**
  * Publishes an active setlist (lineup) to the team in Firestore, local cache, and server
  */
@@ -682,6 +712,8 @@ async function syncSuggestionsToFirestore(
         publishedAt: s.setlist.publishedAt || new Date().toISOString(),
         publishedBy: s.setlist.publishedBy || s.suggestedBy,
         ...(s.setlist.publishedByName ? { publishedByName: s.setlist.publishedByName } : {}),
+        ...(s.setlist.createdAt ? { createdAt: s.setlist.createdAt } : {}),
+        ...(s.setlist.updatedAt ? { updatedAt: s.setlist.updatedAt } : {}),
         items: (s.setlist.items || []).map((item) => ({
           songId: item.songId,
           addedAt: item.addedAt || new Date().toISOString(),
@@ -706,21 +738,7 @@ async function syncSuggestionsToFirestore(
     // 2. Strictly sanitize activeSetlist to match isValidActiveSetlist in firestore.rules
     let cleanActiveSetlist: TeamActiveSetlist | undefined;
     if (action === 'approve' && group.activeSetlist) {
-      cleanActiveSetlist = {
-        id: group.activeSetlist.id,
-        name: group.activeSetlist.name,
-        ...(group.activeSetlist.description ? { description: group.activeSetlist.description } : {}),
-        publishedAt: group.activeSetlist.publishedAt || new Date().toISOString(),
-        publishedBy: group.activeSetlist.publishedBy || 'leader',
-        ...(group.activeSetlist.publishedByName ? { publishedByName: group.activeSetlist.publishedByName } : {}),
-        items: (group.activeSetlist.items || []).map((item) => ({
-          songId: item.songId,
-          addedAt: item.addedAt || new Date().toISOString(),
-          ...(item.preferredSemitones !== undefined ? { preferredSemitones: item.preferredSemitones } : {}),
-          ...(item.notes ? { notes: item.notes } : {}),
-          ...(item.referenceAudioUrl ? { referenceAudioUrl: item.referenceAudioUrl } : {}),
-        })),
-      };
+      cleanActiveSetlist = sanitizeActiveSetlistForFirestore(group.activeSetlist) || undefined;
     }
 
     const metaPayload: Record<string, any> = {
@@ -1114,6 +1132,8 @@ export async function setTeamActiveLiveSession(
         ...existingTakes,
       ].slice(0, 50);
 
+      const cleanActiveSetlist = sanitizeActiveSetlistForFirestore(current?.activeSetlist);
+
       const firestorePayload: any = {
         activeLiveSessionId: sessionInfo.sessionId,
         activeLiveSessionJoinCode: sessionInfo.joinCode,
@@ -1121,8 +1141,8 @@ export async function setTeamActiveLiveSession(
         activeLiveSessionLeaderName: sessionInfo.leaderName,
         practiceTakes: combinedTakes,
       };
-      if (current?.activeSetlist) {
-        firestorePayload.activeSetlist = current.activeSetlist;
+      if (cleanActiveSetlist) {
+        firestorePayload.activeSetlist = cleanActiveSetlist;
       }
 
       try {
@@ -1130,7 +1150,13 @@ export async function setTeamActiveLiveSession(
       } catch (err) {
         console.warn('Firestore set live session primary write note:', err);
         try {
-          await updateDoc(groupRef, firestorePayload);
+          // Resilient fallback: write ONLY the live session attributes to guarantee live sync is never blocked
+          await updateDoc(groupRef, {
+            activeLiveSessionId: sessionInfo.sessionId,
+            activeLiveSessionJoinCode: sessionInfo.joinCode,
+            activeLiveSessionExpiresAt: sessionInfo.expiresAt,
+            activeLiveSessionLeaderName: sessionInfo.leaderName,
+          });
         } catch (fallbackErr) {
           console.warn('Firestore set live session fallback note:', fallbackErr);
         }
@@ -1202,6 +1228,8 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
       const cleanTakes = (current?.practiceTakes || []).filter(
         (t) => t.id !== LIVE_SESSION_META_TAKE_ID
       );
+      const cleanActiveSetlist = sanitizeActiveSetlistForFirestore(current?.activeSetlist);
+
       const firestorePayload: any = {
         activeLiveSessionId: null,
         activeLiveSessionJoinCode: null,
@@ -1209,15 +1237,20 @@ export async function clearTeamActiveLiveSession(groupId: string): Promise<void>
         activeLiveSessionLeaderName: null,
         practiceTakes: cleanTakes,
       };
-      if (current?.activeSetlist) {
-        firestorePayload.activeSetlist = current.activeSetlist;
+      if (cleanActiveSetlist) {
+        firestorePayload.activeSetlist = cleanActiveSetlist;
       }
       try {
         await updateDoc(groupRef, firestorePayload);
       } catch (err) {
         console.warn('Firestore clear live session primary write note:', err);
         try {
+          // Resilient fallback: clear the live session attributes specifically
           await updateDoc(groupRef, {
+            activeLiveSessionId: null,
+            activeLiveSessionJoinCode: null,
+            activeLiveSessionExpiresAt: null,
+            activeLiveSessionLeaderName: null,
             practiceTakes: cleanTakes,
           });
         } catch (fallbackErr) {

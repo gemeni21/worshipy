@@ -28,7 +28,7 @@ service cloud.firestore {
     //   - memberIds: list of strings (optional, max 100 items) - Member IDs
     //   - memberUids: list of strings (optional, max 100 items) - Member UIDs
     //   - practiceTakes: list of maps (optional, max 100 items) - Embedded rehearsal metadata
-    //   - activeSetlist: map (optional) - Published active setlist (id, name, description, publishedAt, publishedBy, publishedByName, items)
+    //   - activeSetlist: map (optional) - Published active setlist (id, name, description, publishedAt, publishedBy, publishedByName, items, createdAt, updatedAt)
     //   - suggestedSetlists: list of maps (optional, max 20 items) - Member setlist proposals / suggestions
     //   - activeLiveSessionId: string (optional, 0-128 chars) or null - Active live rehearsal/service session ID
     //   - activeLiveSessionJoinCode: string (optional, 0-20 chars) or null - Active live session join code
@@ -154,7 +154,7 @@ service cloud.firestore {
     function isValidActiveSetlist(setlist) {
       return setlist is map &&
              setlist.keys().hasOnly([
-               'id', 'name', 'description', 'publishedAt', 'publishedBy', 'publishedByName', 'items'
+               'id', 'name', 'description', 'publishedAt', 'publishedBy', 'publishedByName', 'items', 'createdAt', 'updatedAt'
              ]) &&
              setlist.keys().hasAll(['id', 'name', 'publishedAt', 'publishedBy', 'items']) &&
              setlist.id is string && setlist.id.size() >= 1 && setlist.id.size() <= 128 &&
@@ -163,6 +163,8 @@ service cloud.firestore {
              isValidTimestampOrDateString(setlist.publishedAt) &&
              setlist.publishedBy is string && setlist.publishedBy.size() >= 1 && setlist.publishedBy.size() <= 128 &&
              isValidOptionalString(setlist, 'publishedByName', 0, 100) &&
+             isValidOptionalTimestampOrDateString(setlist, 'createdAt') &&
+             isValidOptionalTimestampOrDateString(setlist, 'updatedAt') &&
              setlist.items is list && setlist.items.size() <= 100;
     }
 

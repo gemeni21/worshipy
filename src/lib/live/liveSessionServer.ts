@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { getAllSongs, getSongById, getSongBySlug } from '../catalog/songCatalog.ts';
 import { normalizeSemitones } from '../music/transposition.ts';
-import { findGroupByActiveLiveSession } from '../cloud/cloudDb.ts';
+import { findGroupByActiveLiveSession, getWorshipGroup } from '../cloud/cloudDb.ts';
 
 function findSongByIdOrSlug(idOrSlug?: string) {
   if (!idOrSlug) return undefined;
@@ -163,6 +163,7 @@ function reconstituteSessionFromTeamGroup(
     leaderId: leaderUserId,
     leaderName,
     coLeaderIds: [],
+    groupId: group.id,
     createdAt: nowIso,
     expiresAt:
       group.activeLiveSessionExpiresAt ||
@@ -473,6 +474,7 @@ function sanitizeSnapshot(record: InternalSessionRecord): LiveSessionSnapshot {
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
     ...(record.endedAt ? { endedAt: record.endedAt } : {}),
+    ...(record.groupId ? { groupId: record.groupId } : {}),
     sharedState: {
       ...record.sharedState,
       setlistSongIds: [...record.sharedState.setlistSongIds],
@@ -570,6 +572,7 @@ export function createLiveSession(
     leaderId: participantId,
     leaderName,
     coLeaderIds: [],
+    groupId: input.groupId,
     createdAt: nowIso,
     expiresAt: expiresAtIso,
     inviteTokenVersion: 1,
@@ -601,6 +604,18 @@ export function createLiveSession(
 
   store.sessions.set(sessionId, record);
   persistStoreToDisk();
+
+  if (input.groupId) {
+    try {
+      const group = getWorshipGroup(input.groupId);
+      if (group) {
+        group.activeLiveSessionId = sessionId;
+        group.activeLiveSessionJoinCode = joinCode;
+        group.activeLiveSessionExpiresAt = expiresAtIso;
+        group.activeLiveSessionLeaderName = leaderName;
+      }
+    } catch {}
+  }
 
   const participantToken = createParticipantToken(sessionId, participantId);
   const inviteToken = createInviteToken(record);
@@ -786,6 +801,76 @@ export function joinLiveSession(
     participantId: effectiveParticipantId,
     participantToken,
   };
+}
+
+/**
+ * Searches for an active live session associated with a specific worship group.
+ */
+export function findActiveSessionByGroupId(groupId: string): InternalSessionRecord | undefined {
+  if (!groupId) return undefined;
+  const store = getStore();
+  const now = Date.now();
+
+  const isSessionActive = (s: InternalSessionRecord) =>
+    s.status === 'active' &&
+    (!s.expiresAt || new Date(s.expiresAt).getTime() > now);
+
+  // 1. Look in memory for direct groupId match
+  for (const s of store.sessions.values()) {
+    if (s.groupId === groupId && isSessionActive(s)) {
+      return s;
+    }
+  }
+
+  // 2. Sync from disk and re-check
+  syncStoreFromDisk();
+  for (const s of store.sessions.values()) {
+    if (s.groupId === groupId && isSessionActive(s)) {
+      return s;
+    }
+  }
+
+  // 3. Fallback: check group from cloud store
+  try {
+    const group = getWorshipGroup(groupId) || findGroupByActiveLiveSession(groupId);
+    if (group && group.activeLiveSessionId) {
+      const session = getSessionRecord(group.activeLiveSessionId);
+      if (session && isSessionActive(session)) {
+        session.groupId = groupId;
+        return session;
+      }
+    }
+  } catch {}
+
+  return undefined;
+}
+
+/**
+ * Returns discovery info for active live sessions by groupId, joinCode, or sessionId.
+ */
+export function getActiveSessionInfo(query: {
+  groupId?: string;
+  joinCode?: string;
+  sessionId?: string;
+}): { active: boolean; session?: LiveSessionSnapshot } {
+  let record: InternalSessionRecord | undefined;
+  if (query.groupId) {
+    record = findActiveSessionByGroupId(query.groupId);
+  }
+  if (!record && query.joinCode) {
+    record = findSessionByJoinCode(query.joinCode.trim().toUpperCase());
+  }
+  if (!record && query.sessionId) {
+    record = getSessionRecord(query.sessionId);
+  }
+  if (record && record.status === 'active') {
+    const isExpired =
+      record.expiresAt && new Date(record.expiresAt).getTime() <= Date.now();
+    if (!isExpired) {
+      return { active: true, session: sanitizeSnapshot(record) };
+    }
+  }
+  return { active: false };
 }
 
 /**
@@ -1169,6 +1254,18 @@ export function endLiveSession(
   record.status = 'ended';
   record.endedAt = new Date().toISOString();
   record.revision += 1;
+
+  if (record.groupId) {
+    try {
+      const group = getWorshipGroup(record.groupId);
+      if (group && group.activeLiveSessionId === sessionId) {
+        group.activeLiveSessionId = undefined;
+        group.activeLiveSessionJoinCode = undefined;
+        group.activeLiveSessionExpiresAt = undefined;
+        group.activeLiveSessionLeaderName = undefined;
+      }
+    } catch {}
+  }
 
   persistStoreToDisk();
   broadcastSessionEvent(sessionId, 'session_ended');

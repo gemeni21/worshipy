@@ -62,7 +62,10 @@ import {
   clearTeamActiveLiveSession,
   getCachedTeam,
   setCachedTeam,
+  broadcastTeamSync,
+  subscribeToTeam,
 } from '@/lib/team/teamService';
+import type { WorshipGroup } from '@/types/auth';
 import {
   SESSION_CREDENTIALS_STORAGE_KEY,
   type CreateLiveSessionResponse,
@@ -132,13 +135,28 @@ function LiveSyncWorkspace({
   const { user, activeGroup, refreshActiveGroup } = useAuth();
   const [showLiveAudioPlayer, setShowLiveAudioPlayer] = useState(false);
   const [showManualJoinForm, setShowManualJoinForm] = useState(false);
+  const [liveGroup, setLiveGroup] = useState<WorshipGroup | null>(() => getCachedTeam());
 
-  const effectiveGroup = activeGroup || getCachedTeam();
+  const effectiveGroup = liveGroup || activeGroup || getCachedTeam();
   const targetGroupId = effectiveGroup?.id || user?.groupId;
   const isTeamMember = Boolean(targetGroupId);
   const isOwnerLeader = Boolean(
     user && (effectiveGroup?.ownerId === user.id || user.groupRole === 'leader')
   );
+
+  useEffect(() => {
+    if (activeGroup) {
+      setLiveGroup(activeGroup);
+    }
+  }, [activeGroup]);
+
+  useEffect(() => {
+    if (!targetGroupId) return;
+    const unsub = subscribeToTeam(targetGroupId, (updated: WorshipGroup | null) => {
+      setLiveGroup(updated);
+    });
+    return () => unsub();
+  }, [targetGroupId]);
 
   // Start Session Form State
   const [leaderName, setLeaderName] = useState(user?.displayName || 'Worship Leader');
@@ -462,39 +480,91 @@ function LiveSyncWorkspace({
   // 2. Auto-connect team members and re-connect leader if their worship team leader is currently live
   useEffect(() => {
     if (session) return;
-    const currentGrp = activeGroup || getCachedTeam();
-    if (!currentGrp?.id) return;
+    const currentGrp = liveGroup || activeGroup || getCachedTeam();
+    const grpId = currentGrp?.id || user?.groupId;
+    if (!grpId) return;
+
+    let cancelled = false;
 
     const isLeader = Boolean(
-      user && (currentGrp.ownerId === user.id || user.groupRole === 'leader')
+      user && (currentGrp?.ownerId === user.id || user.groupRole === 'leader')
     );
 
     async function checkAndAutoJoin() {
       if (isRestoringStoredCredsRef.current && !session) return;
-      const grp = activeGroup || getCachedTeam();
-      if (!grp?.id || session) return;
+      if (session || autoJoinInFlightRef.current || cancelled) return;
 
-      // 1. If activeLiveSessionId is already on group
-      let liveId = grp.activeLiveSessionId;
-      let joinCode = grp.activeLiveSessionJoinCode;
-      let expiresAt = grp.activeLiveSessionExpiresAt;
+      const grp = liveGroup || activeGroup || getCachedTeam();
+      let liveId = grp?.activeLiveSessionId;
+      let joinCode = grp?.activeLiveSessionJoinCode;
+      let expiresAt = grp?.activeLiveSessionExpiresAt;
+      let leaderDispName = grp?.activeLiveSessionLeaderName;
 
-      // 2. If not on group, fetch directly from server API
+      // 1. Query dedicated active session endpoint on server
+      try {
+        const res = await fetch(
+          apiUrl(`/api/live/sessions/active?groupId=${encodeURIComponent(grpId || '')}`),
+          { cache: 'no-store' }
+        );
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          if (data.active && data.session) {
+            liveId = data.session.sessionId;
+            joinCode = data.session.joinCode;
+            expiresAt = data.session.expiresAt;
+            leaderDispName = data.session.leaderName;
+
+            const currentCache = getCachedTeam() || grp;
+            if (currentCache) {
+              const updated: WorshipGroup = {
+                ...currentCache,
+                activeLiveSessionId: liveId,
+                activeLiveSessionJoinCode: joinCode,
+                activeLiveSessionExpiresAt: expiresAt,
+                activeLiveSessionLeaderName: leaderDispName,
+              };
+              setLiveGroup(updated);
+              setCachedTeam(updated);
+              broadcastTeamSync(updated);
+            }
+          } else if (data.active === false && grp?.activeLiveSessionId) {
+            // Server reports no active session, clear local active session indicator
+            setLiveGroup((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    activeLiveSessionId: undefined,
+                    activeLiveSessionJoinCode: undefined,
+                    activeLiveSessionExpiresAt: undefined,
+                    activeLiveSessionLeaderName: undefined,
+                  }
+                : null
+            );
+          }
+        }
+      } catch (err) {
+        console.warn('Active live session discovery error:', err);
+      }
+
+      // Fallback: check group API if activeLiveSessionId still not found
       if (!liveId && !joinCode) {
         try {
-          const res = await fetch(`/api/groups/${grp.id}`, { cache: 'no-store' });
-          if (res.ok) {
+          const res = await fetch(apiUrl(`/api/groups/${grpId}`), { cache: 'no-store' });
+          if (res.ok && !cancelled) {
             const data = await res.json();
             if (data.group?.activeLiveSessionId) {
               liveId = data.group.activeLiveSessionId;
               joinCode = data.group.activeLiveSessionJoinCode;
               expiresAt = data.group.activeLiveSessionExpiresAt;
+              leaderDispName = data.group.activeLiveSessionLeaderName;
+              setLiveGroup(data.group);
               setCachedTeam(data.group);
             }
           }
         } catch {}
       }
 
+      if (cancelled || session || autoJoinInFlightRef.current) return;
       if (!liveId && !joinCode) return;
       if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) return;
 
@@ -517,7 +587,23 @@ function LiveSyncWorkspace({
     }
 
     checkAndAutoJoin();
+
+    // Fast recurring polling (every 2.5s) to guarantee instant connection when leader goes live
+    const pollTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible' && !session) {
+        checkAndAutoJoin();
+      }
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(pollTimer);
+    };
   }, [
+    liveGroup?.id,
+    liveGroup?.activeLiveSessionId,
+    liveGroup?.activeLiveSessionJoinCode,
+    liveGroup?.activeLiveSessionExpiresAt,
     activeGroup?.id,
     activeGroup?.activeLiveSessionId,
     activeGroup?.activeLiveSessionJoinCode,
@@ -525,6 +611,7 @@ function LiveSyncWorkspace({
     session,
     user?.id,
     user?.groupRole,
+    user?.groupId,
     performJoinLiveSession,
   ]);
 
@@ -715,6 +802,8 @@ function LiveSyncWorkspace({
           ? chosenSetlist.items[0]?.preferredSemitones ?? initialStartSemitones
           : initialStartSemitones;
 
+      const grpId = activeGroup?.id || user?.groupId || getCachedTeam()?.id;
+
       const res = await fetch(apiUrl('/api/live/sessions'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -725,6 +814,7 @@ function LiveSyncWorkspace({
           initialSongId,
           initialSemitones,
           setlistSongIds,
+          groupId: grpId || undefined,
         }),
       });
 
@@ -751,7 +841,6 @@ function LiveSyncWorkspace({
       setViewMode('follow');
 
       // If user is in a worship team, broadcast active live session to team across server, Firestore, and tabs
-      const grpId = activeGroup?.id || user?.groupId || getCachedTeam()?.id;
       if (grpId) {
         setTeamActiveLiveSession(grpId, {
           sessionId: data.session.sessionId,
@@ -1048,6 +1137,17 @@ function LiveSyncWorkspace({
       if (grpId) {
         clearTeamActiveLiveSession(grpId).catch(() => {});
       }
+      setLiveGroup((prev) =>
+        prev
+          ? {
+              ...prev,
+              activeLiveSessionId: undefined,
+              activeLiveSessionJoinCode: undefined,
+              activeLiveSessionExpiresAt: undefined,
+              activeLiveSessionLeaderName: undefined,
+            }
+          : null
+      );
       window.sessionStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
       window.localStorage.removeItem(SESSION_CREDENTIALS_STORAGE_KEY);
     } catch {

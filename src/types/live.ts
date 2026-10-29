@@ -56,6 +56,7 @@ export interface LiveSessionSnapshot {
   createdAt: string;
   expiresAt: string;
   endedAt?: string;
+  groupId?: string;
   sharedState: LiveSharedMusicalState;
   participants: LiveParticipant[];
 }
@@ -78,6 +79,7 @@ export interface CreateLiveSessionInput {
   initialSemitones?: number;
   enharmonicPreference?: EnharmonicPreference;
   setlistSongIds?: string[];
+  groupId?: string;
   /** Optional custom TTL in milliseconds (used for testing expiration) */
   ttlMs?: number;
 }

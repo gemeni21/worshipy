@@ -52,6 +52,8 @@ export interface TeamActiveSetlist {
   publishedBy: string;
   publishedByName?: string;
   items: SetlistItem[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TeamSetlistSuggestion {

@@ -21,11 +21,14 @@ import {
   clearAllLiveSessionsForTest,
   endLiveSession,
   getLiveSessionSnapshot,
+  findActiveSessionByGroupId,
+  getActiveSessionInfo,
 } from '../../live/liveSessionServer.ts';
 import { resolveReferencePlayback } from '../../audio/referenceAudio.ts';
 import {
   SETLIST_META_TAKE_ID,
   LIVE_SESSION_META_TAKE_ID,
+  sanitizeActiveSetlistForFirestore,
 } from '../teamService.ts';
 import type { TeamActiveSetlist, TeamPracticeTake } from '../../../types/auth.ts';
 
@@ -1310,5 +1313,338 @@ describe('Team Active Setlist & 1-Click Live Sync Engine', () => {
     assert.ok(refreshed);
     assert.equal(refreshed.activeSetlist?.name, 'Sunday Morning Celebration');
     assert.equal(refreshed.suggestedSetlists?.some((s) => s.id === suggestionId), false);
+  });
+
+  it('26. sanitizeActiveSetlistForFirestore preserves optional createdAt and updatedAt', () => {
+    const rawSetlist = {
+      id: 'setlist_123',
+      name: 'Sunday Easter Lineup',
+      description: 'Morning set',
+      publishedAt: '2026-10-29T10:00:00.000Z',
+      publishedBy: 'user_456',
+      publishedByName: 'Worship Leader',
+      createdAt: '2026-10-28T15:30:00.000Z',
+      updatedAt: '2026-10-29T09:45:00.000Z',
+      items: [{ songId: 'song_1', addedAt: '2026-10-29T10:00:00.000Z' }],
+      unauthorizedExtraField: 'should_be_stripped',
+    };
+
+    const sanitized = sanitizeActiveSetlistForFirestore(rawSetlist);
+    assert.ok(sanitized);
+    assert.equal(sanitized.id, 'setlist_123');
+    assert.equal(sanitized.name, 'Sunday Easter Lineup');
+    assert.equal(sanitized.createdAt, '2026-10-28T15:30:00.000Z');
+    assert.equal(sanitized.updatedAt, '2026-10-29T09:45:00.000Z');
+    assert.equal((sanitized as any).unauthorizedExtraField, undefined);
+  });
+
+  it('27. simulates isValidActiveSetlist CEL logic from firestore.rules', () => {
+    function isValidTimestampOrDateString(val: any): boolean {
+      return typeof val === 'string' && val.length >= 10 && val.length <= 50;
+    }
+    function isValidOptionalTimestampOrDateString(data: Record<string, any>, field: string): boolean {
+      return !(field in data) || data[field] === null || isValidTimestampOrDateString(data[field]);
+    }
+    function isValidOptionalString(data: Record<string, any>, field: string, minLen: number, maxLen: number): boolean {
+      return (
+        !(field in data) ||
+        data[field] === null ||
+        (typeof data[field] === 'string' && data[field].length >= minLen && data[field].length <= maxLen)
+      );
+    }
+    function isValidActiveSetlistSim(setlist: any): boolean {
+      if (!setlist || typeof setlist !== 'object' || Array.isArray(setlist)) return false;
+      const allowedKeys = new Set([
+        'id', 'name', 'description', 'publishedAt', 'publishedBy', 'publishedByName', 'items', 'createdAt', 'updatedAt'
+      ]);
+      const keys = Object.keys(setlist);
+      const hasOnly = keys.every((k) => allowedKeys.has(k));
+      const required = ['id', 'name', 'publishedAt', 'publishedBy', 'items'];
+      const hasAll = required.every((k) => k in setlist);
+      return (
+        hasOnly &&
+        hasAll &&
+        typeof setlist.id === 'string' && setlist.id.length >= 1 && setlist.id.length <= 128 &&
+        typeof setlist.name === 'string' && setlist.name.length >= 1 && setlist.name.length <= 100 &&
+        isValidOptionalString(setlist, 'description', 0, 1000) &&
+        isValidTimestampOrDateString(setlist.publishedAt) &&
+        typeof setlist.publishedBy === 'string' && setlist.publishedBy.length >= 1 && setlist.publishedBy.length <= 128 &&
+        isValidOptionalString(setlist, 'publishedByName', 0, 100) &&
+        isValidOptionalTimestampOrDateString(setlist, 'createdAt') &&
+        isValidOptionalTimestampOrDateString(setlist, 'updatedAt') &&
+        Array.isArray(setlist.items) && setlist.items.length <= 100
+      );
+    }
+
+    const baseSetlist = {
+      id: 'setlist_1',
+      name: 'Sunday Morning',
+      publishedAt: '2026-10-29T10:00:00.000Z',
+      publishedBy: 'user_1',
+      items: [],
+    };
+
+    // 1. Valid without createdAt/updatedAt
+    assert.equal(isValidActiveSetlistSim(baseSetlist), true);
+
+    // 2. Valid with createdAt and updatedAt
+    assert.equal(
+      isValidActiveSetlistSim({
+        ...baseSetlist,
+        createdAt: '2026-10-29T08:00:00.000Z',
+        updatedAt: '2026-10-29T09:00:00.000Z',
+      }),
+      true
+    );
+
+    // 3. Valid with null createdAt / updatedAt
+    assert.equal(
+      isValidActiveSetlistSim({
+        ...baseSetlist,
+        createdAt: null,
+        updatedAt: null,
+      }),
+      true
+    );
+
+    // 4. Invalid with disallowed extra field
+    assert.equal(
+      isValidActiveSetlistSim({
+        ...baseSetlist,
+        maliciousField: 'exploit',
+      }),
+      false
+    );
+
+    // 5. Invalid with malformed createdAt (too short string)
+    assert.equal(
+      isValidActiveSetlistSim({
+        ...baseSetlist,
+        createdAt: 'bad',
+      }),
+      false
+    );
+
+    // 6. Invalid when missing required publishedAt
+    const missingPublishedAt = { ...baseSetlist };
+    delete (missingPublishedAt as any).publishedAt;
+    assert.equal(isValidActiveSetlistSim(missingPublishedAt), false);
+  });
+
+  it('28. Live Sync active session discovery & multi-client back-and-forth flow', () => {
+    // 1. Leader sets up worship group with an active setlist
+    const leader = registerUser({
+      email: `leader_live_flow_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Pastor Mark',
+      churchName: 'Grace City Church',
+    });
+    const leaderId = leader.profile.id;
+    const createRes = createWorshipGroup(leaderId, 'Grace City Worship', 'Grace City Church');
+    assert.equal(createRes.ok, true);
+    const group = createRes.group!;
+    const groupId = group.id;
+
+    // Member joins group
+    const member = registerUser({
+      email: `member_live_flow_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Sarah Keyboard',
+    });
+    const joinRes = joinWorshipGroupByCode(member.profile.id, group.inviteCode);
+    assert.equal(joinRes.ok, true);
+
+    // 2. Before leader goes live: querying active session returns active: false
+    const initialCheck = getActiveSessionInfo({ groupId });
+    assert.equal(initialCheck.active, false);
+
+    // 3. Leader starts live session, passing groupId
+    const sessionRes = createLiveSession({
+      title: 'Sunday Morning Praise',
+      leaderName: 'Pastor Mark',
+      groupId,
+      initialSongId: 'song-01',
+      setlistSongIds: ['song-01', 'song-02'],
+    });
+    assert.ok(sessionRes.session);
+    assert.equal(sessionRes.session.groupId, groupId);
+    const sessionId = sessionRes.session.sessionId;
+    const joinCode = sessionRes.session.joinCode;
+
+    // 4. Member polling detects active live session immediately by groupId
+    const memberPoll = getActiveSessionInfo({ groupId });
+    assert.equal(memberPoll.active, true);
+    assert.equal(memberPoll.session?.sessionId, sessionId);
+    assert.equal(memberPoll.session?.joinCode, joinCode);
+    assert.equal(memberPoll.session?.leaderName, 'Pastor Mark');
+
+    // 5. Member auto-joins with the detected sessionId without needing manual code
+    const memberJoin = joinLiveSession({
+      sessionId,
+      participantName: 'Sarah Keyboard',
+      instrument: 'keyboard',
+    });
+    assert.equal(memberJoin.session.sessionId, sessionId);
+    assert.equal(memberJoin.session.participants.length, 2);
+    assert.ok(
+      memberJoin.session.participants.some(
+        (p) => p.name === 'Sarah Keyboard' && p.instrument === 'keyboard'
+      )
+    );
+
+    // 6. Back-and-forth sync: Leader changes key (+2 semitones) and switches section to "Chorus"
+    const updateRes = updateLiveSessionState(
+      sessionId,
+      sessionRes.participantToken,
+      {
+        officialSemitones: 2,
+        activeSectionId: 'Chorus',
+        activeSectionLabel: 'Chorus',
+      }
+    );
+    assert.equal(updateRes.sharedState.officialSemitones, 2);
+    assert.equal(updateRes.sharedState.activeSectionLabel, 'Chorus');
+
+    // 7. Member's next state query receives the leader's change instantly
+    const memberSnapshot = getLiveSessionSnapshot(sessionId, memberJoin.participantToken);
+    assert.equal(memberSnapshot.session.sharedState.officialSemitones, 2);
+    assert.equal(memberSnapshot.session.sharedState.activeSectionLabel, 'Chorus');
+
+    // 8. Leader ends session
+    const endRes = endLiveSession(sessionId, sessionRes.participantToken);
+    assert.equal(endRes.status, 'ended');
+
+    // 9. Member polling now detects session ended
+    const postEndPoll = getActiveSessionInfo({ groupId });
+    assert.equal(postEndPoll.active, false);
+  });
+
+  it('29. immediate join-by-code and setlist song progression', () => {
+    const leader = registerUser({
+      email: `leader_code_flow_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Leader Chris',
+    });
+    const sessionRes = createLiveSession({
+      title: 'Youth Night Live',
+      leaderName: 'Leader Chris',
+      initialSongId: 'song-01',
+      initialSemitones: 0,
+      setlistSongIds: ['song-01', 'song-02'],
+    });
+
+    const cleanCode = sessionRes.session.joinCode;
+
+    // Member joins using the 6-character code
+    const memberJoin = joinLiveSession({
+      joinCode: cleanCode,
+      participantName: 'Drummer Leo',
+    });
+    assert.equal(memberJoin.session.sessionId, sessionRes.session.sessionId);
+
+    // Leader advances to Song 2 of the setlist with +3 transpose
+    const updateState = updateLiveSessionState(
+      sessionRes.session.sessionId,
+      sessionRes.participantToken,
+      {
+        songId: 'song-02',
+        officialSemitones: 3,
+        activeSectionId: 'Bridge',
+        activeSectionLabel: 'Bridge',
+      }
+    );
+    assert.equal(updateState.sharedState.songId, 'song-02');
+    assert.equal(updateState.sharedState.officialSemitones, 3);
+    assert.equal(updateState.sharedState.activeSectionLabel, 'Bridge');
+
+    // Member query matches
+    const memberView = getLiveSessionSnapshot(sessionRes.session.sessionId, memberJoin.participantToken);
+    assert.equal(memberView.session.sharedState.songId, 'song-02');
+    assert.equal(memberView.session.sharedState.officialSemitones, 3);
+  });
+
+  it('30. multi-session lifecycle consistency: Start -> End -> Start New session', () => {
+    const leader = registerUser({
+      email: `leader_cycle_${Date.now()}@example.com`,
+      password: 'Password123!',
+      displayName: 'Worship Pastor Alex',
+    });
+    const createRes = createWorshipGroup(leader.profile.id, 'Resurrection Team');
+    assert.equal(createRes.ok, true);
+    const groupId = createRes.group!.id;
+
+    // Session 1: Morning Rehearsal
+    const s1 = createLiveSession({
+      title: 'Morning Rehearsal',
+      leaderName: 'Worship Pastor Alex',
+      groupId,
+      initialSongId: 'song-01',
+    });
+    assert.equal(getActiveSessionInfo({ groupId }).session?.sessionId, s1.session.sessionId);
+
+    // Leader ends Session 1
+    endLiveSession(s1.session.sessionId, s1.participantToken);
+    assert.equal(getActiveSessionInfo({ groupId }).active, false);
+
+    // Session 2: Sunday Main Service
+    const s2 = createLiveSession({
+      title: 'Sunday Main Service',
+      leaderName: 'Worship Pastor Alex',
+      groupId,
+      initialSongId: 'song-02',
+    });
+    const s2Check = getActiveSessionInfo({ groupId });
+    assert.equal(s2Check.active, true);
+    assert.equal(s2Check.session?.sessionId, s2.session.sessionId);
+    assert.notEqual(s2Check.session?.sessionId, s1.session.sessionId);
+    assert.equal(s2Check.session?.title, 'Sunday Main Service');
+
+    // Member connects directly to Session 2
+    const member = joinLiveSession({
+      sessionId: s2.session.sessionId,
+      participantName: 'Violinist Chloe',
+    });
+    assert.equal(member.session.sessionId, s2.session.sessionId);
+    assert.equal(member.session.sharedState.songId, 'song-02');
+  });
+
+  it('31. resilient activeSetlist sanitization prevents Firestore rules rejection during live sync', () => {
+    // Dirty setlist from personal library containing non-schema fields
+    const dirtySetlist: any = {
+      id: 'setlist_dirty_001',
+      name: 'Sunday Easter Lineup',
+      description: 'Songs for Easter',
+      createdAt: '2026-10-29T10:00:00.000Z',
+      updatedAt: '2026-10-29T11:00:00.000Z',
+      publishedAt: '2026-10-29T10:00:00.000Z',
+      publishedBy: 'leader_123',
+      publishedByName: 'Pastor Mark',
+      isOfficial: true,
+      customTag: 'special-service',
+      unknownProperty: 12345,
+      items: [
+        {
+          songId: 'song-01',
+          songTitle: 'Goodness of God',
+          songArtist: 'Bethel Music',
+          preferredSemitones: 2,
+          notes: 'Soft acoustic intro',
+          extraBogusKey: true,
+        },
+      ],
+    };
+
+    const clean = sanitizeActiveSetlistForFirestore(dirtySetlist);
+    assert.ok(clean);
+    assert.equal(clean.id, 'setlist_dirty_001');
+    assert.equal(clean.name, 'Sunday Easter Lineup');
+    assert.equal(clean.publishedAt, '2026-10-29T10:00:00.000Z');
+    assert.equal(clean.publishedBy, 'leader_123');
+    assert.equal((clean as any).isOfficial, undefined);
+    assert.equal((clean as any).customTag, undefined);
+    assert.equal((clean as any).unknownProperty, undefined);
+    assert.equal(clean.items.length, 1);
+    assert.equal(clean.items[0].songId, 'song-01');
+    assert.equal(clean.items[0].preferredSemitones, 2);
   });
 });
