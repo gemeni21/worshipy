@@ -18,10 +18,14 @@ import {
 } from '../liveSessionServer.ts';
 import { getSongById } from '../../catalog/songCatalog.ts';
 import {
+  appendChordToSongSectionLine,
   convertDisplayedSongToBaseChordPro,
   formatSongLineForQuickEdit,
+  insertChordAtLyricPositionInSong,
+  nudgeChordByWordInSongSectionLine,
   replaceChordInSongSectionLine,
   resolveSongWithLiveOverride,
+  splitSegmentTextIntoTappableWords,
   updateLineInSongSection,
 } from '../../chordpro/liveArrangement.ts';
 import { transposeSong } from '../../music/transposition.ts';
@@ -893,5 +897,116 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
         return true;
       }
     );
+  });
+
+  it('22. supports free-position word tapping to insert chords anywhere in lyrics, word-by-word chord nudging (← / →), and trailing chord insertion', () => {
+    const baseSong = getSongById('song-01')!;
+    const secId = baseSong.sections[0].id;
+
+    // Start with a clean single-chord lyric line: "[G]We gather in Your light"
+    const initialSong = updateLineInSongSection(
+      baseSong,
+      secId,
+      0,
+      '[G]We gather in Your light'
+    );
+    const initialLine = initialSong.sections[0].lines[0];
+    assert.equal(initialLine.segments.length, 1);
+    assert.equal(initialLine.segments[0].chord, 'G');
+    assert.equal(initialLine.segments[0].text, 'We gather in Your light');
+
+    // 1. Split into tappable words and verify exact character offsets
+    const words = splitSegmentTextIntoTappableWords(initialLine.segments[0].text);
+    // words: "We", "gather", "in", "Your", "light"
+    const yourWord = words.find((w) => w.word === 'Your');
+    assert.ok(yourWord);
+    assert.equal(
+      initialLine.segments[0].text.slice(yourWord.charOffset),
+      'Your light'
+    );
+
+    // 2. Leader taps the word "Your" and selects chord "D/F#" -> splits segment and places [D/F#] right above "Your"!
+    const afterWordTap = insertChordAtLyricPositionInSong(
+      initialSong,
+      secId,
+      0,
+      0,
+      yourWord.charOffset,
+      'D/F#'
+    );
+    const lineAfterTap = afterWordTap.sections[0].lines[0];
+    assert.equal(lineAfterTap.segments.length, 2);
+    assert.equal(lineAfterTap.segments[0].chord, 'G');
+    assert.equal(lineAfterTap.segments[0].text, 'We gather in ');
+    assert.equal(lineAfterTap.segments[1].chord, 'D/F#');
+    assert.equal(lineAfterTap.segments[1].text, 'Your light');
+    assert.equal(
+      formatSongLineForQuickEdit(lineAfterTap),
+      '[G]We gather in [D/F#]Your light'
+    );
+
+    // 3. Leader nudges "D/F#" one word LEFT (onto "in")
+    const nudgedLeft = nudgeChordByWordInSongSectionLine(
+      afterWordTap,
+      secId,
+      0,
+      1,
+      'left'
+    );
+    assert.equal(
+      formatSongLineForQuickEdit(nudgedLeft.song.sections[0].lines[0]),
+      '[G]We gather [D/F#]in Your light'
+    );
+
+    // 4. Leader nudges "D/F#" two words RIGHT (from "in" -> "Your" -> "light")
+    const nudgedRight1 = nudgeChordByWordInSongSectionLine(
+      nudgedLeft.song,
+      secId,
+      0,
+      nudgedLeft.newSegmentIndex,
+      'right'
+    );
+    assert.equal(
+      formatSongLineForQuickEdit(nudgedRight1.song.sections[0].lines[0]),
+      '[G]We gather in [D/F#]Your light'
+    );
+    const nudgedRight2 = nudgeChordByWordInSongSectionLine(
+      nudgedRight1.song,
+      secId,
+      0,
+      nudgedRight1.newSegmentIndex,
+      'right'
+    );
+    assert.equal(
+      formatSongLineForQuickEdit(nudgedRight2.song.sections[0].lines[0]),
+      '[G]We gather in Your [D/F#]light'
+    );
+
+    // 5. Leader appends a trailing turnaround chord "Cadd9" at the end of the line
+    const withTrailing = appendChordToSongSectionLine(
+      nudgedRight2.song,
+      secId,
+      0,
+      'Cadd9'
+    );
+    assert.equal(
+      formatSongLineForQuickEdit(withTrailing.sections[0].lines[0]),
+      '[G]We gather in Your [D/F#]light[Cadd9]'
+    );
+
+    // 6. Removing the middle chord ("D/F#") cleanly merges the split lyric segments back together!
+    const afterRemoveMiddle = insertChordAtLyricPositionInSong(
+      nudgedRight2.song,
+      secId,
+      0,
+      1,
+      0,
+      ''
+    );
+    assert.equal(
+      formatSongLineForQuickEdit(afterRemoveMiddle.sections[0].lines[0]),
+      '[G]We gather in Your light'
+    );
+    assert.equal(afterRemoveMiddle.sections[0].lines[0].segments.length, 1);
   });
 });

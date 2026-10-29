@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Check,
   Copy,
@@ -18,6 +18,7 @@ import {
 import {
   exportSongToChordPro,
   getSuggestedChordsForKey,
+  insertChordAtCursor,
   parseBracketedLineToSegments,
   parseChordPro,
 } from '@/lib/chordpro/chordPro';
@@ -158,6 +159,10 @@ export function LiveArrangementEditorModal({
     secIdx: number;
     lineIdx: number;
   } | null>(null);
+  const lineInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const lineCursorMapRef = useRef<Record<string, number>>({});
+  const rawChordProTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const rawChordProCursorRef = useRef<number | null>(null);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [savedCopySuccess, setSavedCopySuccess] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -285,12 +290,48 @@ export function LiveArrangementEditorModal({
   };
 
   const handleInsertChordToken = (chord: string) => {
-    const token = `[${chord}]`;
     if (activeTab === 'chordpro') {
-      setRawChordPro((prev) => `${prev}${prev.endsWith(' ') || !prev ? '' : ' '}${token}`);
+      const textareaEl = rawChordProTextareaRef.current;
+      const curPos =
+        textareaEl?.selectionStart ??
+        rawChordProCursorRef.current ??
+        rawChordPro.length;
+      const { nextText, nextCursor } = insertChordAtCursor(
+        rawChordPro,
+        curPos,
+        chord
+      );
+      rawChordProCursorRef.current = nextCursor;
+      setRawChordPro(nextText);
+      window.requestAnimationFrame(() => {
+        if (rawChordProTextareaRef.current) {
+          rawChordProTextareaRef.current.focus();
+          rawChordProTextareaRef.current.setSelectionRange(
+            nextCursor,
+            nextCursor
+          );
+        }
+      });
       return;
     }
+
     const target = focusedTarget ?? { secIdx: 0, lineIdx: 0 };
+    const key = `${target.secIdx}:${target.lineIdx}`;
+    const inputEl = lineInputRefs.current[key];
+    const currentLineText =
+      sectionsDraft[target.secIdx]?.lines[target.lineIdx]?.bracketedText ?? '';
+    const curPos =
+      inputEl?.selectionStart ??
+      lineCursorMapRef.current[key] ??
+      currentLineText.length;
+
+    const { nextText, nextCursor } = insertChordAtCursor(
+      currentLineText,
+      curPos,
+      chord
+    );
+    lineCursorMapRef.current[key] = nextCursor;
+
     setSectionsDraft((prev) =>
       prev.map((sec, sIdx) => {
         if (sIdx !== target.secIdx) return sec;
@@ -300,12 +341,20 @@ export function LiveArrangementEditorModal({
             if (lIdx !== target.lineIdx) return line;
             return {
               ...line,
-              bracketedText: `${line.bracketedText}${token}`,
+              bracketedText: nextText,
             };
           }),
         };
       })
     );
+
+    window.requestAnimationFrame(() => {
+      const el = lineInputRefs.current[key];
+      if (el) {
+        el.focus();
+        el.setSelectionRange(nextCursor, nextCursor);
+      }
+    });
   };
 
   const handleAddSection = (preset: {
@@ -533,12 +582,42 @@ export function LiveArrangementEditorModal({
                         className="flex items-center gap-2"
                       >
                         <input
+                          ref={(el) => {
+                            lineInputRefs.current[`${secIdx}:${lineIdx}`] = el;
+                          }}
                           type="text"
                           aria-label={`${sec.label} line ${lineIdx + 1}`}
                           value={line.bracketedText}
-                          onFocus={() => setFocusedTarget({ secIdx, lineIdx })}
+                          onFocus={(e) => {
+                            setFocusedTarget({ secIdx, lineIdx });
+                            if (e.currentTarget.selectionStart !== null) {
+                              lineCursorMapRef.current[
+                                `${secIdx}:${lineIdx}`
+                              ] = e.currentTarget.selectionStart;
+                            }
+                          }}
+                          onClick={(e) => {
+                            setFocusedTarget({ secIdx, lineIdx });
+                            if (e.currentTarget.selectionStart !== null) {
+                              lineCursorMapRef.current[
+                                `${secIdx}:${lineIdx}`
+                              ] = e.currentTarget.selectionStart;
+                            }
+                          }}
+                          onKeyUp={(e) => {
+                            if (e.currentTarget.selectionStart !== null) {
+                              lineCursorMapRef.current[
+                                `${secIdx}:${lineIdx}`
+                              ] = e.currentTarget.selectionStart;
+                            }
+                          }}
                           onChange={(e) => {
                             const val = e.target.value;
+                            if (e.target.selectionStart !== null) {
+                              lineCursorMapRef.current[
+                                `${secIdx}:${lineIdx}`
+                              ] = e.target.selectionStart;
+                            }
                             setSectionsDraft((prev) =>
                               prev.map((s, sIdx) => {
                                 if (sIdx !== secIdx) return s;
@@ -553,7 +632,7 @@ export function LiveArrangementEditorModal({
                               })
                             );
                           }}
-                          placeholder="Use [Chord] before syllables, e.g. [G]Way maker [D]miracle worker"
+                          placeholder="Click anywhere in the words and tap a +Chord button above, e.g. [G]Way maker [D]miracle worker"
                           className="flex-1 h-10 px-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-mono text-xs sm:text-sm focus:border-[var(--brand-accent)]"
                         />
                         {sec.lines.length > 1 && (
@@ -640,9 +719,19 @@ export function LiveArrangementEditorModal({
                 sync.
               </p>
               <textarea
+                ref={rawChordProTextareaRef}
                 aria-label="Raw ChordPro arrangement editor"
                 value={rawChordPro}
-                onChange={(e) => setRawChordPro(e.target.value)}
+                onClick={(e) => {
+                  rawChordProCursorRef.current = e.currentTarget.selectionStart;
+                }}
+                onKeyUp={(e) => {
+                  rawChordProCursorRef.current = e.currentTarget.selectionStart;
+                }}
+                onChange={(e) => {
+                  rawChordProCursorRef.current = e.target.selectionStart;
+                  setRawChordPro(e.target.value);
+                }}
                 rows={16}
                 className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-4 font-mono text-xs sm:text-sm leading-relaxed focus:bg-[var(--bg-surface)]"
               />
