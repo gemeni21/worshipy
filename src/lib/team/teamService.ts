@@ -671,23 +671,75 @@ async function syncSuggestionsToFirestore(
   if (!db || !groupId) return;
   try {
     const groupRef = doc(db, 'groups', groupId);
-    const metaPayload: Record<string, any> = {
-      suggestedSetlists: group.suggestedSetlists || [],
-    };
+
+    // 1. Strictly sanitize suggestions to match firestore.rules
+    const cleanSuggestions: TeamSetlistSuggestion[] = (group.suggestedSetlists || []).map((s) => ({
+      id: s.id,
+      setlist: {
+        id: s.setlist.id,
+        name: s.setlist.name,
+        ...(s.setlist.description ? { description: s.setlist.description } : {}),
+        publishedAt: s.setlist.publishedAt || new Date().toISOString(),
+        publishedBy: s.setlist.publishedBy || s.suggestedBy,
+        ...(s.setlist.publishedByName ? { publishedByName: s.setlist.publishedByName } : {}),
+        items: (s.setlist.items || []).map((item) => ({
+          songId: item.songId,
+          addedAt: item.addedAt || new Date().toISOString(),
+          ...(item.preferredSemitones !== undefined ? { preferredSemitones: item.preferredSemitones } : {}),
+          ...(item.notes ? { notes: item.notes } : {}),
+          ...(item.referenceAudioUrl ? { referenceAudioUrl: item.referenceAudioUrl } : {}),
+        })),
+      },
+      suggestedBy: s.suggestedBy,
+      suggestedByName: s.suggestedByName,
+      ...(s.suggestedByRole ? { suggestedByRole: s.suggestedByRole } : {}),
+      suggestedAt: s.suggestedAt,
+      ...(s.targetServiceDate ? { targetServiceDate: s.targetServiceDate } : {}),
+      ...(s.note ? { note: s.note } : {}),
+      status: s.status,
+      ...(s.reviewedBy ? { reviewedBy: s.reviewedBy } : {}),
+      ...(s.reviewedByName ? { reviewedByName: s.reviewedByName } : {}),
+      ...(s.reviewedAt ? { reviewedAt: s.reviewedAt } : {}),
+      ...(s.reviewNote ? { reviewNote: s.reviewNote } : {}),
+    }));
+
+    // 2. Strictly sanitize activeSetlist to match isValidActiveSetlist in firestore.rules
+    let cleanActiveSetlist: TeamActiveSetlist | undefined;
     if (action === 'approve' && group.activeSetlist) {
-      metaPayload.activeSetlist = group.activeSetlist;
+      cleanActiveSetlist = {
+        id: group.activeSetlist.id,
+        name: group.activeSetlist.name,
+        ...(group.activeSetlist.description ? { description: group.activeSetlist.description } : {}),
+        publishedAt: group.activeSetlist.publishedAt || new Date().toISOString(),
+        publishedBy: group.activeSetlist.publishedBy || 'leader',
+        ...(group.activeSetlist.publishedByName ? { publishedByName: group.activeSetlist.publishedByName } : {}),
+        items: (group.activeSetlist.items || []).map((item) => ({
+          songId: item.songId,
+          addedAt: item.addedAt || new Date().toISOString(),
+          ...(item.preferredSemitones !== undefined ? { preferredSemitones: item.preferredSemitones } : {}),
+          ...(item.notes ? { notes: item.notes } : {}),
+          ...(item.referenceAudioUrl ? { referenceAudioUrl: item.referenceAudioUrl } : {}),
+        })),
+      };
+    }
+
+    const metaPayload: Record<string, any> = {
+      suggestedSetlists: cleanSuggestions,
+    };
+    if (cleanActiveSetlist) {
+      metaPayload.activeSetlist = cleanActiveSetlist;
     }
 
     const suggestionsMetaTake: TeamPracticeTake = {
       id: SETLIST_SUGGESTIONS_META_TAKE_ID,
       songId: '__system_meta__',
       songTitle: 'Lineup Suggestions',
-      title: `${(group.suggestedSetlists || []).length} Lineup Proposals`,
+      title: `${cleanSuggestions.length} Lineup Proposals`,
       authorName: 'System',
       authorId: 'system',
       createdAt: new Date().toISOString(),
       durationSeconds: 0,
-      notes: JSON.stringify(group.suggestedSetlists || []),
+      notes: JSON.stringify(cleanSuggestions),
     };
 
     const existingTakes = (group.practiceTakes || []).filter(
@@ -697,17 +749,17 @@ async function syncSuggestionsToFirestore(
     );
 
     const newTakes: TeamPracticeTake[] = [suggestionsMetaTake];
-    if (action === 'approve' && group.activeSetlist) {
+    if (cleanActiveSetlist) {
       newTakes.push({
         id: SETLIST_META_TAKE_ID,
         songId: '__system_meta__',
         songTitle: 'Upcoming Setlist Lineup',
-        title: group.activeSetlist.name,
-        authorName: group.activeSetlist.publishedByName || 'Leader',
-        authorId: group.activeSetlist.publishedBy,
-        createdAt: group.activeSetlist.publishedAt,
+        title: cleanActiveSetlist.name,
+        authorName: cleanActiveSetlist.publishedByName || 'Leader',
+        authorId: cleanActiveSetlist.publishedBy,
+        createdAt: cleanActiveSetlist.publishedAt,
         durationSeconds: 0,
-        notes: JSON.stringify(group.activeSetlist),
+        notes: JSON.stringify(cleanActiveSetlist),
       });
     }
 
@@ -719,10 +771,9 @@ async function syncSuggestionsToFirestore(
     } catch {
       try {
         await updateDoc(groupRef, {
+          suggestedSetlists: cleanSuggestions,
           practiceTakes: combinedTakes,
-          ...(action === 'approve' && group.activeSetlist
-            ? { activeSetlist: group.activeSetlist }
-            : {}),
+          ...(cleanActiveSetlist ? { activeSetlist: cleanActiveSetlist } : {}),
         });
       } catch {}
     }
@@ -883,10 +934,13 @@ export async function reviewTeamSetlistSuggestion(
       ...(action === 'approve'
         ? {
             activeSetlist: {
-              ...targetSuggestion.setlist,
+              id: targetSuggestion.setlist.id,
+              name: targetSuggestion.setlist.name,
+              ...(targetSuggestion.setlist.description ? { description: targetSuggestion.setlist.description } : {}),
               publishedAt: now,
               publishedBy: targetSuggestion.suggestedBy,
               publishedByName: targetSuggestion.suggestedByName,
+              items: targetSuggestion.setlist.items || [],
             },
           }
         : {}),
@@ -1357,9 +1411,21 @@ export function subscribeToTeam(
             const suggestionsMeta = firestoreData.practiceTakes.find(
               (t: any) => t.id === SETLIST_SUGGESTIONS_META_TAKE_ID
             );
-            if (suggestionsMeta?.notes && !suggestedSetlists) {
+            if (suggestionsMeta?.notes) {
               try {
-                suggestedSetlists = JSON.parse(suggestionsMeta.notes);
+                const parsedSuggestions = JSON.parse(suggestionsMeta.notes);
+                if (Array.isArray(parsedSuggestions)) {
+                  if (
+                    !suggestedSetlists ||
+                    parsedSuggestions.some(
+                      (p) =>
+                        p.status === 'approved' &&
+                        suggestedSetlists?.find((s: any) => s.id === p.id)?.status === 'pending'
+                    )
+                  ) {
+                    suggestedSetlists = parsedSuggestions;
+                  }
+                }
               } catch {}
             }
 

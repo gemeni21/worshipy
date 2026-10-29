@@ -1379,10 +1379,13 @@ export function reviewSetlistSuggestion(
 
     // Promote suggestion's setlist to group's activeSetlist
     group.activeSetlist = {
-      ...targetSuggestion.setlist,
+      id: targetSuggestion.setlist.id,
+      name: targetSuggestion.setlist.name,
+      ...(targetSuggestion.setlist.description ? { description: targetSuggestion.setlist.description } : {}),
       publishedAt: now,
       publishedBy: targetSuggestion.suggestedBy,
       publishedByName: targetSuggestion.suggestedByName,
+      items: targetSuggestion.setlist.items || [],
     };
   } else {
     targetSuggestion.status = 'declined';

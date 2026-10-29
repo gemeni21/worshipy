@@ -1469,37 +1469,46 @@ export default function TeamHubPage() {
                           </div>
 
                           {/* Member Status Badge: "For Approval" or "Approved" */}
-                          <div className="shrink-0 self-start sm:self-center flex items-center gap-2">
-                            {sug.status === 'pending' && (
-                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
-                                <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-                                <span>For Approval</span>
-                              </span>
-                            )}
-                            {sug.status === 'approved' && (
-                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>Approved</span>
-                              </span>
-                            )}
-                            {sug.status === 'declined' && (
-                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
-                                <X className="w-3.5 h-3.5 text-rose-400" />
-                                <span>Declined</span>
-                              </span>
-                            )}
+                          {(() => {
+                            const isSetlistActiveOnTeam =
+                              currentTeam?.activeSetlist &&
+                              (currentTeam.activeSetlist.id === sug.setlist.id ||
+                                currentTeam.activeSetlist.name.trim().toLowerCase() ===
+                                  sug.setlist.name.trim().toLowerCase());
+                            const isApproved = sug.status === 'approved' || Boolean(isSetlistActiveOnTeam);
 
-                            {(sug.status === 'approved' || sug.status === 'declined') && (
-                              <button
-                                type="button"
-                                onClick={() => handleDismissSuggestion(sug.id)}
-                                title="Close proposal"
-                                className="p-1 rounded-lg hover:bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
+                            return (
+                              <div className="shrink-0 self-start sm:self-center flex items-center gap-2">
+                                {isApproved ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>Approved</span>
+                                  </span>
+                                ) : sug.status === 'pending' ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                                    <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>For Approval</span>
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0 whitespace-nowrap flex items-center gap-1.5 shadow-xs">
+                                    <X className="w-3.5 h-3.5 text-rose-400" />
+                                    <span>Declined</span>
+                                  </span>
+                                )}
+
+                                {(isApproved || sug.status === 'declined') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDismissSuggestion(sug.id)}
+                                    title="Close proposal"
+                                    className="p-1 rounded-lg hover:bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {/* Note & Feedback Row */}
