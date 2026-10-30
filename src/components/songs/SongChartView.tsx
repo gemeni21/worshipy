@@ -36,7 +36,21 @@ import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { downloadSongAsChordPro } from '@/lib/chordpro/chordProDownload';
 import { ChordInspectorModal } from '@/components/music/ChordInspectorModal';
+import { LiveArrangementEditorModal } from '@/components/live/LiveArrangementEditorModal';
 import { PracticeDock } from '@/components/practice/PracticeDock';
+import {
+  getPersonalInstrumentArrangements,
+  removePersonalInstrumentArrangement,
+  resolveLayeredSongArrangement,
+  savePersonalInstrumentArrangement,
+  type PreferredArrangementLayerMode,
+} from '@/lib/chordpro/liveArrangement';
+import {
+  getCachedTeam,
+  proposeTeamSongArrangement,
+} from '@/lib/team/teamService';
+import type { TeamSongArrangement } from '@/types/auth';
+import type { InstrumentViewMode } from '@/types/live';
 import {
   getGuitarCapoSuggestions,
   getCapoRelativeChord,
@@ -108,17 +122,30 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     refreshGlobalSongs,
     settings,
     updateSettings,
+    saveCustomSong,
   } = useApp();
 
-  const { isAdmin, removeSongGlobally } = useAuth();
+  const { user, activeGroup, isAdmin, removeSongGlobally } = useAuth();
   const [showAdminRemoveModal, setShowAdminRemoveModal] = useState(false);
   const [adminRemoveReason, setAdminRemoveReason] = useState('');
   const [isAdminRemoving, setIsAdminRemoving] = useState(false);
 
+  // Rehearse Ahead of Time: Personal Instrument & Church Arrangement state
+  const [rehearsalInstrument, setRehearsalInstrument] =
+    useState<InstrumentViewMode>('guitar');
+  const [personalArrangements, setPersonalArrangements] = useState<
+    Record<string, TeamSongArrangement>
+  >(() => getPersonalInstrumentArrangements());
+  const [preferredLayer, setPreferredLayer] =
+    useState<PreferredArrangementLayerMode>('auto');
+  const [showInstrumentArrangeModal, setShowInstrumentArrangeModal] =
+    useState(false);
+  const effectiveGroup = activeGroup || getCachedTeam();
+
   // Resolve song from custom songs, built-in catalog, or offline IndexedDB
   const offlineCopy = getOfflineSongRecord(slug);
   const resolvedSong = getSongByIdOrSlug(slug);
-  const activeSourceSong = useMemo(() => {
+  const baseCatalogSong = useMemo(() => {
     if (effectiveOffline) {
       if (offlineCopy) return offlineCopy;
       if (resolvedSong?.sourceType === 'custom') return resolvedSong;
@@ -126,6 +153,25 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     }
     return resolvedSong ?? initialSong ?? offlineCopy;
   }, [effectiveOffline, initialSong, offlineCopy, resolvedSong]);
+
+  const layeredRehearsalResult = useMemo(() => {
+    if (!baseCatalogSong) return null;
+    return resolveLayeredSongArrangement({
+      baseSong: baseCatalogSong,
+      instrument: rehearsalInstrument,
+      personalArrangements,
+      groupArrangements: effectiveGroup?.songArrangements,
+      preferredLayer,
+    });
+  }, [
+    baseCatalogSong,
+    rehearsalInstrument,
+    personalArrangements,
+    effectiveGroup?.songArrangements,
+    preferredLayer,
+  ]);
+
+  const activeSourceSong = layeredRehearsalResult?.song ?? baseCatalogSong;
 
   const [semitones, setSemitones] = useState<number>(0);
   const [spellingOverride, setSpellingOverride] =
@@ -1009,6 +1055,88 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
         </div>
       )}
 
+      {/* Active Rehearsal / Church Instrument Arrangement Banner */}
+      {layeredRehearsalResult &&
+        layeredRehearsalResult.activeLayer !== 'catalog' && (
+          <div
+            data-testid="rehearsal-arrangement-banner"
+            className="rounded-2xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 font-bold text-[var(--brand-accent)]">
+                <Sparkles className="w-4 h-4" />
+                <span>
+                  {layeredRehearsalResult.activeLayer === 'personal-instrument'
+                    ? `My Rehearsal ${rehearsalInstrument.toUpperCase()} Chords Active (Will auto-carry over into Live Sync!)`
+                    : `Church ${rehearsalInstrument.toUpperCase()} Arrangement Active`}
+                </span>
+              </span>
+              {layeredRehearsalResult.activeOverride?.arrangementNote && (
+                <span className="px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)] font-semibold">
+                  “{layeredRehearsalResult.activeOverride.arrangementNote}”
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setPreferredLayer((prev) =>
+                    prev === 'catalog' ? 'auto' : 'catalog'
+                  )
+                }
+                className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-semibold cursor-pointer"
+              >
+                {preferredLayer === 'catalog'
+                  ? `View My ${rehearsalInstrument.toUpperCase()} Chords`
+                  : 'Compare with Original Chart'}
+              </button>
+              {effectiveGroup?.id &&
+                layeredRehearsalResult.activeLayer === 'personal-instrument' &&
+                layeredRehearsalResult.activeOverride && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!baseCatalogSong || !layeredRehearsalResult.activeOverride) return;
+                      try {
+                        await proposeTeamSongArrangement(effectiveGroup.id, {
+                          songId: baseCatalogSong.id,
+                          songTitle: baseCatalogSong.title,
+                          instrument: rehearsalInstrument,
+                          chordPro: layeredRehearsalResult.activeOverride.chordPro,
+                          arrangementNote:
+                            layeredRehearsalResult.activeOverride.arrangementNote,
+                        });
+                        setFeedbackBanner({
+                          type: 'success',
+                          message: `Proposed your ${rehearsalInstrument.toUpperCase()} arrangement to ${effectiveGroup.name} Leader for approval!`,
+                        });
+                      } catch (err) {
+                        setFeedbackBanner({
+                          type: 'error',
+                          message:
+                            err instanceof Error
+                              ? err.message
+                              : 'Could not send proposal.',
+                        });
+                      }
+                    }}
+                    className="px-3 py-1 rounded-lg bg-amber-500 text-[#0c0c10] font-bold cursor-pointer"
+                  >
+                    Propose to Church Leader
+                  </button>
+                )}
+              <button
+                type="button"
+                onClick={() => setShowInstrumentArrangeModal(true)}
+                className="font-bold text-[var(--brand-accent)] hover:underline cursor-pointer"
+              >
+                Edit Chords
+              </button>
+            </div>
+          </div>
+        )}
+
       {/* Dedicated Print Sheet Music Header */}
       <div className="hidden print:block mb-6 pb-3 border-b-2 border-black">
         <div className="flex justify-between items-start">
@@ -1170,6 +1298,33 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               <Radio className="w-4 h-4 animate-pulse" aria-hidden="true" />
               <span>Start Live Sync</span>
             </Link>
+
+            {/* Rehearse Ahead of Time: Customize Instrument Chords (Carries Over to Live Sync!) */}
+            <div className="inline-flex items-center rounded-xl border border-[var(--brand-accent)]/35 bg-[var(--bg-subtle)] p-1 gap-1 min-h-[2.75rem]">
+              <select
+                aria-label="Rehearsal instrument arrangement target"
+                value={rehearsalInstrument}
+                onChange={(e) =>
+                  setRehearsalInstrument(e.target.value as InstrumentViewMode)
+                }
+                className="h-8 px-2 rounded-lg bg-[var(--bg-surface)] text-xs font-bold text-[var(--brand-accent)] cursor-pointer"
+              >
+                <option value="guitar">Guitar Chords</option>
+                <option value="keyboard">Keyboard Chords</option>
+                <option value="bass">Bass Chords</option>
+                <option value="general">General Chart</option>
+              </select>
+              <button
+                type="button"
+                data-testid="rehearsal-customize-instrument-chords-btn"
+                onClick={() => setShowInstrumentArrangeModal(true)}
+                className="px-3 py-1.5 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                title="Customize chords or lyrics for your instrument ahead of time — automatically carries over into Live Sync!"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Customize {rehearsalInstrument.toUpperCase()} Chords</span>
+              </button>
+            </div>
 
             {/* Save / Remove Offline Copy */}
             <button
@@ -1738,6 +1893,87 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           chord={inspectedChord}
           onClose={() => setInspectedChord(null)}
           keyContext={displayedKey}
+        />
+      )}
+
+      {/* Rehearse Ahead of Time: Personal Instrument Arrangement Studio Modal */}
+      {baseCatalogSong && displaySong && (
+        <LiveArrangementEditorModal
+          isOpen={showInstrumentArrangeModal}
+          onClose={() => setShowInstrumentArrangeModal(false)}
+          baseSong={baseCatalogSong}
+          displayedSong={displaySong}
+          displayedSemitones={semitones}
+          displayedKey={displayedKey}
+          initialArrangementNote={
+            layeredRehearsalResult?.activeOverride?.arrangementNote
+          }
+          hasActiveOverride={Boolean(
+            layeredRehearsalResult?.hasPersonalInstrumentOverride
+          )}
+          primaryActionLabel={`Save to My ${rehearsalInstrument.toUpperCase()} Chords`}
+          onBroadcastOverride={({ chordPro, arrangementNote }) => {
+            const next = savePersonalInstrumentArrangement({
+              songId: baseCatalogSong.id,
+              songTitle: baseCatalogSong.title,
+              instrument: rehearsalInstrument,
+              chordPro,
+              arrangementNote:
+                arrangementNote || `My ${rehearsalInstrument} rehearsal chords`,
+              updatedBy: user?.id || 'local-user',
+              updatedByName: user?.displayName || 'Musician',
+            });
+            setPersonalArrangements(next);
+            setPreferredLayer('auto');
+            setFeedbackBanner({
+              type: 'success',
+              message: `Saved to your Personal ${rehearsalInstrument.toUpperCase()} Chords! These chords will automatically carry over when you join Live Sync.`,
+            });
+          }}
+          onRevertToOriginal={(targetSongId) => {
+            const next = removePersonalInstrumentArrangement(
+              targetSongId,
+              rehearsalInstrument
+            );
+            setPersonalArrangements(next);
+            setFeedbackBanner({
+              type: 'success',
+              message: `Reset your personal ${rehearsalInstrument.toUpperCase()} chords back to the original chart.`,
+            });
+          }}
+          onProposeToLeader={
+            effectiveGroup?.id
+              ? async ({ chordPro, arrangementNote }) => {
+                  const next = savePersonalInstrumentArrangement({
+                    songId: baseCatalogSong.id,
+                    songTitle: baseCatalogSong.title,
+                    instrument: rehearsalInstrument,
+                    chordPro,
+                    arrangementNote:
+                      arrangementNote ||
+                      `My ${rehearsalInstrument} rehearsal chords`,
+                    updatedBy: user?.id || 'local-user',
+                    updatedByName: user?.displayName || 'Musician',
+                  });
+                  setPersonalArrangements(next);
+                  await proposeTeamSongArrangement(effectiveGroup.id, {
+                    songId: baseCatalogSong.id,
+                    songTitle: baseCatalogSong.title,
+                    instrument: rehearsalInstrument,
+                    chordPro,
+                    arrangementNote,
+                  });
+                  setFeedbackBanner({
+                    type: 'success',
+                    message: `Saved & proposed your ${rehearsalInstrument.toUpperCase()} arrangement to your Worship Leader!`,
+                  });
+                }
+              : undefined
+          }
+          proposeActionLabel={`Propose ${rehearsalInstrument.toUpperCase()} Chords to Leader`}
+          onSaveCopyToMySongs={async (customSong) => {
+            await saveCustomSong(customSong);
+          }}
         />
       )}
 

@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWorshipGroup, updateWorshipGroupBranding, validateSessionToken } from '@/lib/cloud/cloudDb';
+import {
+  getWorshipGroup,
+  proposeSongArrangementForGroup,
+  reviewSongArrangementSuggestion,
+  saveGroupSongArrangementDirect,
+  updateWorshipGroupBranding,
+  validateSessionToken,
+} from '@/lib/cloud/cloudDb';
 
 const NO_CACHE_HEADERS = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
@@ -55,6 +62,77 @@ export async function PATCH(
     }
 
     const body = await req.json();
+
+    if (body?.action === 'propose-arrangement') {
+      const result = proposeSongArrangementForGroup(user.id, groupId, {
+        songId: body.songId,
+        songTitle: body.songTitle,
+        instrument: body.instrument || 'general',
+        chordPro: body.chordPro,
+        arrangementNote: body.arrangementNote,
+        clientGroupFallback: body.clientGroupFallback,
+      });
+      if (!result.ok) {
+        return NextResponse.json(
+          { error: result.error },
+          { status: 400, headers: NO_CACHE_HEADERS }
+        );
+      }
+      return NextResponse.json(
+        { group: result.group, suggestion: result.suggestion },
+        { headers: NO_CACHE_HEADERS }
+      );
+    }
+
+    if (body?.action === 'review-arrangement') {
+      const result = reviewSongArrangementSuggestion(
+        user.id,
+        groupId,
+        body.suggestionId,
+        body.decision === 'decline' ? 'decline' : 'approve',
+        {
+          targetScope: body.targetScope,
+          reviewNote: body.reviewNote,
+          clientGroupFallback: body.clientGroupFallback,
+          fallbackSuggestion: body.fallbackSuggestion,
+        }
+      );
+      if (!result.ok) {
+        return NextResponse.json(
+          { error: result.error },
+          { status: 400, headers: NO_CACHE_HEADERS }
+        );
+      }
+      return NextResponse.json(
+        {
+          group: result.group,
+          approvedArrangement: result.approvedArrangement,
+          suggestion: result.suggestion,
+        },
+        { headers: NO_CACHE_HEADERS }
+      );
+    }
+
+    if (body?.action === 'save-group-arrangement') {
+      const result = saveGroupSongArrangementDirect(user.id, groupId, {
+        songId: body.songId,
+        songTitle: body.songTitle,
+        instrument: body.instrument || 'general',
+        chordPro: body.chordPro,
+        arrangementNote: body.arrangementNote,
+      });
+      if (!result.ok) {
+        return NextResponse.json(
+          { error: result.error },
+          { status: 400, headers: NO_CACHE_HEADERS }
+        );
+      }
+      return NextResponse.json(
+        { group: result.group, arrangement: result.arrangement },
+        { headers: NO_CACHE_HEADERS }
+      );
+    }
+
     const result = updateWorshipGroupBranding(user.id, groupId, body);
     if (!result.ok) {
       return NextResponse.json(

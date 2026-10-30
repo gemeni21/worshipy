@@ -52,10 +52,17 @@ import {
   setCachedTeam,
   reviewTeamSetlistSuggestion,
   deleteTeamSetlistSuggestion,
+  reviewTeamSongArrangement,
   getDismissedSuggestionIds,
   recordDismissedSuggestionId,
 } from '@/lib/team/teamService';
-import type { TeamPracticeTake, GroupMember, TeamSetlistSuggestion, WorshipGroup } from '@/types/auth';
+import type {
+  TeamPracticeTake,
+  GroupMember,
+  TeamArrangementSuggestion,
+  TeamSetlistSuggestion,
+  WorshipGroup,
+} from '@/types/auth';
 import { PracticeWaveformPlayer } from '@/components/practice/PracticeWaveformPlayer';
 import type { PracticeTake } from '@/lib/audio/practiceStorage';
 
@@ -1768,6 +1775,110 @@ export default function TeamHubPage() {
               </div>
             )
           )}
+
+          {/* Section: Pending Member Instrument & Song Arrangement Proposals (Leader Review) */}
+          {isLeader &&
+            Array.isArray(currentTeam.suggestedArrangements) &&
+            currentTeam.suggestedArrangements.some(
+              (a) => a.status === 'pending'
+            ) && (
+              <div
+                data-testid="team-hub-arrangement-proposals"
+                className="rounded-3xl border border-amber-500/40 bg-amber-500/10 p-5 sm:p-6 space-y-3 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Music2 className="w-5 h-5 text-amber-400" />
+                    <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                      Proposed Instrument &amp; Song Arrangements
+                    </h3>
+                  </div>
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    Scoped strictly to {currentTeam.name}
+                  </span>
+                </div>
+                <div className="space-y-2.5">
+                  {currentTeam.suggestedArrangements
+                    .filter((a) => a.status === 'pending')
+                    .map((prop: TeamArrangementSuggestion) => (
+                      <div
+                        key={prop.id}
+                        className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 flex flex-wrap items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="font-bold text-sm text-[var(--text-primary)]">
+                            {prop.suggestedByName} proposed a{' '}
+                            <span className="uppercase text-[var(--brand-accent)]">
+                              {prop.instrument}
+                            </span>{' '}
+                            arrangement for “{prop.songTitle}”
+                          </div>
+                          {prop.arrangementNote && (
+                            <div className="text-[var(--text-secondary)]">
+                              Note: “{prop.arrangementNote}”
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {prop.instrument !== 'general' && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await reviewTeamSongArrangement(
+                                  currentTeam.id,
+                                  prop.id,
+                                  'approve',
+                                  {
+                                    targetScope: prop.instrument,
+                                    fallbackSuggestion: prop,
+                                  }
+                                );
+                                await refreshActiveGroup();
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer"
+                            >
+                              Approve for {prop.instrument.toUpperCase()} Only
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await reviewTeamSongArrangement(
+                                currentTeam.id,
+                                prop.id,
+                                'approve',
+                                {
+                                  targetScope: 'general',
+                                  fallbackSuggestion: prop,
+                                }
+                              );
+                              await refreshActiveGroup();
+                            }}
+                            className="px-3 py-1.5 rounded-xl border border-[var(--brand-accent)] bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold cursor-pointer transition-colors"
+                          >
+                            Approve for Entire Church Team
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await reviewTeamSongArrangement(
+                                currentTeam.id,
+                                prop.id,
+                                'decline',
+                                { fallbackSuggestion: prop }
+                              );
+                              await refreshActiveGroup();
+                            }}
+                            className="px-3 py-1.5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-400 font-semibold cursor-pointer"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
 
           {/* Section: Upcoming Service Lineup (Team Setlist) */}
           <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-4 shadow-sm">

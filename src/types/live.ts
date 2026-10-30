@@ -21,6 +21,8 @@ export interface LiveParticipant {
 export interface LiveSongArrangementOverride {
   /** Song ID this live arrangement override applies to */
   songId: string;
+  /** Optional target instrument scope ('general' applies to whole band; 'guitar'/'keyboard'/'bass' applies to that instrument) */
+  instrument?: InstrumentViewMode;
   /** ChordPro text stored in the song's base originalKey (semitones = 0) */
   chordPro: string;
   /** Optional rehearsal note or arrangement label (e.g., "Acoustic Build + Extra Tag") */
@@ -31,6 +33,24 @@ export interface LiveSongArrangementOverride {
   updatedBy: string;
   /** Display name of the leader/co-leader who broadcast this change */
   updatedByName?: string;
+}
+
+export interface LiveArrangementProposal {
+  id: string;
+  songId: string;
+  songTitle: string;
+  instrument: InstrumentViewMode;
+  chordPro: string;
+  arrangementNote?: string;
+  suggestedBy: string;
+  suggestedByName: string;
+  suggestedAt: string;
+  status: 'pending' | 'approved' | 'declined';
+  approvedScope?: InstrumentViewMode;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
 }
 
 export interface LiveSharedMusicalState {
@@ -54,6 +74,10 @@ export interface LiveSharedMusicalState {
   setlistSongIds: string[];
   /** Optional map of real-time song arrangement overrides (chords & lyrics) keyed by songId */
   songArrangementOverrides?: Record<string, LiveSongArrangementOverride>;
+  /** Optional map of instrument-specific live arrangement overrides keyed by `${songId}:${instrument}` */
+  instrumentArrangementOverrides?: Record<string, LiveSongArrangementOverride>;
+  /** Optional list of live arrangement proposals submitted by band members during rehearsal */
+  arrangementProposals?: LiveArrangementProposal[];
   /** Timestamp of last state update */
   updatedAt: string;
   /** Participant ID who made the last authoritative change */
@@ -135,10 +159,11 @@ export interface UpdateSharedStateInput {
   /** Broadcast or update a live chord & lyric arrangement override for a song */
   songArrangementOverride?: {
     songId: string;
+    instrument?: InstrumentViewMode;
     chordPro: string;
     arrangementNote?: string;
   };
-  /** Clear/revert a live arrangement override for a specific song ID */
+  /** Clear/revert a live arrangement override for a specific song ID (or `${songId}:${instrument}`) */
   clearSongArrangementOverrideSongId?: string;
   /** Optional optimistic concurrency check */
   expectedRevision?: number;

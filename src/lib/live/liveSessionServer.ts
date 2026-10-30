@@ -8,7 +8,11 @@ import {
   resolveSongWithLiveOverride,
 } from '../chordpro/liveArrangement.ts';
 import { normalizeSemitones } from '../music/transposition.ts';
-import { findGroupByActiveLiveSession, getWorshipGroup, setGroupLiveSession } from '../cloud/cloudDb.ts';
+import {
+  findGroupByActiveLiveSession,
+  getWorshipGroup,
+  setGroupLiveSession,
+} from '../cloud/cloudDb.ts';
 
 function findSongByIdOrSlug(idOrSlug?: string) {
   if (!idOrSlug) return undefined;
@@ -20,6 +24,7 @@ import type {
   InstrumentViewMode,
   JoinLiveSessionInput,
   JoinLiveSessionResponse,
+  LiveArrangementProposal,
   LiveParticipant,
   LiveSessionSnapshot,
   LiveSongArrangementOverride,
@@ -568,6 +573,42 @@ export function createLiveSession(
       ? Array.from(new Set([initialSong.id, ...input.setlistSongIds]))
       : allSongs.slice(0, 5).map((s) => s.id);
 
+  // If this session belongs to a Church Group (`groupId`), seed any saved Church Group song/instrument arrangements
+  const initialBandOverrides: Record<string, LiveSongArrangementOverride> = {};
+  const initialInstrumentOverrides: Record<string, LiveSongArrangementOverride> = {};
+  if (input.groupId) {
+    try {
+      const grp = getWorshipGroup(input.groupId);
+      if (grp?.songArrangements) {
+        for (const [key, arr] of Object.entries(grp.songArrangements)) {
+          if (!arr || !arr.chordPro) continue;
+          const overrideObj: LiveSongArrangementOverride = {
+            songId: arr.songId,
+            instrument: arr.instrument,
+            chordPro: arr.chordPro,
+            arrangementNote: arr.arrangementNote,
+            updatedAt: arr.updatedAt || nowIso,
+            updatedBy: arr.updatedBy || participantId,
+            updatedByName: arr.updatedByName || leaderName,
+          };
+          if (arr.instrument === 'general') {
+            initialBandOverrides[arr.songId] = overrideObj;
+          } else {
+            initialInstrumentOverrides[key] = overrideObj;
+          }
+        }
+      }
+    } catch {
+      // Ignore group lookup error
+    }
+  }
+
+  const effectiveInitialSong = resolveSongWithLiveOverride(
+    initialSong,
+    initialBandOverrides[initialSong.id]
+  );
+  const effectiveFirstSection = effectiveInitialSong.sections[0] ?? firstSection;
+
   const record: InternalSessionRecord = {
     sessionId,
     joinCode,
@@ -584,13 +625,19 @@ export function createLiveSession(
     sharedState: {
       songId: initialSong.id,
       songSlug: initialSong.slug,
-      arrangementId: 'default',
+      arrangementId: initialBandOverrides[initialSong.id] ? 'live-custom' : 'default',
       officialSemitones: normalizeSemitones(input.initialSemitones ?? 0),
       enharmonicPreference: input.enharmonicPreference ?? 'auto',
-      activeSectionId: firstSection.id,
-      activeSectionLabel: firstSection.label,
+      activeSectionId: effectiveFirstSection.id,
+      activeSectionLabel: effectiveFirstSection.label,
       activeLineIndex: 0,
       setlistSongIds: setlistIds,
+      ...(Object.keys(initialBandOverrides).length > 0
+        ? { songArrangementOverrides: initialBandOverrides }
+        : {}),
+      ...(Object.keys(initialInstrumentOverrides).length > 0
+        ? { instrumentArrangementOverrides: initialInstrumentOverrides }
+        : {}),
       updatedAt: nowIso,
       updatedBy: participantId,
     },
@@ -1016,17 +1063,25 @@ export function updateLiveSessionState(
   const nextOverrides: Record<string, LiveSongArrangementOverride> = {
     ...(currentState.songArrangementOverrides || {}),
   };
+  const nextInstrumentOverrides: Record<string, LiveSongArrangementOverride> = {
+    ...(currentState.instrumentArrangementOverrides || {}),
+  };
+  const nextProposals: LiveArrangementProposal[] = [
+    ...(currentState.arrangementProposals || []),
+  ];
 
   if (
     typeof input.clearSongArrangementOverrideSongId === 'string' &&
     input.clearSongArrangementOverrideSongId.trim()
   ) {
-    const clearSong = findSongByIdOrSlug(
-      input.clearSongArrangementOverrideSongId.trim()
-    );
-    const clearKey =
-      clearSong?.id ?? input.clearSongArrangementOverrideSongId.trim();
-    delete nextOverrides[clearKey];
+    const rawClear = input.clearSongArrangementOverrideSongId.trim();
+    if (rawClear.includes(':')) {
+      delete nextInstrumentOverrides[rawClear];
+    } else {
+      const clearSong = findSongByIdOrSlug(rawClear);
+      const clearKey = clearSong?.id ?? rawClear;
+      delete nextOverrides[clearKey];
+    }
   }
 
   if (input.songArrangementOverride) {
@@ -1056,14 +1111,49 @@ export function updateLiveSessionState(
         ? input.songArrangementOverride.arrangementNote.trim().slice(0, 240)
         : undefined;
 
-    nextOverrides[overrideSongId] = {
+    const targetInstrument =
+      input.songArrangementOverride.instrument ?? 'general';
+
+    const overrideRecord: LiveSongArrangementOverride = {
       songId: overrideSongId,
+      instrument: targetInstrument,
       chordPro: rawChordPro,
       ...(cleanNote ? { arrangementNote: cleanNote } : {}),
       updatedAt: nowIso,
       updatedBy: caller.id,
       updatedByName: caller.name,
     };
+
+    if (targetInstrument === 'general') {
+      nextOverrides[overrideSongId] = overrideRecord;
+    } else {
+      nextInstrumentOverrides[`${overrideSongId}:${targetInstrument}`] =
+        overrideRecord;
+    }
+
+    // If this live session is linked to a Church Group, persist the leader's arrangement to the Church Group too
+    if (record.groupId) {
+      try {
+        const grp = getWorshipGroup(record.groupId);
+        if (grp) {
+          if (!grp.songArrangements) grp.songArrangements = {};
+          const compositeKey = `${overrideSongId}:${targetInstrument}`;
+          grp.songArrangements[compositeKey] = {
+            id: compositeKey,
+            songId: overrideSongId,
+            songTitle: overrideSong?.title ?? targetSong.title,
+            instrument: targetInstrument,
+            chordPro: rawChordPro,
+            ...(cleanNote ? { arrangementNote: cleanNote } : {}),
+            updatedAt: nowIso,
+            updatedBy: caller.id,
+            updatedByName: caller.name,
+          };
+        }
+      } catch {
+        // Ignore group persistence error
+      }
+    }
   }
 
   // Resolve targetSong with any active live arrangement override so custom sections are recognized
@@ -1148,9 +1238,333 @@ export function updateLiveSessionState(
     ...(Object.keys(nextOverrides).length > 0
       ? { songArrangementOverrides: nextOverrides }
       : {}),
+    ...(Object.keys(nextInstrumentOverrides).length > 0
+      ? { instrumentArrangementOverrides: nextInstrumentOverrides }
+      : {}),
+    ...(nextProposals.length > 0
+      ? { arrangementProposals: nextProposals }
+      : {}),
     updatedAt: nowIso,
     updatedBy: caller.id,
   };
+
+  persistStoreToDisk();
+  broadcastSessionEvent(sessionId, 'state_updated');
+
+  return sanitizeSnapshot(record);
+}
+
+/**
+ * Allows ANY connected participant (e.g., Guitarist, Keyboardist, Bassist) in a Live Sync session
+ * to propose a customized song/instrument arrangement to the Worship Leader for approval.
+ */
+export function proposeLiveSessionArrangement(
+  sessionId: string,
+  participantToken: string,
+  input: {
+    songId: string;
+    songTitle?: string;
+    instrument?: InstrumentViewMode;
+    chordPro: string;
+    arrangementNote?: string;
+  }
+): {
+  session: LiveSessionSnapshot;
+  proposal: LiveArrangementProposal;
+} {
+  const verified = verifyParticipantToken(participantToken, sessionId);
+  if (!verified) {
+    throw new LiveSyncError('Unauthorized token.', 401, 'UNAUTHORIZED');
+  }
+
+  const record = getSessionRecord(sessionId);
+  if (!record) {
+    throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
+  }
+
+  if (record.status === 'ended') {
+    throw new LiveSyncError('Session has ended.', 410, 'SESSION_ENDED');
+  }
+
+  const caller = record.participants.find(
+    (p) => p.id === verified.participantId
+  );
+  if (!caller) {
+    throw new LiveSyncError(
+      'You are not a participant of this session.',
+      403,
+      'NOT_IN_SESSION'
+    );
+  }
+
+  const rawChordPro = input.chordPro;
+  if (
+    typeof rawChordPro !== 'string' ||
+    !rawChordPro.trim() ||
+    rawChordPro.length > MAX_LIVE_ARRANGEMENT_CHORDPRO_LENGTH
+  ) {
+    throw new LiveSyncError(
+      'Invalid ChordPro arrangement payload.',
+      400,
+      'INVALID_ARRANGEMENT'
+    );
+  }
+
+  const targetSong =
+    findSongByIdOrSlug(input.songId) ??
+    findSongByIdOrSlug(record.sharedState.songId);
+  const songId = targetSong?.id ?? input.songId.trim();
+  const songTitle =
+    input.songTitle?.trim() || targetSong?.title || songId;
+  const instrument: InstrumentViewMode =
+    input.instrument ?? caller.instrument ?? 'general';
+  const nowIso = new Date().toISOString();
+
+  const proposal: LiveArrangementProposal = {
+    id: `prop-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    songId,
+    songTitle,
+    instrument,
+    chordPro: rawChordPro,
+    ...(input.arrangementNote?.trim()
+      ? { arrangementNote: input.arrangementNote.trim().slice(0, 240) }
+      : {}),
+    suggestedBy: caller.id,
+    suggestedByName: caller.name,
+    suggestedAt: nowIso,
+    status: 'pending',
+  };
+
+  const existingProposals = record.sharedState.arrangementProposals || [];
+  // Replace any older pending proposal by the same participant for the same song + instrument
+  const filtered = existingProposals.filter(
+    (p) =>
+      !(
+        p.status === 'pending' &&
+        p.suggestedBy === caller.id &&
+        p.songId === songId &&
+        p.instrument === instrument
+      )
+  );
+
+  record.sharedState.arrangementProposals = [proposal, ...filtered].slice(0, 30);
+  record.revision += 1;
+
+  // Also mirror into the Church Group's `suggestedArrangements` if this session is linked to a group
+  if (record.groupId) {
+    try {
+      const grp = getWorshipGroup(record.groupId);
+      if (grp) {
+        const grpSuggestions = Array.isArray(grp.suggestedArrangements)
+          ? grp.suggestedArrangements
+          : [];
+        grp.suggestedArrangements = [
+          {
+            id: proposal.id,
+            songId: proposal.songId,
+            songTitle: proposal.songTitle,
+            instrument: proposal.instrument,
+            chordPro: proposal.chordPro,
+            arrangementNote: proposal.arrangementNote,
+            suggestedBy: caller.id,
+            suggestedByName: caller.name,
+            suggestedByInstrument: caller.instrument,
+            suggestedAt: nowIso,
+            status: 'pending' as const,
+          },
+          ...grpSuggestions.filter((s) => s.id !== proposal.id),
+        ].slice(0, 50);
+      }
+    } catch {
+      // Ignore group sync error
+    }
+  }
+
+  persistStoreToDisk();
+  broadcastSessionEvent(sessionId, 'state_updated');
+
+  return {
+    session: sanitizeSnapshot(record),
+    proposal,
+  };
+}
+
+/**
+ * Allows the Worship Leader or an authorized Co-Leader to approve or decline a band member's
+ * arrangement proposal during a Live Sync session.
+ * - Approving with `approvedScope = 'guitar' | 'keyboard' | 'bass'` publishes it to that instrument's chart
+ *   for the session AND the Church Group (`group.songArrangements["${songId}:${instrument}"]`).
+ * - Approving with `approvedScope = 'general'` publishes it to the entire band (`songArrangementOverrides[songId]`)
+ *   AND the Church Group's master arrangement (`group.songArrangements["${songId}:general"]`).
+ */
+export function reviewLiveSessionArrangement(
+  sessionId: string,
+  participantToken: string,
+  input: {
+    proposalId: string;
+    decision: 'approve' | 'decline';
+    approvedScope?: InstrumentViewMode;
+    reviewNote?: string;
+    saveToChurchGroup?: boolean;
+  }
+): LiveSessionSnapshot {
+  const verified = verifyParticipantToken(participantToken, sessionId);
+  if (!verified) {
+    throw new LiveSyncError('Unauthorized token.', 401, 'UNAUTHORIZED');
+  }
+
+  const record = getSessionRecord(sessionId);
+  if (!record) {
+    throw new LiveSyncError('Session not found.', 404, 'SESSION_NOT_FOUND');
+  }
+
+  if (record.status === 'ended') {
+    throw new LiveSyncError('Session has ended.', 410, 'SESSION_ENDED');
+  }
+
+  const caller = record.participants.find(
+    (p) => p.id === verified.participantId
+  );
+  const isAuthorizedLeader =
+    caller &&
+    (record.leaderId === caller.id || record.coLeaderIds.includes(caller.id));
+
+  if (!isAuthorizedLeader) {
+    throw new LiveSyncError(
+      'Forbidden: only the worship leader or an authorized co-leader may review arrangement proposals.',
+      403,
+      'FORBIDDEN_NOT_LEADER'
+    );
+  }
+
+  const proposals = [...(record.sharedState.arrangementProposals || [])];
+  const idx = proposals.findIndex((p) => p.id === input.proposalId);
+  if (idx === -1) {
+    throw new LiveSyncError(
+      'Arrangement proposal not found.',
+      404,
+      'PROPOSAL_NOT_FOUND'
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+  const target = { ...proposals[idx] };
+  const scope: InstrumentViewMode =
+    input.approvedScope ?? target.instrument ?? 'general';
+
+  if (input.decision === 'approve') {
+    target.status = 'approved';
+    target.approvedScope = scope;
+    target.reviewedBy = caller.id;
+    target.reviewedByName = caller.name;
+    target.reviewedAt = nowIso;
+    if (input.reviewNote?.trim()) {
+      target.reviewNote = input.reviewNote.trim();
+    }
+
+    const overrideRecord: LiveSongArrangementOverride = {
+      songId: target.songId,
+      instrument: scope,
+      chordPro: target.chordPro,
+      ...(target.arrangementNote
+        ? { arrangementNote: target.arrangementNote }
+        : {}),
+      updatedAt: nowIso,
+      updatedBy: target.suggestedBy,
+      updatedByName: `${target.suggestedByName} (Approved by ${caller.name})`,
+    };
+
+    if (scope === 'general') {
+      record.sharedState.songArrangementOverrides = {
+        ...(record.sharedState.songArrangementOverrides || {}),
+        [target.songId]: overrideRecord,
+      };
+      if (record.sharedState.songId === target.songId) {
+        record.sharedState.arrangementId = 'live-custom';
+      }
+    } else {
+      const instKey = `${target.songId}:${scope}`;
+      record.sharedState.instrumentArrangementOverrides = {
+        ...(record.sharedState.instrumentArrangementOverrides || {}),
+        [instKey]: overrideRecord,
+      };
+    }
+
+    // Persist to the Church Group (`group.songArrangements`) so this church keeps the approved arrangement
+    if (record.groupId && input.saveToChurchGroup !== false) {
+      try {
+        const grp = getWorshipGroup(record.groupId);
+        if (grp) {
+          if (!grp.songArrangements) grp.songArrangements = {};
+          const compositeKey = `${target.songId}:${scope}`;
+          grp.songArrangements[compositeKey] = {
+            id: compositeKey,
+            songId: target.songId,
+            songTitle: target.songTitle,
+            instrument: scope,
+            chordPro: target.chordPro,
+            arrangementNote: target.arrangementNote,
+            updatedAt: nowIso,
+            updatedBy: target.suggestedBy,
+            updatedByName: `${target.suggestedByName} (Approved by ${caller.name})`,
+          };
+          if (Array.isArray(grp.suggestedArrangements)) {
+            grp.suggestedArrangements = grp.suggestedArrangements.map((s) =>
+              s.id === target.id
+                ? {
+                    ...s,
+                    status: 'approved',
+                    approvedScope: scope,
+                    reviewedBy: caller.id,
+                    reviewedByName: caller.name,
+                    reviewedAt: nowIso,
+                    reviewNote: target.reviewNote,
+                  }
+                : s
+            );
+          }
+        }
+      } catch {
+        // Ignore group persistence error
+      }
+    }
+  } else {
+    target.status = 'declined';
+    target.reviewedBy = caller.id;
+    target.reviewedByName = caller.name;
+    target.reviewedAt = nowIso;
+    if (input.reviewNote?.trim()) {
+      target.reviewNote = input.reviewNote.trim();
+    }
+
+    if (record.groupId) {
+      try {
+        const grp = getWorshipGroup(record.groupId);
+        if (grp && Array.isArray(grp.suggestedArrangements)) {
+          grp.suggestedArrangements = grp.suggestedArrangements.map((s) =>
+            s.id === target.id
+              ? {
+                  ...s,
+                  status: 'declined',
+                  reviewedBy: caller.id,
+                  reviewedByName: caller.name,
+                  reviewedAt: nowIso,
+                  reviewNote: target.reviewNote,
+                }
+              : s
+          );
+        }
+      } catch {
+        // Ignore group persistence error
+      }
+    }
+  }
+
+  proposals[idx] = target;
+  record.sharedState.arrangementProposals = proposals;
+  record.sharedState.updatedAt = nowIso;
+  record.sharedState.updatedBy = caller.id;
+  record.revision += 1;
 
   persistStoreToDisk();
   broadcastSessionEvent(sessionId, 'state_updated');

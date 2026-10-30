@@ -52,12 +52,18 @@ import {
   appendChordToSongSectionLine,
   convertDisplayedSongToBaseChordPro,
   formatSongLineForQuickEdit,
+  getPersonalInstrumentArrangements,
   insertChordAtLyricPositionInSong,
+  makeArrangementCompositeKey,
   nudgeChordByWordInSongSectionLine,
+  removePersonalInstrumentArrangement,
   replaceChordInSongSectionLine,
+  resolveLayeredSongArrangement,
   resolveSongWithLiveOverride,
+  savePersonalInstrumentArrangement,
   splitSegmentTextIntoTappableWords,
   updateLineInSongSection,
+  type PreferredArrangementLayerMode,
 } from '@/lib/chordpro/liveArrangement';
 import {
   formatSignedSemitones,
@@ -82,13 +88,15 @@ import {
   setCachedTeam,
   broadcastTeamSync,
   subscribeToTeam,
+  getSessionToken,
 } from '@/lib/team/teamService';
-import type { WorshipGroup } from '@/types/auth';
+import type { TeamSongArrangement, WorshipGroup } from '@/types/auth';
 import {
   SESSION_CREDENTIALS_STORAGE_KEY,
   type CreateLiveSessionResponse,
   type InstrumentViewMode,
   type JoinLiveSessionResponse,
+  type LiveArrangementProposal,
   type LiveSessionSnapshot,
   type LiveStreamMessage,
   type UpdateSharedStateInput,
@@ -265,6 +273,18 @@ function LiveSyncWorkspace({
   const [showQrModal, setShowQrModal] = useState(false);
   const [showArrangementModal, setShowArrangementModal] = useState(false);
   const [isQuickEditMode, setIsQuickEditMode] = useState(false);
+  const [personalArrangements, setPersonalArrangements] = useState<
+    Record<string, TeamSongArrangement>
+  >(() => getPersonalInstrumentArrangements());
+  const [preferredArrangementLayer, setPreferredArrangementLayer] =
+    useState<PreferredArrangementLayerMode>('auto');
+  const [leaderEditScope, setLeaderEditScope] = useState<
+    'band' | 'instrument' | 'personal'
+  >('band');
+  const [arrangementFeedbackToast, setArrangementFeedbackToast] = useState<
+    string | null
+  >(null);
+  const [isSubmittingToAdmin, setIsSubmittingToAdmin] = useState(false);
   const [activeChordEditTarget, setActiveChordEditTarget] = useState<{
     sectionId: string;
     lineIndex: number;
@@ -1827,19 +1847,37 @@ function LiveSyncWorkspace({
   const rawOfficialSong =
     getSongById(session.sharedState.songId) ?? rawSourceSong;
 
-  const activeSongOverride =
-    session.sharedState.songArrangementOverrides?.[rawSourceSong.id];
+  const layeredResult = resolveLayeredSongArrangement({
+    baseSong: rawSourceSong,
+    instrument: instrumentView,
+    personalArrangements,
+    liveInstrumentOverrides: session.sharedState.instrumentArrangementOverrides,
+    liveBandOverrides: session.sharedState.songArrangementOverrides,
+    groupArrangements: effectiveGroup?.songArrangements,
+    preferredLayer: preferredArrangementLayer,
+  });
+
+  const activeSongOverride = layeredResult.activeOverride;
   const officialSongOverride =
     session.sharedState.songArrangementOverrides?.[rawOfficialSong.id];
 
-  const sourceSong = resolveSongWithLiveOverride(
-    rawSourceSong,
-    activeSongOverride
-  );
+  const sourceSong = layeredResult.song;
   const officialSong = resolveSongWithLiveOverride(
     rawOfficialSong,
     officialSongOverride
   );
+
+  // Whether edits made by this user broadcast live to the session/church vs save to their personal instrument chart
+  const isBroadcastingEdits =
+    canControlOfficialState &&
+    viewMode === 'follow' &&
+    leaderEditScope !== 'personal';
+  const targetBroadcastInstrument: InstrumentViewMode =
+    leaderEditScope === 'instrument' && instrumentView !== 'general'
+      ? instrumentView
+      : 'general';
+  // Every musician in the session can edit charts (Members edit their Personal Instrument Chart; Leaders can broadcast or edit personal)
+  const canEditChartInLive = true;
 
   const {
     song: displaySong,
@@ -1985,25 +2023,280 @@ function LiveSyncWorkspace({
   };
 
   const diatonicSuggestionsForDisplayedKey = getSuggestedChordsForKey(displayedKey);
+  const currentParticipant = session.participants.find(
+    (p) => p.id === participantId
+  );
+
+  const showToast = (msg: string) => {
+    setArrangementFeedbackToast(msg);
+    window.setTimeout(() => {
+      setArrangementFeedbackToast((prev) => (prev === msg ? null : prev));
+    }, 4000);
+  };
+
+  const applyArrangementChange = async (
+    baseChordPro: string,
+    arrangementNote?: string
+  ) => {
+    if (isBroadcastingEdits) {
+      await sendOfficialStateUpdate({
+        songArrangementOverride: {
+          songId: rawSourceSong.id,
+          instrument: targetBroadcastInstrument,
+          chordPro: baseChordPro,
+          arrangementNote:
+            arrangementNote ?? activeSongOverride?.arrangementNote,
+        },
+      });
+      showToast(
+        targetBroadcastInstrument === 'general'
+          ? 'Broadcasted live to the entire band & saved to Church Group!'
+          : `Broadcasted live to ${targetBroadcastInstrument.toUpperCase()} charts & saved to Church Group!`
+      );
+    } else {
+      const nextPersonal = savePersonalInstrumentArrangement({
+        songId: rawSourceSong.id,
+        songTitle: rawSourceSong.title,
+        instrument: instrumentView,
+        chordPro: baseChordPro,
+        arrangementNote:
+          arrangementNote ??
+          activeSongOverride?.arrangementNote ??
+          `My ${instrumentView} chords`,
+        updatedBy: user?.id || participantId || 'local-user',
+        updatedByName:
+          user?.displayName ||
+          currentParticipant?.name ||
+          memberNameInput ||
+          'Musician',
+      });
+      setPersonalArrangements(nextPersonal);
+      setPreferredArrangementLayer('auto');
+      showToast(
+        `Saved to your Personal ${
+          instrumentView === 'general' ? 'Song' : instrumentView.toUpperCase()
+        } Chords (only visible to you until proposed to Leader).`
+      );
+    }
+  };
 
   const handleBroadcastLiveOverride = async (payload: {
     songId: string;
     chordPro: string;
     arrangementNote?: string;
   }) => {
-    if (!canControlOfficialState) return;
-    await sendOfficialStateUpdate({
-      songArrangementOverride: payload,
-    });
+    await applyArrangementChange(payload.chordPro, payload.arrangementNote);
   };
 
   const handleRevertSongToOriginal = async (targetSongId: string) => {
-    if (!canControlOfficialState) return;
     setActiveChordEditTarget(null);
     setActiveLineEditTarget(null);
+    if (
+      layeredResult.activeLayer === 'personal-instrument' ||
+      !isBroadcastingEdits
+    ) {
+      const nextPersonal = removePersonalInstrumentArrangement(
+        targetSongId,
+        instrumentView
+      );
+      setPersonalArrangements(nextPersonal);
+      showToast(`Reset your personal ${instrumentView} arrangement.`);
+      return;
+    }
+    const clearKey =
+      targetBroadcastInstrument === 'general'
+        ? targetSongId
+        : `${targetSongId}:${targetBroadcastInstrument}`;
     await sendOfficialStateUpdate({
-      clearSongArrangementOverrideSongId: targetSongId,
+      clearSongArrangementOverrideSongId: clearKey,
     });
+  };
+
+  const handleProposeArrangementToLeader = async (payload?: {
+    songId: string;
+    chordPro: string;
+    arrangementNote?: string;
+  }) => {
+    if (!session || !participantToken) return;
+    const chordProToSend =
+      payload?.chordPro ||
+      activeSongOverride?.chordPro ||
+      convertDisplayedSongToBaseChordPro(
+        displaySong,
+        rawSourceSong,
+        activeSemitones
+      );
+    const noteToSend =
+      payload?.arrangementNote ||
+      activeSongOverride?.arrangementNote ||
+      `${
+        user?.displayName || currentParticipant?.name || 'Musician'
+      }'s ${instrumentView} arrangement`;
+
+    // Also ensure it is saved to personal instrument arrangements locally
+    const nextPersonal = savePersonalInstrumentArrangement({
+      songId: rawSourceSong.id,
+      songTitle: rawSourceSong.title,
+      instrument: instrumentView,
+      chordPro: chordProToSend,
+      arrangementNote: noteToSend,
+      updatedBy: user?.id || participantId || 'local-user',
+      updatedByName:
+        user?.displayName || currentParticipant?.name || 'Musician',
+    });
+    setPersonalArrangements(nextPersonal);
+
+    try {
+      const res = await fetch(
+        apiUrl(`/api/live/sessions/${encodeURIComponent(session.sessionId)}`),
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${participantToken}`,
+          },
+          body: JSON.stringify({
+            action: 'propose-arrangement',
+            proposal: {
+              songId: rawSourceSong.id,
+              songTitle: rawSourceSong.title,
+              instrument: instrumentView,
+              chordPro: chordProToSend,
+              arrangementNote: noteToSend,
+            },
+          }),
+        }
+      );
+      const data = (await res.json()) as {
+        session?: LiveSessionSnapshot;
+        error?: string;
+      };
+      if (res.ok && data.session) {
+        latestRevisionRef.current = data.session.revision;
+        setSession(data.session);
+        showToast(
+          `Proposed your ${instrumentView.toUpperCase()} arrangement to ${
+            session.leaderName
+          } for approval!`
+        );
+      } else if (data.error) {
+        setErrorAlert({
+          title: 'Could Not Send Arrangement Proposal',
+          message: data.error,
+        });
+      }
+    } catch {
+      // ignore network error
+    }
+  };
+
+  const handleReviewLiveArrangementProposal = async (
+    proposal: LiveArrangementProposal,
+    decision: 'approve' | 'decline',
+    approvedScope?: InstrumentViewMode
+  ) => {
+    if (!session || !participantToken || !canControlOfficialState) return;
+    try {
+      const res = await fetch(
+        apiUrl(`/api/live/sessions/${encodeURIComponent(session.sessionId)}`),
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${participantToken}`,
+          },
+          body: JSON.stringify({
+            action: 'review-arrangement',
+            review: {
+              proposalId: proposal.id,
+              decision,
+              approvedScope: approvedScope ?? proposal.instrument,
+              saveToChurchGroup: true,
+            },
+          }),
+        }
+      );
+      const data = (await res.json()) as {
+        session?: LiveSessionSnapshot;
+        error?: string;
+      };
+      if (res.ok && data.session) {
+        latestRevisionRef.current = data.session.revision;
+        setSession(data.session);
+        if (decision === 'approve') {
+          const scopeLabel =
+            (approvedScope ?? proposal.instrument) === 'general'
+              ? 'Entire Band (Church + Live)'
+              : `${(approvedScope ?? proposal.instrument).toUpperCase()} Only (Church + Live)`;
+          showToast(
+            `Approved ${proposal.suggestedByName}'s arrangement for ${scopeLabel}!`
+          );
+        } else {
+          showToast(`Declined ${proposal.suggestedByName}'s arrangement proposal.`);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSubmitArrangementToGlobalAdmin = async () => {
+    if (!activeSongOverride || isSubmittingToAdmin) return;
+    const authToken = getSessionToken();
+    if (!authToken) {
+      setErrorAlert({
+        title: 'Sign In Required for Global Admin Submission',
+        message:
+          'Please sign in with your Worship Leader account to submit your church arrangement to the Global Admin queue.',
+      });
+      return;
+    }
+
+    setIsSubmittingToAdmin(true);
+    try {
+      const arrangedBaseSong = resolveSongWithLiveOverride(
+        rawSourceSong,
+        activeSongOverride
+      );
+      const churchLabel =
+        effectiveGroup?.churchName ||
+        effectiveGroup?.name ||
+        user?.churchName ||
+        'Church Team';
+      const submittedSong = {
+        ...arrangedBaseSong,
+        updatedAt: new Date().toISOString(),
+      };
+      const res = await fetch(apiUrl('/api/cloud/submissions'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          song: submittedSong,
+          submissionNotes: `Church Arrangement from ${churchLabel}${
+            activeSongOverride.arrangementNote
+              ? ` — "${activeSongOverride.arrangementNote}"`
+              : ''
+          }`,
+        }),
+      });
+      if (res.ok) {
+        showToast(
+          'Submitted arrangement to Global Admin for review! Once approved by Admin, it will be live across the global catalog.'
+        );
+      } else {
+        const errData = await res.json().catch(() => null);
+        setErrorAlert({
+          title: 'Global Submission Failed',
+          message:
+            errData?.error || 'Could not submit arrangement to Global Admin.',
+        });
+      }
+    } finally {
+      setIsSubmittingToAdmin(false);
+    }
   };
 
   const handleInlineChordChange = async (
@@ -2014,7 +2307,6 @@ function LiveSyncWorkspace({
     charOffset: number = 0,
     isTrailing: boolean = false
   ) => {
-    if (!canControlOfficialState) return;
     let updatedDisplayedSong = displaySong;
     if (isTrailing) {
       updatedDisplayedSong = appendChordToSongSectionLine(
@@ -2048,13 +2340,10 @@ function LiveSyncWorkspace({
     );
     setActiveChordEditTarget(null);
     setCustomChordInput('');
-    await sendOfficialStateUpdate({
-      songArrangementOverride: {
-        songId: rawSourceSong.id,
-        chordPro: baseChordPro,
-        arrangementNote: activeSongOverride?.arrangementNote,
-      },
-    });
+    await applyArrangementChange(
+      baseChordPro,
+      activeSongOverride?.arrangementNote
+    );
   };
 
   const handleNudgeChord = async (
@@ -2063,7 +2352,6 @@ function LiveSyncWorkspace({
     segmentIndex: number,
     direction: 'left' | 'right'
   ) => {
-    if (!canControlOfficialState) return;
     const { song: updatedDisplayedSong, newSegmentIndex } =
       nudgeChordByWordInSongSectionLine(
         displaySong,
@@ -2087,17 +2375,14 @@ function LiveSyncWorkspace({
           }
         : null
     );
-    await sendOfficialStateUpdate({
-      songArrangementOverride: {
-        songId: rawSourceSong.id,
-        chordPro: baseChordPro,
-        arrangementNote: activeSongOverride?.arrangementNote,
-      },
-    });
+    await applyArrangementChange(
+      baseChordPro,
+      activeSongOverride?.arrangementNote
+    );
   };
 
   const handleInlineLineSave = async () => {
-    if (!canControlOfficialState || !activeLineEditTarget) return;
+    if (!activeLineEditTarget) return;
     const updatedDisplayedSong = updateLineInSongSection(
       displaySong,
       activeLineEditTarget.sectionId,
@@ -2111,14 +2396,15 @@ function LiveSyncWorkspace({
       activeSemitones
     );
     setActiveLineEditTarget(null);
-    await sendOfficialStateUpdate({
-      songArrangementOverride: {
-        songId: rawSourceSong.id,
-        chordPro: baseChordPro,
-        arrangementNote: activeSongOverride?.arrangementNote,
-      },
-    });
+    await applyArrangementChange(
+      baseChordPro,
+      activeSongOverride?.arrangementNote
+    );
   };
+
+  const pendingArrangementProposals = (
+    session.sharedState.arrangementProposals || []
+  ).filter((p) => p.status === 'pending');
 
   return (
     <div className="space-y-6">
@@ -2446,79 +2732,237 @@ function LiveSyncWorkspace({
                 )}
               </div>
 
-              {/* Prev / Next Song in Setlist Controls & Live Arrangement Studio (Leader) */}
-              {canControlOfficialState && viewMode === 'follow' && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsQuickEditMode((prev) => !prev);
-                      setActiveChordEditTarget(null);
-                      setActiveLineEditTarget(null);
-                    }}
-                    aria-pressed={isQuickEditMode}
-                    data-testid="live-quick-edit-toggle"
-                    className={`px-3 py-2 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
-                      isQuickEditMode
-                        ? 'bg-[var(--brand-accent)] text-[#0c0c10] border-[var(--brand-accent)] shadow-xs'
-                        : 'border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
-                    }`}
-                    title="Tap any chord or lyric line directly on the live chart to modify it for the entire band"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>
-                      {isQuickEditMode
-                        ? 'Exit Quick Tap Edit'
-                        : 'Quick-Tap Edit Chart'}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowArrangementModal(true)}
-                    data-testid="open-live-arrangement-studio-btn"
-                    className="px-3 py-2 rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-                    title="Open full Live Chords & Lyrics Arrangement Studio (add sections, repeat Bridge/Tag, edit ChordPro)"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Arrange Chords &amp; Lyrics</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={currentSongSetlistIndex <= 0}
-                    onClick={() => {
-                      const prevSong =
-                        currentSetlistSongs[currentSongSetlistIndex - 1];
-                      if (prevSong) handleSelectSongInQueue(prevSong.id);
-                    }}
-                    className="px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Prev Song</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={
-                      currentSongSetlistIndex < 0 ||
-                      currentSongSetlistIndex >= currentSetlistSongs.length - 1
+              {/* Prev / Next Song in Setlist Controls & Live Arrangement Studio (Available to All Musicians!) */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {canControlOfficialState && viewMode === 'follow' && (
+                  <select
+                    aria-label="Leader arrangement edit scope"
+                    data-testid="leader-edit-scope-select"
+                    value={leaderEditScope}
+                    onChange={(e) =>
+                      setLeaderEditScope(
+                        e.target.value as 'band' | 'instrument' | 'personal'
+                      )
                     }
-                    onClick={() => {
-                      const nextSong =
-                        currentSetlistSongs[currentSongSetlistIndex + 1];
-                      if (nextSong) handleSelectSongInQueue(nextSong.id);
-                    }}
-                    className="px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                    className="h-9 px-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-xs font-semibold cursor-pointer"
+                    title="Choose who receives your chord & lyric edits"
                   >
-                    <span>Next Song</span>
-                    <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-                  </button>
-                </div>
-              )}
+                    <option value="band">Broadcast: Entire Band (Church)</option>
+                    {instrumentView !== 'general' && (
+                      <option value="instrument">
+                        Broadcast: {instrumentView.toUpperCase()} Only (Church)
+                      </option>
+                    )}
+                    <option value="personal">
+                      Save Only to My Personal {instrumentView} Chords
+                    </option>
+                  </select>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsQuickEditMode((prev) => !prev);
+                    setActiveChordEditTarget(null);
+                    setActiveLineEditTarget(null);
+                  }}
+                  aria-pressed={isQuickEditMode}
+                  data-testid="live-quick-edit-toggle"
+                  className={`px-3 py-2 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                    isQuickEditMode
+                      ? 'bg-[var(--brand-accent)] text-[#0c0c10] border-[var(--brand-accent)] shadow-xs'
+                      : 'border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
+                  }`}
+                  title={
+                    isBroadcastingEdits
+                      ? 'Tap any word or chord directly on the live chart to modify it for the band'
+                      : `Tap any word or chord to customize your personal ${instrumentView} chart`
+                  }
+                >
+                  <Edit3 className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>
+                    {isQuickEditMode
+                      ? 'Exit Quick Tap Edit'
+                      : isBroadcastingEdits
+                      ? 'Quick-Tap Edit Chart'
+                      : `Tap-Edit My ${
+                          instrumentView === 'general'
+                            ? 'Chart'
+                            : instrumentView.charAt(0).toUpperCase() +
+                              instrumentView.slice(1)
+                        } Chords`}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowArrangementModal(true)}
+                  data-testid="open-live-arrangement-studio-btn"
+                  className="px-3 py-2 rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                  title="Open full Chords & Lyrics Arrangement Studio"
+                >
+                  <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>
+                    {isBroadcastingEdits
+                      ? 'Arrange Chords & Lyrics'
+                      : `Arrange My ${
+                          instrumentView === 'general'
+                            ? 'Song'
+                            : instrumentView.charAt(0).toUpperCase() +
+                              instrumentView.slice(1)
+                        }`}
+                  </span>
+                </button>
+
+                {canControlOfficialState && viewMode === 'follow' && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={currentSongSetlistIndex <= 0}
+                      onClick={() => {
+                        const prevSong =
+                          currentSetlistSongs[currentSongSetlistIndex - 1];
+                        if (prevSong) handleSelectSongInQueue(prevSong.id);
+                      }}
+                      className="px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Prev Song</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        currentSongSetlistIndex < 0 ||
+                        currentSongSetlistIndex >= currentSetlistSongs.length - 1
+                      }
+                      onClick={() => {
+                        const nextSong =
+                          currentSetlistSongs[currentSongSetlistIndex + 1];
+                        if (nextSong) handleSelectSongInQueue(nextSong.id);
+                      }}
+                      className="px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-40 cursor-pointer"
+                    >
+                      <span>Next Song</span>
+                      <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
-            {/* Active Live Arrangement Banner (Shown to all band members when leader customizes chords/lyrics) */}
-            {activeSongOverride && (
+            {/* Toast Feedback Notification */}
+            {arrangementFeedbackToast && (
+              <div
+                role="status"
+                data-testid="arrangement-feedback-toast"
+                className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2 text-xs font-semibold text-emerald-400 flex items-center justify-between gap-2"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 shrink-0" />
+                  <span>{arrangementFeedbackToast}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setArrangementFeedbackToast(null)}
+                  className="underline text-[11px] cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+
+            {/* Leader Review Card for Member-Proposed Instrument/Song Arrangements */}
+            {canControlOfficialState &&
+              pendingArrangementProposals.length > 0 && (
+                <div
+                  data-testid="leader-arrangement-proposals-panel"
+                  className="rounded-xl border-2 border-amber-500/50 bg-amber-500/10 p-3.5 space-y-2.5 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-amber-300 inline-flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4" />
+                      <span>
+                        Band Member Arrangement Proposals (
+                        {pendingArrangementProposals.length})
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-[var(--text-secondary)]">
+                      Scoped to your Church Group only
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {pendingArrangementProposals.map((prop) => (
+                      <div
+                        key={prop.id}
+                        className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 flex flex-wrap items-center justify-between gap-3"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="font-bold text-sm text-[var(--text-primary)]">
+                            {prop.suggestedByName} proposed a{' '}
+                            <span className="uppercase text-[var(--brand-accent)]">
+                              {prop.instrument}
+                            </span>{' '}
+                            arrangement for “{prop.songTitle}”
+                          </div>
+                          {prop.arrangementNote && (
+                            <div className="text-[var(--text-secondary)]">
+                              Note: “{prop.arrangementNote}”
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {prop.instrument !== 'general' && (
+                            <button
+                              type="button"
+                              data-testid={`approve-proposal-instrument-${prop.id}`}
+                              onClick={() =>
+                                handleReviewLiveArrangementProposal(
+                                  prop,
+                                  'approve',
+                                  prop.instrument
+                                )
+                              }
+                              className="px-3 py-1.5 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer hover:opacity-95"
+                            >
+                              Approve for {prop.instrument.toUpperCase()} Only
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            data-testid={`approve-proposal-band-${prop.id}`}
+                            onClick={() =>
+                              handleReviewLiveArrangementProposal(
+                                prop,
+                                'approve',
+                                'general'
+                              )
+                            }
+                            className="px-3 py-1.5 rounded-lg border border-[var(--brand-accent)] bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold cursor-pointer transition-colors"
+                          >
+                            Approve for Entire Band (Church)
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`decline-proposal-${prop.id}`}
+                            onClick={() =>
+                              handleReviewLiveArrangementProposal(
+                                prop,
+                                'decline'
+                              )
+                            }
+                            className="px-2.5 py-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 text-rose-400 font-semibold cursor-pointer"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            {/* Active Arrangement Banner (Personal Instrument, Church Instrument, or Live Band Master) */}
+            {(activeSongOverride || layeredResult.hasPersonalInstrumentOverride) && (
               <div
                 data-testid="live-arrangement-active-banner"
                 className="rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
@@ -2526,55 +2970,129 @@ function LiveSyncWorkspace({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center gap-1 font-bold text-[var(--brand-accent)]">
                     <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span>Live Arrangement Active</span>
+                    <span>
+                      {layeredResult.activeLayer === 'personal-instrument'
+                        ? `My Personal ${instrumentView.toUpperCase()} Arrangement Active (Carried over to Live Sync)`
+                        : layeredResult.activeLayer === 'live-instrument' ||
+                          layeredResult.activeLayer === 'group-instrument'
+                        ? `Church ${instrumentView.toUpperCase()} Arrangement Active`
+                        : 'Live Arrangement Active'}
+                    </span>
                   </span>
-                  {activeSongOverride.updatedByName && (
+                  {activeSongOverride?.updatedByName && (
                     <span className="text-[var(--text-secondary)]">
-                      · Arranged live by{' '}
+                      · Arranged by{' '}
                       <strong className="text-[var(--text-primary)]">
                         {activeSongOverride.updatedByName}
                       </strong>
                     </span>
                   )}
-                  {activeSongOverride.arrangementNote && (
+                  {activeSongOverride?.arrangementNote && (
                     <span className="px-2 py-0.5 rounded-md bg-[var(--bg-surface)] border border-[var(--border-subtle)] font-semibold text-[var(--text-primary)]">
                       “{activeSongOverride.arrangementNote}”
                     </span>
                   )}
                 </div>
 
-                {canControlOfficialState && viewMode === 'follow' && (
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Layer Switcher Pill if user has a personal override */}
+                  {layeredResult.hasPersonalInstrumentOverride && (
                     <button
                       type="button"
-                      onClick={() => setShowArrangementModal(true)}
-                      className="text-xs font-bold text-[var(--brand-accent)] hover:underline cursor-pointer"
+                      data-testid="toggle-personal-vs-official-chart-btn"
+                      onClick={() =>
+                        setPreferredArrangementLayer((prev) =>
+                          prev === 'band-master' ? 'auto' : 'band-master'
+                        )
+                      }
+                      className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-semibold hover:border-[var(--brand-accent)] cursor-pointer"
                     >
-                      Edit Arrangement
+                      {preferredArrangementLayer === 'band-master'
+                        ? `Use My ${instrumentView.toUpperCase()} Chords`
+                        : 'Compare with Official Band Chart'}
                     </button>
+                  )}
+
+                  {/* Member Propose to Leader Button */}
+                  {layeredResult.activeLayer === 'personal-instrument' && (
                     <button
                       type="button"
-                      onClick={() => handleRevertSongToOriginal(rawSourceSong.id)}
+                      data-testid="banner-propose-to-leader-btn"
+                      onClick={() => handleProposeArrangementToLeader()}
+                      className="px-3 py-1 rounded-lg bg-amber-500 text-[#0c0c10] font-bold inline-flex items-center gap-1 cursor-pointer hover:opacity-95"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Propose to Leader</span>
+                    </button>
+                  )}
+
+                  {/* Leader Submit to Global Admin Button */}
+                  {canControlOfficialState &&
+                    activeSongOverride &&
+                    layeredResult.activeLayer !== 'personal-instrument' && (
+                      <button
+                        type="button"
+                        disabled={isSubmittingToAdmin}
+                        data-testid="submit-arrangement-to-admin-btn"
+                        onClick={handleSubmitArrangementToGlobalAdmin}
+                        className="px-2.5 py-1 rounded-lg border border-[var(--brand-accent)]/40 bg-[var(--bg-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                        title="Submit this church arrangement to the Global Admin to share with all churches"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>
+                          {isSubmittingToAdmin
+                            ? 'Submitting...'
+                            : 'Submit to Global Admin'}
+                        </span>
+                      </button>
+                    )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowArrangementModal(true)}
+                    className="text-xs font-bold text-[var(--brand-accent)] hover:underline cursor-pointer"
+                  >
+                    Edit Arrangement
+                  </button>
+                  {activeSongOverride && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleRevertSongToOriginal(rawSourceSong.id)
+                      }
                       className="text-xs font-semibold text-rose-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
                     >
                       <RotateCcw className="w-3 h-3" />
-                      <span>Revert to Original</span>
+                      <span>
+                        {layeredResult.activeLayer === 'personal-instrument'
+                          ? 'Reset My Edits'
+                          : 'Revert to Original'}
+                      </span>
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
 
             {/* Quick-Tap Edit Mode Helper Bar */}
-            {canControlOfficialState && viewMode === 'follow' && isQuickEditMode && (
+            {canEditChartInLive && isQuickEditMode && (
               <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-300">
                 <div className="flex items-center gap-2">
                   <Edit3 className="w-4 h-4 shrink-0" />
                   <span>
-                    <strong>Free-Position Live Tap Edit Active:</strong> Tap{' '}
-                    <strong>any word in the lyrics</strong> to drop a chord right
-                    above that word, tap any <strong>existing chord</strong> to swap
-                    or slide it <strong>← / →</strong> across words, or tap{' '}
+                    <strong>
+                      {isBroadcastingEdits
+                        ? `Free-Position Live Tap Edit (${
+                            targetBroadcastInstrument === 'general'
+                              ? 'Entire Band'
+                              : targetBroadcastInstrument.toUpperCase()
+                          }):`
+                        : `Personal ${instrumentView.toUpperCase()} Tap Edit (Only on your screen):`}
+                    </strong>{' '}
+                    Tap <strong>any word in the lyrics</strong> to drop a chord
+                    right above that word, tap any{' '}
+                    <strong>existing chord</strong> to swap or slide it{' '}
+                    <strong>← / →</strong> across words, or tap{' '}
                     <strong>Edit Words &amp; Chords</strong> to rewrite lyrics at
                     your cursor.
                   </span>
@@ -2906,8 +3424,7 @@ function LiveSyncWorkspace({
                     {section.lines.map((line, lineIdx) => {
                       const instrumental = isLineInstrumental(line);
                       const isEditingThisLine =
-                        canControlOfficialState &&
-                        viewMode === 'follow' &&
+                        canEditChartInLive &&
                         activeLineEditTarget?.sectionId === section.id &&
                         activeLineEditTarget?.lineIndex === lineIdx;
 
@@ -2938,8 +3455,7 @@ function LiveSyncWorkspace({
 
                       const renderChordPickerPopover = () => {
                         const isTarget =
-                          canControlOfficialState &&
-                          viewMode === 'follow' &&
+                          canEditChartInLive &&
                           activeChordEditTarget?.sectionId === section.id &&
                           activeChordEditTarget?.lineIndex === lineIdx;
 
@@ -3292,9 +3808,7 @@ function LiveSyncWorkspace({
                           activeChordEditTarget?.sectionId === section.id &&
                           activeChordEditTarget?.lineIndex === lineIdx;
                         const canTapChord =
-                          canControlOfficialState &&
-                          viewMode === 'follow' &&
-                          isQuickEditMode;
+                          canEditChartInLive && isQuickEditMode;
                         return (
                           <div key={lineIdx} className="chart-line-scroll py-1">
                             <div className="inline-flex flex-wrap items-center gap-2 font-mono font-bold">
@@ -3376,9 +3890,7 @@ function LiveSyncWorkspace({
                         activeChordEditTarget?.sectionId === section.id &&
                         activeChordEditTarget?.lineIndex === lineIdx;
                       const canTapChart =
-                        canControlOfficialState &&
-                        viewMode === 'follow' &&
-                        isQuickEditMode;
+                        canEditChartInLive && isQuickEditMode;
 
                       return (
                         <div key={lineIdx} className="chart-line-scroll">
@@ -3772,6 +4284,23 @@ function LiveSyncWorkspace({
           hasActiveOverride={Boolean(activeSongOverride)}
           onBroadcastOverride={handleBroadcastLiveOverride}
           onRevertToOriginal={handleRevertSongToOriginal}
+          primaryActionLabel={
+            isBroadcastingEdits
+              ? targetBroadcastInstrument === 'general'
+                ? 'Broadcast Live to Band'
+                : `Publish to ${targetBroadcastInstrument.toUpperCase()} Chart`
+              : `Save to My ${
+                  instrumentView === 'general'
+                    ? 'Personal'
+                    : instrumentView.toUpperCase()
+                } Chords`
+          }
+          onProposeToLeader={
+            !canControlOfficialState
+              ? handleProposeArrangementToLeader
+              : undefined
+          }
+          proposeActionLabel={`Propose ${instrumentView.toUpperCase()} Chords to Leader`}
           onSaveCopyToMySongs={async (customSong) => {
             await saveCustomSong(customSong);
           }}

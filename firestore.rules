@@ -30,6 +30,8 @@ service cloud.firestore {
     //   - practiceTakes: list of maps (optional, max 100 items) - Embedded rehearsal metadata
     //   - activeSetlist: map (optional) - Published active setlist (id, name, description, publishedAt, publishedBy, publishedByName, items, createdAt, updatedAt)
     //   - suggestedSetlists: list of maps (optional, max 20 items) - Member setlist proposals / suggestions
+    //   - songArrangements: map (optional) - Team church-wide song & instrument arrangements
+    //   - suggestedArrangements: list of maps (optional, max 50 items) - Member arrangement proposals / suggestions
     //   - activeLiveSessionId: string (optional, 0-128 chars) or null - Active live rehearsal/service session ID
     //   - activeLiveSessionJoinCode: string (optional, 0-20 chars) or null - Active live session join code
     //   - activeLiveSessionExpiresAt: timestamp or ISO string (optional) or null - Active live session expiry timestamp
@@ -100,7 +102,7 @@ service cloud.firestore {
     //   - Curated global worship song catalog (read-only for clients)
     //
     // Collection: userSyncData/{userId}
-    //   - Custom user songs, setlists, and favorites sync payload
+    //   - Custom user songs, setlists, favorites, and personal arrangements sync payload
     //
     // ===============================================================
 
@@ -176,7 +178,8 @@ service cloud.firestore {
       return hasOnlyAllowedFields([
                'id', 'name', 'churchName', 'customAppTitle', 'customAppLogoUrl', 'inviteCode', 'ownerId',
                'createdAt', 'updatedAt', 'members', 'memberIds', 'memberUids', 'practiceTakes',
-               'activeSetlist', 'suggestedSetlists', 'activeLiveSessionId', 'activeLiveSessionJoinCode',
+               'activeSetlist', 'suggestedSetlists', 'songArrangements', 'suggestedArrangements',
+               'activeLiveSessionId', 'activeLiveSessionJoinCode',
                'activeLiveSessionExpiresAt', 'activeLiveSessionLeaderName'
              ]) &&
              hasRequiredFields(['name', 'inviteCode', 'ownerId', 'createdAt', 'members']) &&
@@ -194,6 +197,8 @@ service cloud.firestore {
              (!('practiceTakes' in data) || (data.practiceTakes is list && data.practiceTakes.size() <= 100)) &&
              (!('activeSetlist' in data) || data.activeSetlist == null || isValidActiveSetlist(data.activeSetlist)) &&
              (!('suggestedSetlists' in data) || data.suggestedSetlists == null || isValidSuggestedSetlists(data.suggestedSetlists)) &&
+             (!('songArrangements' in data) || data.songArrangements == null || data.songArrangements is map) &&
+             (!('suggestedArrangements' in data) || data.suggestedArrangements == null || (data.suggestedArrangements is list && data.suggestedArrangements.size() <= 50)) &&
              isValidOptionalString(data, 'activeLiveSessionId', 0, 128) &&
              isValidOptionalString(data, 'activeLiveSessionJoinCode', 0, 20) &&
              isValidOptionalTimestampOrDateString(data, 'activeLiveSessionExpiresAt') &&
@@ -280,12 +285,13 @@ service cloud.firestore {
     }
 
     function isValidUserSync(data) {
-      return hasOnlyAllowedFields(['customSongs', 'setlists', 'favorites', 'lastSyncedAt']) &&
+      return hasOnlyAllowedFields(['customSongs', 'setlists', 'favorites', 'personalArrangements', 'lastSyncedAt']) &&
              hasRequiredFields(['lastSyncedAt']) &&
              isValidTimestampOrDateString(data.lastSyncedAt) &&
              (!('customSongs' in data) || (data.customSongs is list && data.customSongs.size() <= 500)) &&
              (!('setlists' in data) || (data.setlists is list && data.setlists.size() <= 100)) &&
-             (!('favorites' in data) || (data.favorites is list && data.favorites.size() <= 500));
+             (!('favorites' in data) || (data.favorites is list && data.favorites.size() <= 500)) &&
+             (!('personalArrangements' in data) || data.personalArrangements == null || data.personalArrangements is map);
     }
 
     // ===============================================================

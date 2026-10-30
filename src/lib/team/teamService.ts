@@ -17,9 +17,12 @@ import {
 import { getFirebaseFirestore } from '../firebase/firebaseClient.ts';
 import { apiUrl } from '../api/apiClient.ts';
 import type {
+  ArrangementInstrumentScope,
   GroupMember,
+  TeamArrangementSuggestion,
   TeamPracticeTake,
   TeamPresenceRecord,
+  TeamSongArrangement,
   UserProfile,
   WorshipGroup,
   TeamActiveSetlist,
@@ -1536,11 +1539,32 @@ export function subscribeToTeam(
       effectiveSetlist
     );
 
+    const effectiveSongArrangements: Record<string, TeamSongArrangement> | undefined =
+      fresh.songArrangements !== undefined
+        ? {
+            ...(currentCached?.id === fresh.id ? currentCached.songArrangements : {}),
+            ...fresh.songArrangements,
+          }
+        : currentCached?.id === fresh.id
+        ? currentCached.songArrangements
+        : undefined;
+
+    const effectiveSuggestedArrangements: TeamArrangementSuggestion[] | undefined =
+      fresh.suggestedArrangements !== undefined
+        ? fresh.suggestedArrangements
+        : currentCached?.id === fresh.id
+        ? currentCached.suggestedArrangements
+        : undefined;
+
     const mergedGroup: WorshipGroup = {
       ...fresh,
       members: mergedMembers,
       activeSetlist: effectiveSetlist,
       suggestedSetlists: effectiveSuggestions,
+      ...(effectiveSongArrangements ? { songArrangements: effectiveSongArrangements } : {}),
+      ...(effectiveSuggestedArrangements
+        ? { suggestedArrangements: effectiveSuggestedArrangements }
+        : {}),
     };
 
     const serialized = JSON.stringify(mergedGroup);
@@ -1949,4 +1973,186 @@ export async function findUserTeamInFirestore(
   }
 
   return null;
+}
+
+/**
+ * Proposes a customized instrument or band song arrangement to the Worship Leader for approval.
+ */
+export async function proposeTeamSongArrangement(
+  groupId: string,
+  input: {
+    songId: string;
+    songTitle: string;
+    instrument: ArrangementInstrumentScope;
+    chordPro: string;
+    arrangementNote?: string;
+  }
+): Promise<{
+  group: WorshipGroup;
+  suggestion: TeamArrangementSuggestion;
+}> {
+  const token = getSessionToken();
+  const cached = getCachedTeam();
+  const db = getFirebaseFirestore();
+
+  const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      action: 'propose-arrangement',
+      ...input,
+      clientGroupFallback: cached?.id === groupId ? cached : undefined,
+    }),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.group) {
+    throw new Error(data?.error || 'Failed to propose song arrangement to leader.');
+  }
+
+  const updatedGroup: WorshipGroup = data.group;
+  setCachedTeam(updatedGroup);
+  broadcastTeamSync(updatedGroup);
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      await updateDoc(groupRef, {
+        suggestedArrangements: updatedGroup.suggestedArrangements || [],
+      });
+    } catch {
+      // Ignore Firestore mirror error if offline
+    }
+  }
+
+  return {
+    group: updatedGroup,
+    suggestion: data.suggestion,
+  };
+}
+
+/**
+ * Leader approval or decline of a member's proposed song arrangement.
+ */
+export async function reviewTeamSongArrangement(
+  groupId: string,
+  suggestionId: string,
+  decision: 'approve' | 'decline',
+  options?: {
+    targetScope?: ArrangementInstrumentScope;
+    reviewNote?: string;
+    fallbackSuggestion?: TeamArrangementSuggestion;
+  }
+): Promise<{
+  group: WorshipGroup;
+  approvedArrangement?: TeamSongArrangement;
+  suggestion?: TeamArrangementSuggestion;
+}> {
+  const token = getSessionToken();
+  const cached = getCachedTeam();
+  const db = getFirebaseFirestore();
+
+  const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      action: 'review-arrangement',
+      suggestionId,
+      decision,
+      targetScope: options?.targetScope,
+      reviewNote: options?.reviewNote,
+      fallbackSuggestion: options?.fallbackSuggestion,
+      clientGroupFallback: cached?.id === groupId ? cached : undefined,
+    }),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.group) {
+    throw new Error(data?.error || 'Failed to review arrangement proposal.');
+  }
+
+  const updatedGroup: WorshipGroup = data.group;
+  setCachedTeam(updatedGroup);
+  broadcastTeamSync(updatedGroup);
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      await updateDoc(groupRef, {
+        songArrangements: updatedGroup.songArrangements || {},
+        suggestedArrangements: updatedGroup.suggestedArrangements || [],
+      });
+    } catch {
+      // Ignore Firestore mirror error if offline
+    }
+  }
+
+  return {
+    group: updatedGroup,
+    approvedArrangement: data.approvedArrangement,
+    suggestion: data.suggestion,
+  };
+}
+
+/**
+ * Directly saves a Worship Leader's arrangement to the Church Group (`group.songArrangements`).
+ */
+export async function saveTeamSongArrangementDirect(
+  groupId: string,
+  input: {
+    songId: string;
+    songTitle?: string;
+    instrument: ArrangementInstrumentScope;
+    chordPro: string;
+    arrangementNote?: string;
+  }
+): Promise<{
+  group: WorshipGroup;
+  arrangement: TeamSongArrangement;
+}> {
+  const token = getSessionToken();
+  const db = getFirebaseFirestore();
+
+  const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      action: 'save-group-arrangement',
+      ...input,
+    }),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.group) {
+    throw new Error(data?.error || 'Failed to save church song arrangement.');
+  }
+
+  const updatedGroup: WorshipGroup = data.group;
+  setCachedTeam(updatedGroup);
+  broadcastTeamSync(updatedGroup);
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      await updateDoc(groupRef, {
+        songArrangements: updatedGroup.songArrangements || {},
+      });
+    } catch {
+      // Ignore Firestore mirror error if offline
+    }
+  }
+
+  return {
+    group: updatedGroup,
+    arrangement: data.arrangement,
+  };
 }

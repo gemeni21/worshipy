@@ -11,7 +11,11 @@ import {
   parseKey,
   transposeSong,
 } from '../music/transposition.ts';
-import type { LiveSongArrangementOverride } from '../../types/live.ts';
+import type {
+  InstrumentViewMode,
+  LiveSongArrangementOverride,
+} from '../../types/live.ts';
+import type { TeamSongArrangement } from '../../types/auth.ts';
 import type {
   ChordLyricSegment,
   SongLine,
@@ -20,15 +24,24 @@ import type {
 } from '../../types/song.ts';
 
 export const MAX_LIVE_ARRANGEMENT_CHORDPRO_LENGTH = 100_000;
+export const PERSONAL_INSTRUMENT_ARRANGEMENTS_STORAGE_KEY =
+  'wmc_personal_instrument_arrangements_v1';
+
+export function makeArrangementCompositeKey(
+  songId: string,
+  instrument: InstrumentViewMode
+): string {
+  return `${songId}:${instrument}`;
+}
 
 /**
- * Resolves a base catalog/custom `SongRecord` with an active `LiveSongArrangementOverride`.
+ * Resolves a base catalog/custom `SongRecord` with an active `LiveSongArrangementOverride` or `TeamSongArrangement`.
  * Preserves the base song's identity and `originalKey` so that live session `officialSemitones`
  * and individual musician capo/transposition offsets remain 100% consistent.
  */
 export function resolveSongWithLiveOverride(
   baseSong: SongRecord,
-  override?: LiveSongArrangementOverride | null
+  override?: LiveSongArrangementOverride | TeamSongArrangement | null
 ): SongRecord {
   if (!override || !override.chordPro || !override.chordPro.trim()) {
     return baseSong;
@@ -567,4 +580,296 @@ export function nudgeChordByWordInSongSectionLine(
   }
 
   return { song: updatedSong, newSegmentIndex: newSegIdx };
+}
+
+export type ResolvedArrangementLayer =
+  | 'personal-instrument'
+  | 'live-instrument'
+  | 'group-instrument'
+  | 'live-band'
+  | 'group-band'
+  | 'catalog';
+
+export type PreferredArrangementLayerMode =
+  | 'auto'
+  | 'personal-instrument'
+  | 'church-instrument'
+  | 'band-master'
+  | 'catalog';
+
+export interface ResolveLayeredSongArrangementInput {
+  baseSong: SongRecord;
+  instrument: InstrumentViewMode;
+  personalArrangements?: Record<string, TeamSongArrangement>;
+  liveInstrumentOverrides?: Record<string, LiveSongArrangementOverride>;
+  liveBandOverrides?: Record<string, LiveSongArrangementOverride>;
+  groupArrangements?: Record<string, TeamSongArrangement>;
+  preferredLayer?: PreferredArrangementLayerMode;
+}
+
+export interface ResolvedLayeredSongResult {
+  song: SongRecord;
+  activeLayer: ResolvedArrangementLayer;
+  activeOverride?: LiveSongArrangementOverride | TeamSongArrangement;
+  hasPersonalInstrumentOverride: boolean;
+  hasChurchOrLiveInstrumentOverride: boolean;
+  hasBandMasterOverride: boolean;
+}
+
+/**
+ * Resolves the effective `SongRecord` for a musician based on the 3-tier hierarchy:
+ * 1. Musician's Personal Instrument Arrangement (`${songId}:${instrument}`)
+ * 2. Live Session or Church Group Instrument Arrangement (`${songId}:${instrument}`)
+ * 3. Live Session or Church Group Band Master Arrangement (`songId` / `${songId}:general`)
+ * 4. Base Catalog / Custom Song
+ */
+export function resolveLayeredSongArrangement({
+  baseSong,
+  instrument,
+  personalArrangements,
+  liveInstrumentOverrides,
+  liveBandOverrides,
+  groupArrangements,
+  preferredLayer = 'auto',
+}: ResolveLayeredSongArrangementInput): ResolvedLayeredSongResult {
+  const instKey = makeArrangementCompositeKey(baseSong.id, instrument);
+  const generalKey = makeArrangementCompositeKey(baseSong.id, 'general');
+
+  const personalInst = personalArrangements?.[instKey];
+  const liveInst =
+    instrument !== 'general' ? liveInstrumentOverrides?.[instKey] : undefined;
+  const groupInst =
+    instrument !== 'general' ? groupArrangements?.[instKey] : undefined;
+  const liveBand =
+    liveBandOverrides?.[baseSong.id] ??
+    liveInstrumentOverrides?.[generalKey];
+  const groupBand = groupArrangements?.[generalKey];
+
+  const hasPersonalInstrumentOverride = Boolean(
+    personalInst && personalInst.chordPro?.trim()
+  );
+  const hasChurchOrLiveInstrumentOverride = Boolean(
+    (liveInst && liveInst.chordPro?.trim()) ||
+      (groupInst && groupInst.chordPro?.trim())
+  );
+  const hasBandMasterOverride = Boolean(
+    (liveBand && liveBand.chordPro?.trim()) ||
+      (groupBand && groupBand.chordPro?.trim())
+  );
+
+  if (preferredLayer === 'catalog') {
+    return {
+      song: baseSong,
+      activeLayer: 'catalog',
+      hasPersonalInstrumentOverride,
+      hasChurchOrLiveInstrumentOverride,
+      hasBandMasterOverride,
+    };
+  }
+
+  if (preferredLayer === 'band-master') {
+    if (liveBand && liveBand.chordPro?.trim()) {
+      return {
+        song: resolveSongWithLiveOverride(baseSong, liveBand),
+        activeLayer: 'live-band',
+        activeOverride: liveBand,
+        hasPersonalInstrumentOverride,
+        hasChurchOrLiveInstrumentOverride,
+        hasBandMasterOverride,
+      };
+    }
+    if (groupBand && groupBand.chordPro?.trim()) {
+      return {
+        song: resolveSongWithLiveOverride(baseSong, groupBand),
+        activeLayer: 'group-band',
+        activeOverride: groupBand,
+        hasPersonalInstrumentOverride,
+        hasChurchOrLiveInstrumentOverride,
+        hasBandMasterOverride,
+      };
+    }
+    return {
+      song: baseSong,
+      activeLayer: 'catalog',
+      hasPersonalInstrumentOverride,
+      hasChurchOrLiveInstrumentOverride,
+      hasBandMasterOverride,
+    };
+  }
+
+  if (preferredLayer === 'church-instrument') {
+    if (liveInst && liveInst.chordPro?.trim()) {
+      return {
+        song: resolveSongWithLiveOverride(baseSong, liveInst),
+        activeLayer: 'live-instrument',
+        activeOverride: liveInst,
+        hasPersonalInstrumentOverride,
+        hasChurchOrLiveInstrumentOverride,
+        hasBandMasterOverride,
+      };
+    }
+    if (groupInst && groupInst.chordPro?.trim()) {
+      return {
+        song: resolveSongWithLiveOverride(baseSong, groupInst),
+        activeLayer: 'group-instrument',
+        activeOverride: groupInst,
+        hasPersonalInstrumentOverride,
+        hasChurchOrLiveInstrumentOverride,
+        hasBandMasterOverride,
+      };
+    }
+  }
+
+  // Default ('auto' or 'personal-instrument'):
+  if (personalInst && personalInst.chordPro?.trim()) {
+    return {
+      song: resolveSongWithLiveOverride(baseSong, personalInst),
+      activeLayer: 'personal-instrument',
+      activeOverride: personalInst,
+      hasPersonalInstrumentOverride,
+      hasChurchOrLiveInstrumentOverride,
+      hasBandMasterOverride,
+    };
+  }
+
+  if (liveInst && liveInst.chordPro?.trim()) {
+    return {
+      song: resolveSongWithLiveOverride(baseSong, liveInst),
+      activeLayer: 'live-instrument',
+      activeOverride: liveInst,
+      hasPersonalInstrumentOverride,
+      hasChurchOrLiveInstrumentOverride,
+      hasBandMasterOverride,
+    };
+  }
+
+  if (groupInst && groupInst.chordPro?.trim()) {
+    return {
+      song: resolveSongWithLiveOverride(baseSong, groupInst),
+      activeLayer: 'group-instrument',
+      activeOverride: groupInst,
+      hasPersonalInstrumentOverride,
+      hasChurchOrLiveInstrumentOverride,
+      hasBandMasterOverride,
+    };
+  }
+
+  if (liveBand && liveBand.chordPro?.trim()) {
+    return {
+      song: resolveSongWithLiveOverride(baseSong, liveBand),
+      activeLayer: 'live-band',
+      activeOverride: liveBand,
+      hasPersonalInstrumentOverride,
+      hasChurchOrLiveInstrumentOverride,
+      hasBandMasterOverride,
+    };
+  }
+
+  if (groupBand && groupBand.chordPro?.trim()) {
+    return {
+      song: resolveSongWithLiveOverride(baseSong, groupBand),
+      activeLayer: 'group-band',
+      activeOverride: groupBand,
+      hasPersonalInstrumentOverride,
+      hasChurchOrLiveInstrumentOverride,
+      hasBandMasterOverride,
+    };
+  }
+
+  return {
+    song: baseSong,
+    activeLayer: 'catalog',
+    hasPersonalInstrumentOverride,
+    hasChurchOrLiveInstrumentOverride,
+    hasBandMasterOverride,
+  };
+}
+
+/**
+ * Reads all personal instrument arrangements saved in `localStorage`.
+ */
+export function getPersonalInstrumentArrangements(): Record<
+  string,
+  TeamSongArrangement
+> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(
+      PERSONAL_INSTRUMENT_ARRANGEMENTS_STORAGE_KEY
+    );
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as Record<string, TeamSongArrangement>;
+  } catch {
+    return {};
+  }
+}
+
+export function getPersonalInstrumentArrangement(
+  songId: string,
+  instrument: InstrumentViewMode
+): TeamSongArrangement | undefined {
+  const all = getPersonalInstrumentArrangements();
+  return all[makeArrangementCompositeKey(songId, instrument)];
+}
+
+export function savePersonalInstrumentArrangement(input: {
+  songId: string;
+  songTitle?: string;
+  instrument: InstrumentViewMode;
+  chordPro: string;
+  arrangementNote?: string;
+  updatedBy: string;
+  updatedByName?: string;
+}): Record<string, TeamSongArrangement> {
+  const all = getPersonalInstrumentArrangements();
+  const key = makeArrangementCompositeKey(input.songId, input.instrument);
+  const record: TeamSongArrangement = {
+    id: key,
+    songId: input.songId,
+    songTitle: input.songTitle,
+    instrument: input.instrument,
+    chordPro: input.chordPro,
+    arrangementNote: input.arrangementNote,
+    updatedAt: new Date().toISOString(),
+    updatedBy: input.updatedBy,
+    updatedByName: input.updatedByName,
+  };
+  const next = {
+    ...all,
+    [key]: record,
+  };
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(
+        PERSONAL_INSTRUMENT_ARRANGEMENTS_STORAGE_KEY,
+        JSON.stringify(next)
+      );
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+  return next;
+}
+
+export function removePersonalInstrumentArrangement(
+  songId: string,
+  instrument: InstrumentViewMode
+): Record<string, TeamSongArrangement> {
+  const all = getPersonalInstrumentArrangements();
+  const key = makeArrangementCompositeKey(songId, instrument);
+  const next = { ...all };
+  delete next[key];
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(
+        PERSONAL_INSTRUMENT_ARRANGEMENTS_STORAGE_KEY,
+        JSON.stringify(next)
+      );
+    } catch {
+      // Ignore storage errors
+    }
+  }
+  return next;
 }

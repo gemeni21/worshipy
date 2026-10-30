@@ -72,6 +72,42 @@ export interface TeamSetlistSuggestion {
   reviewNote?: string;
 }
 
+export type ArrangementInstrumentScope = 'general' | 'guitar' | 'keyboard' | 'bass';
+
+export interface TeamSongArrangement {
+  /** Composite key: `${songId}:${instrument}` */
+  id: string;
+  songId: string;
+  songTitle?: string;
+  instrument: ArrangementInstrumentScope;
+  /** ChordPro stored in the song's base originalKey (semitones = 0) */
+  chordPro: string;
+  arrangementNote?: string;
+  updatedAt: string;
+  updatedBy: string;
+  updatedByName?: string;
+}
+
+export interface TeamArrangementSuggestion {
+  id: string;
+  songId: string;
+  songTitle: string;
+  instrument: ArrangementInstrumentScope;
+  /** ChordPro stored in the song's base originalKey (semitones = 0) */
+  chordPro: string;
+  arrangementNote?: string;
+  suggestedBy: string;
+  suggestedByName: string;
+  suggestedByInstrument?: string;
+  suggestedAt: string;
+  status: 'pending' | 'approved' | 'declined';
+  approvedScope?: ArrangementInstrumentScope;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+}
+
 export interface WorshipGroup {
   id: string;
   name: string;
@@ -85,6 +121,10 @@ export interface WorshipGroup {
   practiceTakes?: TeamPracticeTake[];
   activeSetlist?: TeamActiveSetlist;
   suggestedSetlists?: TeamSetlistSuggestion[];
+  /** Approved church-group song arrangements keyed by `${songId}:${instrument}` */
+  songArrangements?: Record<string, TeamSongArrangement>;
+  /** Member-proposed song arrangements awaiting leader review */
+  suggestedArrangements?: TeamArrangementSuggestion[];
   activeLiveSessionId?: string;
   activeLiveSessionJoinCode?: string;
   activeLiveSessionExpiresAt?: string;
@@ -163,5 +203,6 @@ export interface UserCloudSyncPayload {
   customSongs: SongRecord[];
   setlists: unknown[];
   favorites: string[];
+  personalArrangements?: Record<string, TeamSongArrangement>;
   lastSyncedAt: string;
 }

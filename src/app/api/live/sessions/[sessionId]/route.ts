@@ -3,6 +3,8 @@ import {
   endLiveSession,
   getLiveSessionSnapshot,
   LiveSyncError,
+  proposeLiveSessionArrangement,
+  reviewLiveSessionArrangement,
   transferSessionLeadership,
   updateLiveSessionState,
   updateParticipantPresence,
@@ -54,12 +56,28 @@ interface PatchSessionBody {
     | 'update-state'
     | 'transfer-leadership'
     | 'update-presence'
+    | 'propose-arrangement'
+    | 'review-arrangement'
     | 'end-session';
   state?: UpdateSharedStateInput;
   targetParticipantId?: string;
   leadershipAction?: 'make-leader' | 'toggle-co-leader';
   instrument?: InstrumentViewMode;
   connectionState?: ParticipantConnectionState;
+  proposal?: {
+    songId: string;
+    songTitle?: string;
+    instrument?: InstrumentViewMode;
+    chordPro: string;
+    arrangementNote?: string;
+  };
+  review?: {
+    proposalId: string;
+    decision: 'approve' | 'decline';
+    approvedScope?: InstrumentViewMode;
+    reviewNote?: string;
+    saveToChurchGroup?: boolean;
+  };
 }
 
 export async function PATCH(
@@ -105,6 +123,34 @@ export async function PATCH(
         instrument: body.instrument,
         connectionState: body.connectionState,
       });
+      return NextResponse.json({ session: updated }, { status: 200 });
+    }
+
+    if (body.action === 'propose-arrangement') {
+      if (!body.proposal || !body.proposal.songId || !body.proposal.chordPro) {
+        return NextResponse.json(
+          {
+            error: 'proposal.songId and proposal.chordPro are required.',
+            code: 'INVALID_INPUT',
+          },
+          { status: 400 }
+        );
+      }
+      const res = proposeLiveSessionArrangement(sessionId, token, body.proposal);
+      return NextResponse.json(res, { status: 200 });
+    }
+
+    if (body.action === 'review-arrangement') {
+      if (!body.review || !body.review.proposalId || !body.review.decision) {
+        return NextResponse.json(
+          {
+            error: 'review.proposalId and review.decision are required.',
+            code: 'INVALID_INPUT',
+          },
+          { status: 400 }
+        );
+      }
+      const updated = reviewLiveSessionArrangement(sessionId, token, body.review);
       return NextResponse.json({ session: updated }, { status: 200 });
     }
 

@@ -4,13 +4,16 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import type { SongRecord } from '@/types/song';
 import type {
+  ArrangementInstrumentScope,
   EmailNotificationRecord,
   GroupMember,
   RemovedGlobalSongRecord,
   SongSubmission,
   SubmissionStatus,
   TeamActiveSetlist,
+  TeamArrangementSuggestion,
   TeamSetlistSuggestion,
+  TeamSongArrangement,
   UserCloudSyncPayload,
   UserProfile,
   UserRole,
@@ -1154,6 +1157,8 @@ export function updateWorshipGroupBranding(
     members?: GroupMember[];
     activeSetlist?: TeamActiveSetlist | null;
     suggestedSetlists?: TeamSetlistSuggestion[];
+    songArrangements?: Record<string, TeamSongArrangement>;
+    suggestedArrangements?: TeamArrangementSuggestion[];
     activeLiveSessionId?: string | null;
     activeLiveSessionJoinCode?: string | null;
     activeLiveSessionExpiresAt?: string | null;
@@ -1284,6 +1289,15 @@ export function updateWorshipGroupBranding(
     group.suggestedSetlists = mergedList.sort(
       (a, b) => new Date(b.suggestedAt || 0).getTime() - new Date(a.suggestedAt || 0).getTime()
     );
+  }
+  if (updates.songArrangements !== undefined && updates.songArrangements && typeof updates.songArrangements === 'object') {
+    group.songArrangements = {
+      ...(group.songArrangements || {}),
+      ...updates.songArrangements,
+    };
+  }
+  if (updates.suggestedArrangements !== undefined && Array.isArray(updates.suggestedArrangements)) {
+    group.suggestedArrangements = updates.suggestedArrangements.slice(0, 50);
   }
 
   saveStore(store);
@@ -1611,6 +1625,342 @@ export function deleteSetlistSuggestion(
   saveStore(store);
 
   return { ok: true, group };
+}
+
+export function proposeSongArrangementForGroup(
+  userId: string,
+  groupId: string,
+  data: {
+    songId: string;
+    songTitle: string;
+    instrument: ArrangementInstrumentScope;
+    chordPro: string;
+    arrangementNote?: string;
+    clientGroupFallback?: Partial<WorshipGroup>;
+  }
+): {
+  ok: boolean;
+  group?: WorshipGroup;
+  suggestion?: TeamArrangementSuggestion;
+  error?: string;
+} {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  let group = store.groups[groupId] || getWorshipGroup(groupId);
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+
+  if (!group) {
+    const now = new Date().toISOString();
+    group = {
+      id: groupId,
+      name: data.clientGroupFallback?.name || user?.profile.groupName || 'Worship Team',
+      churchName: data.clientGroupFallback?.churchName || user?.profile.churchName || 'Church',
+      ownerId: data.clientGroupFallback?.ownerId || userId,
+      inviteCode:
+        data.clientGroupFallback?.inviteCode ||
+        (groupId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'TEAM1234').toUpperCase(),
+      createdAt: now,
+      members: data.clientGroupFallback?.members || [
+        {
+          userId,
+          email: user?.profile.email || '',
+          displayName: user?.profile.displayName || 'Musician',
+          role: 'member',
+          joinedAt: now,
+        },
+      ],
+      songArrangements: data.clientGroupFallback?.songArrangements || {},
+      suggestedArrangements: data.clientGroupFallback?.suggestedArrangements || [],
+    };
+    store.groups[groupId] = group;
+  }
+
+  const isMember =
+    group.ownerId === userId ||
+    user?.profile.groupId === groupId ||
+    group.members.some((m) => m.userId === userId);
+
+  if (!isMember) {
+    return {
+      ok: false,
+      error: 'You must be a member of this worship team to propose an arrangement.',
+    };
+  }
+
+  if (!data.songId || !data.chordPro || !data.chordPro.trim()) {
+    return { ok: false, error: 'Song ID and ChordPro content are required.' };
+  }
+
+  const now = new Date().toISOString();
+  const memberEntry = group.members.find((m) => m.userId === userId);
+  const displayName =
+    memberEntry?.displayName || user?.profile.displayName || 'Band Member';
+  const suggestedByInstrument =
+    memberEntry?.instrument || user?.profile.instrument || data.instrument;
+
+  const suggestionId = `arr_sugg_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const validInstruments: ArrangementInstrumentScope[] = [
+    'general',
+    'guitar',
+    'keyboard',
+    'bass',
+  ];
+  const instrument: ArrangementInstrumentScope = validInstruments.includes(
+    data.instrument
+  )
+    ? data.instrument
+    : 'general';
+
+  const newSuggestion: TeamArrangementSuggestion = {
+    id: suggestionId,
+    songId: data.songId.trim(),
+    songTitle: data.songTitle?.trim() || data.songId.trim(),
+    instrument,
+    chordPro: data.chordPro,
+    arrangementNote: data.arrangementNote?.trim() || undefined,
+    suggestedBy: userId,
+    suggestedByName: displayName,
+    suggestedByInstrument,
+    suggestedAt: now,
+    status: 'pending',
+  };
+
+  const existing = Array.isArray(group.suggestedArrangements)
+    ? group.suggestedArrangements
+    : [];
+  // Supersede any older pending proposal by the same user for the same song + instrument
+  const filteredExisting = existing.filter(
+    (s) =>
+      !(
+        s.status === 'pending' &&
+        s.suggestedBy === userId &&
+        s.songId === newSuggestion.songId &&
+        s.instrument === newSuggestion.instrument
+      )
+  );
+  group.suggestedArrangements = [newSuggestion, ...filteredExisting].slice(0, 50);
+
+  store.groups[groupId] = group;
+  saveStore(store);
+
+  return { ok: true, group, suggestion: newSuggestion };
+}
+
+export function reviewSongArrangementSuggestion(
+  userId: string,
+  groupId: string,
+  suggestionId: string,
+  action: 'approve' | 'decline',
+  options?: {
+    targetScope?: ArrangementInstrumentScope;
+    reviewNote?: string;
+    clientGroupFallback?: Partial<WorshipGroup>;
+    fallbackSuggestion?: TeamArrangementSuggestion;
+  }
+): {
+  ok: boolean;
+  group?: WorshipGroup;
+  approvedArrangement?: TeamSongArrangement;
+  suggestion?: TeamArrangementSuggestion;
+  error?: string;
+} {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  let group = store.groups[groupId] || getWorshipGroup(groupId);
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+
+  if (!group) {
+    const now = new Date().toISOString();
+    group = {
+      id: groupId,
+      name:
+        options?.clientGroupFallback?.name ||
+        user?.profile.groupName ||
+        'Worship Team',
+      churchName:
+        options?.clientGroupFallback?.churchName ||
+        user?.profile.churchName ||
+        'Church',
+      ownerId: options?.clientGroupFallback?.ownerId || userId,
+      inviteCode:
+        options?.clientGroupFallback?.inviteCode ||
+        (groupId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'TEAM1234').toUpperCase(),
+      createdAt: now,
+      members: options?.clientGroupFallback?.members || [
+        {
+          userId,
+          email: user?.profile.email || '',
+          displayName: user?.profile.displayName || 'Worship Leader',
+          role: 'leader',
+          joinedAt: now,
+        },
+      ],
+      songArrangements: options?.clientGroupFallback?.songArrangements || {},
+      suggestedArrangements:
+        options?.clientGroupFallback?.suggestedArrangements ||
+        (options?.fallbackSuggestion ? [options.fallbackSuggestion] : []),
+    };
+    store.groups[groupId] = group;
+  }
+
+  if (!Array.isArray(group.suggestedArrangements)) {
+    group.suggestedArrangements =
+      options?.clientGroupFallback?.suggestedArrangements ||
+      (options?.fallbackSuggestion ? [options.fallbackSuggestion] : []);
+  }
+
+  let idx = group.suggestedArrangements.findIndex((s) => s.id === suggestionId);
+  if (
+    idx === -1 &&
+    options?.fallbackSuggestion &&
+    options.fallbackSuggestion.id === suggestionId
+  ) {
+    group.suggestedArrangements.unshift(options.fallbackSuggestion);
+    idx = 0;
+  }
+
+  if (idx === -1) {
+    return { ok: false, error: 'Arrangement suggestion not found.' };
+  }
+
+  const memberRecord = group.members.find((m) => m.userId === userId);
+  const isExplicitMember =
+    user?.profile.groupRole === 'member' || memberRecord?.role === 'member';
+  const isLeader =
+    !isExplicitMember &&
+    (group.ownerId === userId ||
+      user?.profile.role === 'admin' ||
+      user?.profile.groupRole === 'leader' ||
+      memberRecord?.role === 'leader');
+
+  if (!isLeader) {
+    return {
+      ok: false,
+      error:
+        'Only the worship team leader or owner can approve or decline song arrangement proposals.',
+    };
+  }
+
+  const target = { ...group.suggestedArrangements[idx] };
+  const now = new Date().toISOString();
+  const leaderName = user?.profile.displayName || 'Worship Leader';
+
+  let approvedArrangement: TeamSongArrangement | undefined;
+
+  if (action === 'approve') {
+    const scope: ArrangementInstrumentScope =
+      options?.targetScope ?? target.instrument ?? 'general';
+    target.status = 'approved';
+    target.approvedScope = scope;
+    target.reviewedBy = userId;
+    target.reviewedByName = leaderName;
+    target.reviewedAt = now;
+    if (options?.reviewNote?.trim()) {
+      target.reviewNote = options.reviewNote.trim();
+    }
+
+    const compositeKey = `${target.songId}:${scope}`;
+    approvedArrangement = {
+      id: compositeKey,
+      songId: target.songId,
+      songTitle: target.songTitle,
+      instrument: scope,
+      chordPro: target.chordPro,
+      arrangementNote: target.arrangementNote,
+      updatedAt: now,
+      updatedBy: target.suggestedBy,
+      updatedByName: `${target.suggestedByName} (Approved by ${leaderName})`,
+    };
+
+    if (!group.songArrangements || typeof group.songArrangements !== 'object') {
+      group.songArrangements = {};
+    }
+    group.songArrangements[compositeKey] = approvedArrangement;
+  } else {
+    target.status = 'declined';
+    target.reviewedBy = userId;
+    target.reviewedByName = leaderName;
+    target.reviewedAt = now;
+    if (options?.reviewNote?.trim()) {
+      target.reviewNote = options.reviewNote.trim();
+    }
+  }
+
+  group.suggestedArrangements[idx] = target;
+  store.groups[groupId] = group;
+  saveStore(store);
+
+  return {
+    ok: true,
+    group,
+    approvedArrangement,
+    suggestion: target,
+  };
+}
+
+export function saveGroupSongArrangementDirect(
+  userId: string,
+  groupId: string,
+  input: {
+    songId: string;
+    songTitle?: string;
+    instrument: ArrangementInstrumentScope;
+    chordPro: string;
+    arrangementNote?: string;
+  }
+): {
+  ok: boolean;
+  group?: WorshipGroup;
+  arrangement?: TeamSongArrangement;
+  error?: string;
+} {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  const group = store.groups[groupId] || getWorshipGroup(groupId);
+  if (!group) {
+    return { ok: false, error: 'Worship group not found.' };
+  }
+
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+  const memberRecord = group.members.find((m) => m.userId === userId);
+  const isLeader =
+    group.ownerId === userId ||
+    user?.profile.role === 'admin' ||
+    user?.profile.groupRole === 'leader' ||
+    memberRecord?.role === 'leader';
+
+  if (!isLeader) {
+    return {
+      ok: false,
+      error: 'Only the worship team leader can directly publish church arrangements.',
+    };
+  }
+
+  const now = new Date().toISOString();
+  const compositeKey = `${input.songId}:${input.instrument}`;
+  const arrangement: TeamSongArrangement = {
+    id: compositeKey,
+    songId: input.songId,
+    songTitle: input.songTitle,
+    instrument: input.instrument,
+    chordPro: input.chordPro,
+    arrangementNote: input.arrangementNote,
+    updatedAt: now,
+    updatedBy: userId,
+    updatedByName: user?.profile.displayName || 'Worship Leader',
+  };
+
+  if (!group.songArrangements || typeof group.songArrangements !== 'object') {
+    group.songArrangements = {};
+  }
+  group.songArrangements[compositeKey] = arrangement;
+  store.groups[groupId] = group;
+  saveStore(store);
+
+  return { ok: true, group, arrangement };
 }
 
 export function findWorshipGroupByCode(code: string): WorshipGroup | null {

@@ -53,6 +53,16 @@ interface LiveArrangementEditorModalProps {
   onRevertToOriginal: (songId: string) => Promise<void> | void;
   /** Saves a copy of this custom arrangement into the user's personal custom songs library */
   onSaveCopyToMySongs?: (customSong: SongRecord) => Promise<void> | void;
+  /** Custom primary button label (defaults to "Broadcast Live to Band") */
+  primaryActionLabel?: string;
+  /** Optional callback to propose this arrangement to the Worship Leader for approval */
+  onProposeToLeader?: (payload: {
+    songId: string;
+    chordPro: string;
+    arrangementNote?: string;
+  }) => Promise<void> | void;
+  /** Optional custom label for the Propose to Leader button */
+  proposeActionLabel?: string;
 }
 
 interface EditableSectionDraft {
@@ -150,6 +160,9 @@ export function LiveArrangementEditorModal({
   onBroadcastOverride,
   onRevertToOriginal,
   onSaveCopyToMySongs,
+  primaryActionLabel,
+  onProposeToLeader,
+  proposeActionLabel,
 }: LiveArrangementEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'visual' | 'chordpro'>('visual');
   const [sectionsDraft, setSectionsDraft] = useState<EditableSectionDraft[]>([]);
@@ -164,6 +177,7 @@ export function LiveArrangementEditorModal({
   const rawChordProTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const rawChordProCursorRef = useRef<number | null>(null);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+  const [isProposing, setIsProposing] = useState(false);
   const [savedCopySuccess, setSavedCopySuccess] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
 
@@ -260,6 +274,30 @@ export function LiveArrangementEditorModal({
       onClose();
     } finally {
       setIsBroadcasting(false);
+    }
+  };
+
+  const handleProposeToLeaderClick = async () => {
+    if (!onProposeToLeader) return;
+    setParseError(null);
+    const editedDisplayed = buildCurrentEditedDisplayedSong();
+    if (!editedDisplayed) return;
+
+    setIsProposing(true);
+    try {
+      const baseChordPro = convertDisplayedSongToBaseChordPro(
+        editedDisplayed,
+        baseSong,
+        displayedSemitones
+      );
+      await onProposeToLeader({
+        songId: baseSong.id,
+        chordPro: baseChordPro,
+        arrangementNote: arrangementNote.trim() || undefined,
+      });
+      onClose();
+    } finally {
+      setIsProposing(false);
     }
   };
 
@@ -779,7 +817,7 @@ export function LiveArrangementEditorModal({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={onClose}
@@ -787,9 +825,25 @@ export function LiveArrangementEditorModal({
             >
               Cancel
             </button>
+            {onProposeToLeader && (
+              <button
+                type="button"
+                disabled={isProposing || isBroadcasting}
+                onClick={handleProposeToLeaderClick}
+                data-testid="propose-arrangement-to-leader-btn"
+                className="px-4 py-2.5 rounded-xl border border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500 hover:text-[#0c0c10] font-bold text-xs sm:text-sm inline-flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>
+                  {isProposing
+                    ? 'Sending Proposal...'
+                    : proposeActionLabel || 'Propose to Worship Leader'}
+                </span>
+              </button>
+            )}
             <button
               type="button"
-              disabled={isBroadcasting}
+              disabled={isBroadcasting || isProposing}
               onClick={handleBroadcastLive}
               data-testid="broadcast-live-arrangement-btn"
               className="px-5 py-2.5 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-xs sm:text-sm shadow-md hover:opacity-95 inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
@@ -797,8 +851,8 @@ export function LiveArrangementEditorModal({
               <Radio className="w-4 h-4 animate-pulse" />
               <span>
                 {isBroadcasting
-                  ? 'Broadcasting to Band...'
-                  : 'Broadcast Live to Band'}
+                  ? 'Saving...'
+                  : primaryActionLabel || 'Broadcast Live to Band'}
               </span>
             </button>
           </div>

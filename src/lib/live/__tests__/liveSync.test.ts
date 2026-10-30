@@ -11,6 +11,8 @@ import {
   getLiveSessionSnapshot,
   joinLiveSession,
   LiveSyncError,
+  proposeLiveSessionArrangement,
+  reviewLiveSessionArrangement,
   subscribeToLiveSession,
   transferSessionLeadership,
   updateLiveSessionState,
@@ -22,12 +24,18 @@ import {
   convertDisplayedSongToBaseChordPro,
   formatSongLineForQuickEdit,
   insertChordAtLyricPositionInSong,
+  makeArrangementCompositeKey,
   nudgeChordByWordInSongSectionLine,
   replaceChordInSongSectionLine,
+  resolveLayeredSongArrangement,
   resolveSongWithLiveOverride,
   splitSegmentTextIntoTappableWords,
   updateLineInSongSection,
 } from '../../chordpro/liveArrangement.ts';
+import {
+  proposeSongArrangementForGroup,
+  reviewSongArrangementSuggestion,
+} from '../../cloud/cloudDb.ts';
 import { transposeSong } from '../../music/transposition.ts';
 import {
   getBassGuidanceForChord,
@@ -1008,5 +1016,307 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
       '[G]We gather in Your light'
     );
     assert.equal(afterRemoveMiddle.sections[0].lines[0].segments.length, 1);
+  });
+
+  it('23. Scenario: Guitarist rehearses ahead of time with extra guitar chords -> joins Leader Live Sync -> personal guitar arrangement carries over (transposed to Leader key) without affecting Bass or Keyboard', () => {
+    const baseSong = getSongById('song-01')!; // Original Key: G
+    const secId = baseSong.sections[0].id;
+
+    // 1. Guitarist rehearses ahead of time at home in Key of G and adds passing chords to Verse 1
+    const guitaristEditedSong = updateLineInSongSection(
+      baseSong,
+      secId,
+      0,
+      '[G]Morning [D/F#]light is [Em7]breaking [Cadd9]through',
+      'Acoustic fingerpicking intro'
+    );
+    const guitaristBaseChordPro = convertDisplayedSongToBaseChordPro(
+      guitaristEditedSong,
+      baseSong,
+      0
+    );
+
+    const personalArrangements = {
+      [makeArrangementCompositeKey('song-01', 'guitar')]: {
+        id: 'song-01:guitar',
+        songId: 'song-01',
+        songTitle: baseSong.title,
+        instrument: 'guitar' as const,
+        chordPro: guitaristBaseChordPro,
+        arrangementNote: 'Guitar fingerpicking passing chords',
+        updatedAt: new Date().toISOString(),
+        updatedBy: 'guitarist-1',
+        updatedByName: 'Brother Mark (Guitar)',
+      },
+    };
+
+    // 2. Sunday Morning: Worship Leader starts Live Sync in Key of A (+2 semitones from G)
+    const created = createLiveSession({
+      title: 'Sunday Morning Service',
+      leaderName: 'Pastor Joy',
+      initialSongId: 'song-01',
+      initialSemitones: 2, // Key of A
+    });
+
+    // 3. Guitarist joins Live Sync with instrument = 'guitar'
+    const guitaristLayered = resolveLayeredSongArrangement({
+      baseSong,
+      instrument: 'guitar',
+      personalArrangements,
+      liveInstrumentOverrides:
+        created.session.sharedState.instrumentArrangementOverrides,
+      liveBandOverrides: created.session.sharedState.songArrangementOverrides,
+    });
+    assert.equal(guitaristLayered.activeLayer, 'personal-instrument');
+    assert.equal(guitaristLayered.hasPersonalInstrumentOverride, true);
+
+    // Transpose guitarist's carried-over arrangement to the Leader's official key (+2 = Key of A)
+    const { song: guitaristLiveView, displayedKey: guitaristKey } =
+      transposeSong(
+        guitaristLayered.song,
+        created.session.sharedState.officialSemitones,
+        'auto'
+      );
+    assert.equal(guitaristKey, 'A');
+    // G -> A, D/F# -> E/G#, Em7 -> F#m7, Cadd9 -> Dadd9
+    const guitarLine0 = guitaristLiveView.sections[0].lines[0];
+    assert.equal(
+      formatSongLineForQuickEdit(guitarLine0),
+      '[A]Morning [E/G#]light is [F#m7]breaking [Dadd9]through'
+    );
+
+    // 4. Meanwhile, Bassist (`instrument: 'bass'`) and Keyboardist (`instrument: 'keyboard'`) in the same Live Sync
+    // are completely unaffected by the Guitarist's personal rehearsal chords!
+    const bassistLayered = resolveLayeredSongArrangement({
+      baseSong,
+      instrument: 'bass',
+      personalArrangements,
+      liveInstrumentOverrides:
+        created.session.sharedState.instrumentArrangementOverrides,
+      liveBandOverrides: created.session.sharedState.songArrangementOverrides,
+    });
+    assert.equal(bassistLayered.activeLayer, 'catalog');
+    assert.notEqual(
+      formatSongLineForQuickEdit(bassistLayered.song.sections[0].lines[0]),
+      formatSongLineForQuickEdit(guitaristLayered.song.sections[0].lines[0])
+    );
+  });
+
+  it('24. Scenario: Guitarist proposes arrangement to Leader -> Leader approves for Guitar Only vs Entire Band', () => {
+    const baseSong = getSongById('song-01')!;
+    const created = createLiveSession({
+      title: 'Rehearsal Proposal Flow',
+      leaderName: 'Leader Sarah',
+      initialSongId: 'song-01',
+    });
+
+    const guitaristJoin = joinLiveSession({
+      joinCode: created.session.joinCode,
+      participantName: 'Mark (Guitar)',
+      instrument: 'guitar',
+    });
+    const bassistJoin = joinLiveSession({
+      joinCode: created.session.joinCode,
+      participantName: 'Luke (Bass)',
+      instrument: 'bass',
+    });
+
+    const proposedGuitarChordPro = [
+      '{title: Song 1}',
+      '{key: G}',
+      '',
+      'Verse 1:',
+      '[G]Guitar [D/F#]passing [Em7]chords [Cadd9]here',
+    ].join('\n');
+
+    // 1. Guitarist proposes their guitar arrangement to the Worship Leader
+    const { session: afterPropose, proposal } = proposeLiveSessionArrangement(
+      created.session.sessionId,
+      guitaristJoin.participantToken,
+      {
+        songId: 'song-01',
+        songTitle: baseSong.title,
+        instrument: 'guitar',
+        chordPro: proposedGuitarChordPro,
+        arrangementNote: 'Added D/F# and Em7 passing chords',
+      }
+    );
+
+    assert.equal(afterPropose.sharedState.arrangementProposals?.length, 1);
+    assert.equal(proposal.status, 'pending');
+    assert.equal(proposal.instrument, 'guitar');
+
+    // 2. Non-leader member (Bassist) cannot approve the proposal (403 Forbidden)
+    assert.throws(
+      () =>
+        reviewLiveSessionArrangement(
+          created.session.sessionId,
+          bassistJoin.participantToken,
+          {
+            proposalId: proposal.id,
+            decision: 'approve',
+            approvedScope: 'guitar',
+          }
+        ),
+      (err: unknown) =>
+        err instanceof LiveSyncError && err.code === 'FORBIDDEN_NOT_LEADER'
+    );
+
+    // 3. Worship Leader approves the proposal for 'guitar' ONLY
+    const afterGuitarApprove = reviewLiveSessionArrangement(
+      created.session.sessionId,
+      created.participantToken,
+      {
+        proposalId: proposal.id,
+        decision: 'approve',
+        approvedScope: 'guitar',
+      }
+    );
+
+    // Guitar override is now active in `instrumentArrangementOverrides['song-01:guitar']`,
+    // while `songArrangementOverrides['song-01']` (general band chart) is still undefined!
+    assert.ok(
+      afterGuitarApprove.sharedState.instrumentArrangementOverrides?.[
+        'song-01:guitar'
+      ]
+    );
+    assert.equal(
+      afterGuitarApprove.sharedState.songArrangementOverrides?.['song-01'],
+      undefined
+    );
+
+    // Any guitarist in the session now receives the approved guitar chart, while Bass still sees the standard band chart!
+    const guitarView = resolveLayeredSongArrangement({
+      baseSong,
+      instrument: 'guitar',
+      liveInstrumentOverrides:
+        afterGuitarApprove.sharedState.instrumentArrangementOverrides,
+      liveBandOverrides:
+        afterGuitarApprove.sharedState.songArrangementOverrides,
+    });
+    assert.equal(guitarView.activeLayer, 'live-instrument');
+    assert.equal(
+      formatSongLineForQuickEdit(guitarView.song.sections[0].lines[0]),
+      '[G]Guitar [D/F#]passing [Em7]chords [Cadd9]here'
+    );
+
+    const bassView = resolveLayeredSongArrangement({
+      baseSong,
+      instrument: 'bass',
+      liveInstrumentOverrides:
+        afterGuitarApprove.sharedState.instrumentArrangementOverrides,
+      liveBandOverrides:
+        afterGuitarApprove.sharedState.songArrangementOverrides,
+    });
+    assert.equal(bassView.activeLayer, 'catalog');
+
+    // 4. Now Leader decides to approve the proposal for 'general' (Entire Band)
+    const afterBandApprove = reviewLiveSessionArrangement(
+      created.session.sessionId,
+      created.participantToken,
+      {
+        proposalId: proposal.id,
+        decision: 'approve',
+        approvedScope: 'general',
+      }
+    );
+
+    assert.ok(
+      afterBandApprove.sharedState.songArrangementOverrides?.['song-01']
+    );
+    const bassViewAfterBandApprove = resolveLayeredSongArrangement({
+      baseSong,
+      instrument: 'bass',
+      liveInstrumentOverrides:
+        afterBandApprove.sharedState.instrumentArrangementOverrides,
+      liveBandOverrides:
+        afterBandApprove.sharedState.songArrangementOverrides,
+    });
+    assert.equal(bassViewAfterBandApprove.activeLayer, 'live-band');
+    assert.equal(
+      formatSongLineForQuickEdit(
+        bassViewAfterBandApprove.song.sections[0].lines[0]
+      ),
+      '[G]Guitar [D/F#]passing [Em7]chords [Cadd9]here'
+    );
+  });
+
+  it('25. Scenario: Church Group scoping isolates arrangements to a specific Church Group without affecting other churches', () => {
+    const baseSong = getSongById('song-01')!;
+    const churchAId = `group_church_a_${Date.now()}`;
+    const churchBId = `group_church_b_${Date.now()}`;
+
+    // 1. Guitarist in Church A proposes a custom arrangement to Church A's leader
+    const propRes = proposeSongArrangementForGroup('leader-a', churchAId, {
+      songId: 'song-01',
+      songTitle: baseSong.title,
+      instrument: 'guitar',
+      chordPro: [
+        '{title: Song 1}',
+        '{key: G}',
+        '',
+        'Verse 1:',
+        '[G]Church A [Bm7]exclusive [C]guitar [D]chart',
+      ].join('\n'),
+      arrangementNote: 'Church A acoustic team arrangement',
+      clientGroupFallback: {
+        id: churchAId,
+        name: 'Grace Fellowship Worship',
+        churchName: 'Grace Fellowship',
+        ownerId: 'leader-a',
+        inviteCode: 'GRACE1',
+        members: [
+          {
+            userId: 'leader-a',
+            email: 'leader@grace.org',
+            displayName: 'Pastor John',
+            role: 'leader',
+            joinedAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+    assert.equal(propRes.ok, true);
+    assert.ok(propRes.suggestion);
+
+    // 2. Leader of Church A approves it for Church A's guitarists
+    const revRes = reviewSongArrangementSuggestion(
+      'leader-a',
+      churchAId,
+      propRes.suggestion.id,
+      'approve',
+      { targetScope: 'guitar' }
+    );
+    assert.equal(revRes.ok, true);
+    assert.ok(revRes.group?.songArrangements?.['song-01:guitar']);
+
+    // 3. When Church A starts a Live Sync session, Church A's saved guitar arrangement is automatically loaded!
+    const churchALive = createLiveSession({
+      title: 'Grace Fellowship Sunday Live',
+      leaderName: 'Pastor John',
+      initialSongId: 'song-01',
+      groupId: churchAId,
+    });
+    assert.ok(
+      churchALive.session.sharedState.instrumentArrangementOverrides?.[
+        'song-01:guitar'
+      ]
+    );
+
+    // 4. Meanwhile, Church B starts a Live Sync session for the same song ('song-01') -> completely unaffected!
+    const churchBLive = createLiveSession({
+      title: 'Hope City Church Sunday Live',
+      leaderName: 'Pastor Paul',
+      initialSongId: 'song-01',
+      groupId: churchBId,
+    });
+    assert.equal(
+      churchBLive.session.sharedState.instrumentArrangementOverrides,
+      undefined
+    );
+    assert.equal(
+      churchBLive.session.sharedState.songArrangementOverrides,
+      undefined
+    );
   });
 });
