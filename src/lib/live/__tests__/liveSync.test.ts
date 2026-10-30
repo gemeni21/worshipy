@@ -35,6 +35,7 @@ import {
 } from '../../chordpro/liveArrangement.ts';
 import {
   createWorshipGroup,
+  deleteSongArrangementSuggestion,
   getApprovedGlobalSongs,
   getWorshipGroup,
   proposeSongArrangementForGroup,
@@ -1596,6 +1597,83 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     assert.equal(
       getApprovedGlobalSongs().some((s) => s.id === `global_${baseSong.id}`),
       true
+    );
+  });
+
+  it('28. Scenario: Member requests approval from Leader -> Leader declines -> Member can close/dismiss the declined proposal so it is not stuck', () => {
+    const leaderUserId = `leader_rachel_${Date.now()}`;
+    const memberUserId = `member_jordan_${Date.now()}`;
+    const groupId = `group_decline_${Date.now()}`;
+
+    // 1. Member submits a chord/lyric arrangement proposal to the Leader
+    const proposed = proposeSongArrangementForGroup(memberUserId, groupId, {
+      songId: 'song-01',
+      songTitle: 'Song 1',
+      instrument: 'guitar',
+      chordPro: [
+        '{title: Song 1}',
+        '{key: G}',
+        '',
+        'Verse 1:',
+        '[G]Jordan [Cadd9]guitar [D]chords',
+      ].join('\n'),
+      arrangementNote: 'Added Cadd9 passing chord',
+      clientGroupFallback: {
+        id: groupId,
+        name: 'Grace Harbor Worship Team',
+        churchName: 'Grace Harbor Church',
+        ownerId: leaderUserId,
+        inviteCode: 'GRACE1',
+        members: [
+          {
+            userId: leaderUserId,
+            email: 'rachel@graceharbor.org',
+            displayName: 'Pastor Rachel',
+            role: 'leader',
+            joinedAt: new Date().toISOString(),
+          },
+          {
+            userId: memberUserId,
+            email: 'jordan@graceharbor.org',
+            displayName: 'Jordan (Guitar)',
+            role: 'member',
+            instrument: 'Guitar',
+            joinedAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+    assert.equal(proposed.ok, true);
+    assert.ok(proposed.suggestion);
+    const suggestionId = proposed.suggestion.id;
+
+    // 2. Leader declines the proposal with feedback
+    const declined = reviewSongArrangementSuggestion(
+      leaderUserId,
+      groupId,
+      suggestionId,
+      'decline',
+      {
+        reviewNote: 'Let us stick with the standard G to C progression this Sunday.',
+      }
+    );
+    assert.equal(declined.ok, true);
+    assert.equal(declined.suggestion?.status, 'declined');
+    assert.equal(
+      declined.suggestion?.reviewNote,
+      'Let us stick with the standard G to C progression this Sunday.'
+    );
+
+    // 3. Member clicks the Close button on the declined proposal -> cleanly removes it so it is not stuck
+    const closed = deleteSongArrangementSuggestion(
+      memberUserId,
+      groupId,
+      suggestionId
+    );
+    assert.equal(closed.ok, true);
+    assert.equal(
+      closed.group?.suggestedArrangements?.some((s) => s.id === suggestionId),
+      false
     );
   });
 });

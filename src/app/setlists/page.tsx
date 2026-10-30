@@ -458,6 +458,24 @@ export default function SetlistsPage() {
                             </>
                           )}
 
+                          {!isOwnSuggestion && sug.status !== 'pending' && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const res = await deleteTeamSetlistSuggestion(activeGroup.id, sug.id);
+                                if (res.ok) {
+                                  await refreshActiveGroup();
+                                  setStatusMessage('Proposal closed.');
+                                }
+                              }}
+                              className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                              title="Close proposal"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Close</span>
+                            </button>
+                          )}
+
                           {/* Submitter viewing own suggestion */}
                           {isOwnSuggestion && (
                             <>
@@ -477,10 +495,50 @@ export default function SetlistsPage() {
                                 </button>
                               )}
                               {sug.status === 'approved' && (
-                                <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>Approved as Official Lineup</span>
-                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1">
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>Approved as Official Lineup</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const res = await deleteTeamSetlistSuggestion(activeGroup.id, sug.id);
+                                      if (res.ok) {
+                                        await refreshActiveGroup();
+                                        setStatusMessage('Proposal closed.');
+                                      }
+                                    }}
+                                    className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                                    title="Close this proposal"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Close</span>
+                                  </button>
+                                </div>
+                              )}
+                              {sug.status === 'declined' && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-semibold text-rose-400 flex items-center gap-1">
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Declined</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const res = await deleteTeamSetlistSuggestion(activeGroup.id, sug.id);
+                                      if (res.ok) {
+                                        await refreshActiveGroup();
+                                        setStatusMessage('Declined proposal closed.');
+                                      }
+                                    }}
+                                    className="py-1.5 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                                    title="Close declined proposal"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                    <span>Close</span>
+                                  </button>
+                                </div>
                               )}
                             </>
                           )}

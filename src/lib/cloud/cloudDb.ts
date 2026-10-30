@@ -1900,6 +1900,80 @@ export function reviewSongArrangementSuggestion(
   };
 }
 
+export function deleteSongArrangementSuggestion(
+  userId: string,
+  groupId: string,
+  suggestionId: string,
+  clientGroupFallback?: Partial<WorshipGroup>
+): {
+  ok: boolean;
+  group?: WorshipGroup;
+  error?: string;
+} {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  let group = store.groups[groupId] || getWorshipGroup(groupId);
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+
+  if (!group) {
+    const now = new Date().toISOString();
+    group = {
+      id: groupId,
+      name: clientGroupFallback?.name || user?.profile.groupName || 'Worship Team',
+      churchName:
+        clientGroupFallback?.churchName || user?.profile.churchName || 'Church',
+      ownerId: clientGroupFallback?.ownerId || userId,
+      inviteCode:
+        clientGroupFallback?.inviteCode ||
+        (groupId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'TEAM1234').toUpperCase(),
+      createdAt: now,
+      members: clientGroupFallback?.members || [],
+      songArrangements: clientGroupFallback?.songArrangements || {},
+      suggestedArrangements: clientGroupFallback?.suggestedArrangements || [],
+    };
+    store.groups[groupId] = group;
+  }
+
+  if (!Array.isArray(group.suggestedArrangements)) {
+    group.suggestedArrangements = clientGroupFallback?.suggestedArrangements || [];
+  }
+
+  const suggestion = group.suggestedArrangements.find((s) => s.id === suggestionId);
+  if (!suggestion) {
+    return { ok: true, group };
+  }
+
+  const memberRecord = group.members.find((m) => m.userId === userId);
+  const isExplicitMember =
+    user?.profile.groupRole === 'member' || memberRecord?.role === 'member';
+  const isLeader =
+    !isExplicitMember &&
+    (group.ownerId === userId ||
+      user?.profile.role === 'admin' ||
+      user?.profile.groupRole === 'leader' ||
+      memberRecord?.role === 'leader');
+
+  const isSubmitter =
+    suggestion.suggestedBy === userId || suggestion.suggestedBy === 'local-user';
+
+  if (!isLeader && !isSubmitter) {
+    return {
+      ok: false,
+      error:
+        'Only the proposal submitter or worship team leader can close or remove this arrangement proposal.',
+    };
+  }
+
+  group.suggestedArrangements = group.suggestedArrangements.filter(
+    (s) => s.id !== suggestionId
+  );
+  store.groups[groupId] = group;
+  saveStore(store);
+
+  return { ok: true, group };
+}
+
 export function saveGroupSongArrangementDirect(
   userId: string,
   groupId: string,

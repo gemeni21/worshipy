@@ -63,6 +63,12 @@ interface LiveArrangementEditorModalProps {
   }) => Promise<void> | void;
   /** Optional custom label for the Propose to Leader button */
   proposeActionLabel?: string;
+  /** Optional status of the member's latest proposal to the Worship Leader */
+  latestProposalStatus?: 'pending' | 'approved' | 'declined';
+  /** Optional feedback note from the Worship Leader */
+  latestProposalReviewNote?: string;
+  /** Optional callback to close/dismiss the member's proposal status notification */
+  onDismissProposal?: () => Promise<void> | void;
 }
 
 interface EditableSectionDraft {
@@ -163,6 +169,9 @@ export function LiveArrangementEditorModal({
   primaryActionLabel,
   onProposeToLeader,
   proposeActionLabel,
+  latestProposalStatus,
+  latestProposalReviewNote,
+  onDismissProposal,
 }: LiveArrangementEditorModalProps) {
   const [activeTab, setActiveTab] = useState<'visual' | 'chordpro'>('visual');
   const [sectionsDraft, setSectionsDraft] = useState<EditableSectionDraft[]>([]);
@@ -527,6 +536,40 @@ export function LiveArrangementEditorModal({
               className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-xs text-rose-400 font-medium"
             >
               {parseError}
+            </div>
+          )}
+
+          {latestProposalStatus === 'declined' && (
+            <div
+              data-testid="modal-declined-proposal-banner"
+              className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs"
+            >
+              <div className="space-y-0.5">
+                <div className="font-bold text-rose-300 flex items-center gap-1.5">
+                  <X className="w-4 h-4 text-rose-400" />
+                  <span>Proposal Declined by Worship Leader</span>
+                </div>
+                <p className="text-[var(--text-secondary)]">
+                  {latestProposalReviewNote
+                    ? `Leader feedback: “${latestProposalReviewNote}”`
+                    : 'Your personal rehearsal chords are still saved for you. You can close this notice or adjust your chords and resubmit.'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {onDismissProposal && (
+                  <button
+                    type="button"
+                    data-testid="modal-close-declined-proposal-btn"
+                    onClick={async () => {
+                      await onDismissProposal();
+                    }}
+                    className="px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Close</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

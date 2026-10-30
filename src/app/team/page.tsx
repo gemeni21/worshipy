@@ -53,6 +53,7 @@ import {
   reviewTeamSetlistSuggestion,
   deleteTeamSetlistSuggestion,
   reviewTeamSongArrangement,
+  dismissTeamSongArrangement,
   getDismissedSuggestionIds,
   recordDismissedSuggestionId,
 } from '@/lib/team/teamService';
@@ -323,6 +324,34 @@ export default function TeamHubPage() {
       }
     } catch (err) {
       setSuggestionFeedbackMsg(err instanceof Error ? err.message : 'Error dismissing proposal');
+    }
+  };
+
+  const handleDismissArrangementProposal = async (suggestionId: string) => {
+    if (!currentTeam?.id) return;
+    recordDismissedSuggestionId(suggestionId);
+
+    const updatedList = (currentTeam.suggestedArrangements || []).filter(
+      (a) => a.id !== suggestionId
+    );
+    const optimisticGroup: WorshipGroup = {
+      ...currentTeam,
+      suggestedArrangements: updatedList,
+    };
+    setCachedTeam(optimisticGroup);
+
+    try {
+      const res = await dismissTeamSongArrangement(currentTeam.id, suggestionId);
+      if (res.ok) {
+        await refreshActiveGroup();
+        setSuggestionFeedbackMsg('Arrangement proposal closed.');
+      } else {
+        setSuggestionFeedbackMsg(res.error || 'Failed to close arrangement proposal');
+      }
+    } catch (err) {
+      setSuggestionFeedbackMsg(
+        err instanceof Error ? err.message : 'Error closing arrangement proposal'
+      );
     }
   };
 
@@ -1920,9 +1949,10 @@ export default function TeamHubPage() {
             Array.isArray(currentTeam.suggestedArrangements) &&
             currentTeam.suggestedArrangements.some(
               (a) =>
-                !user?.id ||
-                a.suggestedBy === user.id ||
-                a.suggestedBy === 'local-user'
+                (!user?.id ||
+                  a.suggestedBy === user.id ||
+                  a.suggestedBy === 'local-user') &&
+                !getDismissedSuggestionIds().has(a.id)
             ) && (
               <div
                 data-testid="team-hub-member-arrangement-proposals"
@@ -1943,9 +1973,10 @@ export default function TeamHubPage() {
                   {currentTeam.suggestedArrangements
                     .filter(
                       (a) =>
-                        !user?.id ||
-                        a.suggestedBy === user.id ||
-                        a.suggestedBy === 'local-user'
+                        (!user?.id ||
+                          a.suggestedBy === user.id ||
+                          a.suggestedBy === 'local-user') &&
+                        !getDismissedSuggestionIds().has(a.id)
                     )
                     .slice(0, 6)
                     .map((prop) => {
@@ -1969,10 +2000,15 @@ export default function TeamHubPage() {
                                 “{prop.arrangementNote}”
                               </div>
                             )}
+                            {prop.reviewNote && (
+                              <div className="text-amber-300">
+                                <span className="font-semibold">Leader feedback:</span> “{prop.reviewNote}”
+                              </div>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span
-                              className={`px-2.5 py-1 rounded-full font-bold ${
+                              className={`px-2.5 py-1 rounded-full font-bold inline-flex items-center gap-1 ${
                                 prop.status === 'pending'
                                   ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
                                   : prop.status === 'approved'
@@ -1980,13 +2016,21 @@ export default function TeamHubPage() {
                                   : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
                               }`}
                             >
-                              {prop.status === 'pending'
-                                ? 'Pending Leader Approval'
-                                : prop.status === 'approved'
-                                ? `Approved (${(
-                                    prop.approvedScope || prop.instrument
-                                  ).toUpperCase()})`
-                                : 'Declined'}
+                              {prop.status === 'declined' && (
+                                <X className="w-3.5 h-3.5 text-rose-400" />
+                              )}
+                              {prop.status === 'approved' && (
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              )}
+                              <span>
+                                {prop.status === 'pending'
+                                  ? 'Pending Leader Approval'
+                                  : prop.status === 'approved'
+                                  ? `Approved (${(
+                                      prop.approvedScope || prop.instrument
+                                    ).toUpperCase()})`
+                                  : 'Declined'}
+                              </span>
                             </span>
                             <Link
                               href={`/songs/${encodeURIComponent(songSlug)}`}
@@ -1994,6 +2038,22 @@ export default function TeamHubPage() {
                             >
                               Open Song
                             </Link>
+                            <button
+                              type="button"
+                              data-testid={`dismiss-arrangement-proposal-${prop.id}`}
+                              onClick={() => handleDismissArrangementProposal(prop.id)}
+                              title={
+                                prop.status === 'pending'
+                                  ? 'Withdraw proposal'
+                                  : 'Close proposal'
+                              }
+                              className="py-1 px-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-center gap-1"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>
+                                {prop.status === 'pending' ? 'Withdraw' : 'Close'}
+                              </span>
+                            </button>
                           </div>
                         </div>
                       );

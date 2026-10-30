@@ -32,6 +32,7 @@ import {
   Type,
   WifiOff,
   ShieldCheck,
+  X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
@@ -61,6 +62,7 @@ import {
   type PreferredArrangementLayerMode,
 } from '@/lib/chordpro/liveArrangement';
 import {
+  dismissTeamSongArrangement,
   getCachedTeam,
   getSessionToken,
   proposeTeamSongArrangement,
@@ -1037,6 +1039,35 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     }
   };
 
+  const handleDismissMemberArrangementProposal = async (proposalId: string) => {
+    if (!effectiveGroup?.id || !proposalId) return;
+    setIsSubmittingProposal(true);
+    try {
+      const res = await dismissTeamSongArrangement(effectiveGroup.id, proposalId);
+      if (res.group) {
+        setLiveGroup(res.group);
+      } else if (effectiveGroup) {
+        setLiveGroup({
+          ...effectiveGroup,
+          suggestedArrangements: (effectiveGroup.suggestedArrangements || []).filter(
+            (a) => a.id !== proposalId
+          ),
+        });
+      }
+      setFeedbackBanner({
+        type: 'success',
+        message: 'Closed arrangement proposal notification.',
+      });
+    } catch {
+      setFeedbackBanner({
+        type: 'error',
+        message: 'Could not close arrangement proposal.',
+      });
+    } finally {
+      setIsSubmittingProposal(false);
+    }
+  };
+
   const fontSizeConfig = FONT_SIZE_CLASSES[settings.chartFontSize];
 
   // ============================================================================
@@ -1757,21 +1788,37 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   </span>
                 )}
                 {myLatestProposalForInstrument && (
-                  <span
-                    data-testid="song-member-proposal-status-badge"
-                    className={`px-2.5 py-0.5 rounded-full font-bold ${
-                      myLatestProposalForInstrument.status === 'pending'
-                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      data-testid="song-member-proposal-status-badge"
+                      className={`px-2.5 py-0.5 rounded-full font-bold ${
+                        myLatestProposalForInstrument.status === 'pending'
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                          : myLatestProposalForInstrument.status === 'approved'
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                          : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                      }`}
+                    >
+                      {myLatestProposalForInstrument.status === 'pending'
+                        ? 'Pending Leader Approval'
                         : myLatestProposalForInstrument.status === 'approved'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                    }`}
-                  >
-                    {myLatestProposalForInstrument.status === 'pending'
-                      ? 'Pending Leader Approval'
-                      : myLatestProposalForInstrument.status === 'approved'
-                      ? 'Approved by Leader (Church Group)'
-                      : 'Declined by Leader'}
+                        ? 'Approved by Leader (Church Group)'
+                        : 'Declined by Leader'}
+                    </span>
+                    <button
+                      type="button"
+                      data-testid="song-dismiss-member-proposal-btn"
+                      onClick={() =>
+                        handleDismissMemberArrangementProposal(
+                          myLatestProposalForInstrument.id
+                        )
+                      }
+                      title="Close this proposal status"
+                      className="px-2 py-0.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>Close</span>
+                    </button>
                   </span>
                 )}
               </div>
@@ -1903,6 +1950,98 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   </div>
                 </div>
               )}
+
+            {/* Declined Proposal Notice with Close Button inside Rehearsal Banner */}
+            {myLatestProposalForInstrument?.status === 'declined' && (
+              <div
+                data-testid="song-declined-proposal-notice"
+                className="p-3 rounded-xl border border-rose-500/40 bg-rose-500/10 flex flex-wrap items-center justify-between gap-3"
+              >
+                <div className="space-y-0.5">
+                  <div className="font-bold text-rose-300 flex items-center gap-1.5">
+                    <X className="w-3.5 h-3.5 text-rose-400" />
+                    <span>
+                      Your {rehearsalInstrument.toUpperCase()} arrangement proposal was declined by the Worship Leader
+                    </span>
+                  </div>
+                  {myLatestProposalForInstrument.reviewNote && (
+                    <p className="text-[var(--text-secondary)]">
+                      Leader feedback: &ldquo;{myLatestProposalForInstrument.reviewNote}&rdquo;
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  data-testid="song-close-declined-proposal-btn"
+                  onClick={() =>
+                    handleDismissMemberArrangementProposal(
+                      myLatestProposalForInstrument.id
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Close</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+      {/* Standalone Declined / Approved Proposal Card when viewing catalog layer without local override */}
+      {(!layeredRehearsalResult ||
+        layeredRehearsalResult.activeLayer === 'catalog') &&
+        myLatestProposalForInstrument && (
+          <div
+            data-testid="song-standalone-member-proposal-card"
+            className={`rounded-2xl border p-4 flex flex-wrap items-center justify-between gap-3 text-xs ${
+              myLatestProposalForInstrument.status === 'declined'
+                ? 'border-rose-500/40 bg-rose-500/10'
+                : myLatestProposalForInstrument.status === 'approved'
+                ? 'border-emerald-500/40 bg-emerald-500/10'
+                : 'border-amber-500/40 bg-amber-500/10'
+            }`}
+          >
+            <div className="space-y-0.5">
+              <div className="font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <span>
+                  Your {rehearsalInstrument.toUpperCase()} Arrangement Proposal:
+                </span>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full font-bold ${
+                    myLatestProposalForInstrument.status === 'pending'
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                      : myLatestProposalForInstrument.status === 'approved'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                  }`}
+                >
+                  {myLatestProposalForInstrument.status === 'pending'
+                    ? 'Pending Leader Approval'
+                    : myLatestProposalForInstrument.status === 'approved'
+                    ? 'Approved by Leader'
+                    : 'Declined by Leader'}
+                </span>
+              </div>
+              {myLatestProposalForInstrument.reviewNote && (
+                <p className="text-[var(--text-secondary)]">
+                  Leader feedback: &ldquo;{myLatestProposalForInstrument.reviewNote}&rdquo;
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              data-testid="song-standalone-dismiss-proposal-btn"
+              onClick={() =>
+                handleDismissMemberArrangementProposal(
+                  myLatestProposalForInstrument.id
+                )
+              }
+              className="px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Close</span>
+            </button>
           </div>
         )}
 
@@ -3305,6 +3444,17 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               : undefined
           }
           proposeActionLabel={`Propose ${rehearsalInstrument.toUpperCase()} Chords to Leader`}
+          latestProposalStatus={myLatestProposalForInstrument?.status}
+          latestProposalReviewNote={myLatestProposalForInstrument?.reviewNote}
+          onDismissProposal={
+            myLatestProposalForInstrument
+              ? async () => {
+                  await handleDismissMemberArrangementProposal(
+                    myLatestProposalForInstrument.id
+                  );
+                }
+              : undefined
+          }
           onSaveCopyToMySongs={async (customSong) => {
             await saveCustomSong(customSong);
           }}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  deleteSongArrangementSuggestion,
   getWorshipGroup,
   proposeSongArrangementForGroup,
   reviewSongArrangementSuggestion,
@@ -109,6 +110,25 @@ export async function PATCH(
           approvedArrangement: result.approvedArrangement,
           suggestion: result.suggestion,
         },
+        { headers: NO_CACHE_HEADERS }
+      );
+    }
+
+    if (body?.action === 'dismiss-arrangement') {
+      const result = deleteSongArrangementSuggestion(
+        user.id,
+        groupId,
+        body.suggestionId,
+        body.clientGroupFallback
+      );
+      if (!result.ok) {
+        return NextResponse.json(
+          { error: result.error },
+          { status: 400, headers: NO_CACHE_HEADERS }
+        );
+      }
+      return NextResponse.json(
+        { group: result.group },
         { headers: NO_CACHE_HEADERS }
       );
     }

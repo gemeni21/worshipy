@@ -1549,11 +1549,18 @@ export function subscribeToTeam(
         ? currentCached.songArrangements
         : undefined;
 
-    const effectiveSuggestedArrangements: TeamArrangementSuggestion[] | undefined =
+    const dismissedArrangementIds = getDismissedSuggestionIds();
+    const rawSuggestedArrangements: TeamArrangementSuggestion[] | undefined =
       fresh.suggestedArrangements !== undefined
         ? fresh.suggestedArrangements
         : currentCached?.id === fresh.id
         ? currentCached.suggestedArrangements
+        : undefined;
+    const effectiveSuggestedArrangements: TeamArrangementSuggestion[] | undefined =
+      rawSuggestedArrangements !== undefined
+        ? rawSuggestedArrangements.filter(
+            (a) => a && a.id && !dismissedArrangementIds.has(a.id)
+          )
         : undefined;
 
     const mergedGroup: WorshipGroup = {
@@ -2098,6 +2105,86 @@ export async function reviewTeamSongArrangement(
     approvedArrangement: data.approvedArrangement,
     suggestion: data.suggestion,
   };
+}
+
+/**
+ * Dismisses / closes a member's arrangement proposal (e.g., after it has been declined or approved by the Leader, or withdrawn).
+ */
+export async function dismissTeamSongArrangement(
+  groupId: string,
+  suggestionId: string
+): Promise<{ ok: boolean; group?: WorshipGroup; error?: string }> {
+  recordDismissedSuggestionId(suggestionId);
+
+  const token = getSessionToken();
+  const current = getCachedTeam();
+  const db = getFirebaseFirestore();
+
+  try {
+    const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        action: 'dismiss-arrangement',
+        suggestionId,
+        clientGroupFallback: current?.id === groupId ? current : undefined,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (data?.group) {
+        const updatedGroup: WorshipGroup = {
+          ...data.group,
+          suggestedArrangements: Array.isArray(data.group.suggestedArrangements)
+            ? data.group.suggestedArrangements.filter(
+                (a: TeamArrangementSuggestion) => a.id !== suggestionId
+              )
+            : [],
+        };
+        setCachedTeam(updatedGroup);
+        broadcastTeamSync(updatedGroup);
+        if (db && groupId) {
+          try {
+            const groupRef = doc(db, 'groups', groupId);
+            await updateDoc(groupRef, {
+              suggestedArrangements: updatedGroup.suggestedArrangements || [],
+            });
+          } catch {}
+        }
+        return { ok: true, group: updatedGroup };
+      }
+    }
+  } catch (err) {
+    console.warn('Server dismiss arrangement proposal note:', err);
+  }
+
+  // Resilient Local & Firestore Fallback
+  if (current && Array.isArray(current.suggestedArrangements)) {
+    const updatedArrangements = current.suggestedArrangements.filter(
+      (a) => a.id !== suggestionId
+    );
+    const fallbackGroup: WorshipGroup = {
+      ...current,
+      suggestedArrangements: updatedArrangements,
+    };
+    setCachedTeam(fallbackGroup);
+    broadcastTeamSync(fallbackGroup);
+    if (db && groupId) {
+      try {
+        const groupRef = doc(db, 'groups', groupId);
+        await updateDoc(groupRef, {
+          suggestedArrangements: updatedArrangements,
+        });
+      } catch {}
+    }
+    return { ok: true, group: fallbackGroup };
+  }
+
+  return { ok: true };
 }
 
 /**
