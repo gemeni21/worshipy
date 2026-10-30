@@ -27,6 +27,7 @@ import {
   makeArrangementCompositeKey,
   nudgeChordByWordInSongSectionLine,
   replaceChordInSongSectionLine,
+  removePersonalInstrumentArrangement,
   resolveLayeredSongArrangement,
   resolveSongWithLiveOverride,
   savePersonalInstrumentArrangement,
@@ -40,6 +41,7 @@ import {
   getWorshipGroup,
   proposeSongArrangementForGroup,
   registerUser,
+  removeGroupSongArrangement,
   reviewSongArrangementSuggestion,
   reviewSongSubmission,
   saveGroupSongArrangementDirect,
@@ -1675,5 +1677,96 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
       closed.group?.suggestedArrangements?.some((s) => s.id === suggestionId),
       false
     );
+  });
+
+  it('29. Scenario: Leader edits song on catalog -> publishes to Church Group -> clears temporary draft so banner transitions cleanly and can be reset', () => {
+    const baseSong = getSongById('song-01')!;
+    const leaderUserId = `leader_bethel_${Date.now()}`;
+    const groupId = `group_bethel_${Date.now()}`;
+    const fallbackGroup = {
+      id: groupId,
+      name: 'Bethel M Worship',
+      churchName: 'Bethel M',
+      ownerId: leaderUserId,
+      inviteCode: 'BETHEL',
+      members: [
+        {
+          userId: leaderUserId,
+          email: 'leader@bethel.org',
+          displayName: 'Bethel Leader',
+          role: 'leader' as const,
+          joinedAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    // 1. Leader makes quick-tap edits to guitar chords -> saved temporarily as personal-instrument draft
+    const draftMap = savePersonalInstrumentArrangement({
+      songId: baseSong.id,
+      songTitle: baseSong.title,
+      instrument: 'guitar',
+      chordPro: [
+        '{title: Song 1}',
+        '{key: G}',
+        '',
+        'Verse 1:',
+        '[G]Leader [Em7]published [Cadd9]guitar [D]chart',
+      ].join('\n'),
+      arrangementNote: 'My guitar rehearsal chords',
+      updatedBy: leaderUserId,
+      updatedByName: 'Bethel Leader',
+    });
+
+    const beforePublish = resolveLayeredSongArrangement({
+      baseSong,
+      instrument: 'guitar',
+      personalArrangements: draftMap,
+      groupArrangements: {},
+    });
+    assert.equal(beforePublish.activeLayer, 'personal-instrument');
+
+    // 2. Leader clicks "Publish to Church GUITAR (Church Only)" -> saves to Church Group AND removes temporary draft
+    const pubRes = saveGroupSongArrangementDirect(leaderUserId, groupId, {
+      songId: baseSong.id,
+      songTitle: baseSong.title,
+      instrument: 'guitar',
+      chordPro: draftMap[`${baseSong.id}:guitar`].chordPro,
+      arrangementNote: 'Sunday Church Guitar Chart',
+      clientGroupFallback: fallbackGroup,
+    });
+    assert.equal(pubRes.ok, true);
+    const cleanedDraftMap = removePersonalInstrumentArrangement(
+      baseSong.id,
+      'guitar'
+    );
+
+    // 3. Now resolving the layered arrangement immediately transitions to 'group-instrument' (no longer stuck on 'personal-instrument')
+    const afterPublish = resolveLayeredSongArrangement({
+      baseSong,
+      instrument: 'guitar',
+      personalArrangements: cleanedDraftMap,
+      groupArrangements: pubRes.group?.songArrangements,
+    });
+    assert.equal(afterPublish.activeLayer, 'group-instrument');
+    assert.equal(afterPublish.hasPersonalInstrumentOverride, false);
+    assert.equal(
+      formatSongLineForQuickEdit(afterPublish.song.sections[0].lines[0]),
+      '[G]Leader [Em7]published [Cadd9]guitar [D]chart'
+    );
+
+    // 4. Leader can also reset the Church Group arrangement back to the original catalog chart
+    const resetRes = removeGroupSongArrangement(leaderUserId, groupId, {
+      songId: baseSong.id,
+      instrument: 'guitar',
+      clientGroupFallback: fallbackGroup,
+    });
+    assert.equal(resetRes.ok, true);
+    const afterReset = resolveLayeredSongArrangement({
+      baseSong,
+      instrument: 'guitar',
+      personalArrangements: cleanedDraftMap,
+      groupArrangements: resetRes.group?.songArrangements,
+    });
+    assert.equal(afterReset.activeLayer, 'catalog');
   });
 });

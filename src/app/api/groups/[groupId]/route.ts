@@ -3,6 +3,7 @@ import {
   deleteSongArrangementSuggestion,
   getWorshipGroup,
   proposeSongArrangementForGroup,
+  removeGroupSongArrangement,
   reviewSongArrangementSuggestion,
   saveGroupSongArrangementDirect,
   updateWorshipGroupBranding,
@@ -140,6 +141,7 @@ export async function PATCH(
         instrument: body.instrument || 'general',
         chordPro: body.chordPro,
         arrangementNote: body.arrangementNote,
+        clientGroupFallback: body.clientGroupFallback,
       });
       if (!result.ok) {
         return NextResponse.json(
@@ -149,6 +151,24 @@ export async function PATCH(
       }
       return NextResponse.json(
         { group: result.group, arrangement: result.arrangement },
+        { headers: NO_CACHE_HEADERS }
+      );
+    }
+
+    if (body?.action === 'remove-group-arrangement') {
+      const result = removeGroupSongArrangement(user.id, groupId, {
+        songId: body.songId,
+        instrument: body.instrument || 'general',
+        clientGroupFallback: body.clientGroupFallback,
+      });
+      if (!result.ok) {
+        return NextResponse.json(
+          { error: result.error },
+          { status: 400, headers: NO_CACHE_HEADERS }
+        );
+      }
+      return NextResponse.json(
+        { group: result.group },
         { headers: NO_CACHE_HEADERS }
       );
     }

@@ -66,6 +66,7 @@ import {
   getCachedTeam,
   getSessionToken,
   proposeTeamSongArrangement,
+  removeTeamSongArrangementDirect,
   reviewTeamSongArrangement,
   saveTeamSongArrangementDirect,
   subscribeToTeam,
@@ -196,6 +197,8 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
   const [previewingProposalId, setPreviewingProposalId] = useState<
     string | null
   >(null);
+  const [isArrangementBannerHidden, setIsArrangementBannerHidden] =
+    useState(false);
 
   const effectiveGroup = liveGroup || activeGroup || getCachedTeam();
   const groupIdToSubscribe = activeGroup?.id || user?.groupId || liveGroup?.id;
@@ -716,6 +719,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
   ) => {
     if (!baseCatalogSong) return;
     setPreviewingProposalId(null);
+    setIsArrangementBannerHidden(false);
     const nextPersonal = savePersonalInstrumentArrangement({
       songId: baseCatalogSong.id,
       songTitle: baseCatalogSong.title,
@@ -725,7 +729,9 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
         arrangementNote ||
         proposalNoteInput.trim() ||
         layeredRehearsalResult?.activeOverride?.arrangementNote ||
-        `My ${rehearsalInstrument} rehearsal chords`,
+        (isGroupLeader
+          ? `Leader ${rehearsalInstrument} arrangement`
+          : `My ${rehearsalInstrument} rehearsal chords`),
       updatedBy: user?.id || 'local-user',
       updatedByName: user?.displayName || 'Musician',
     });
@@ -733,7 +739,9 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     setPreferredLayer('auto');
     setFeedbackBanner({
       type: 'success',
-      message: `Saved to your Personal ${rehearsalInstrument.toUpperCase()} Chords! Ready to submit to your Worship Leader for approval whenever you're done.`,
+      message: isGroupLeader
+        ? `Saved draft to your ${rehearsalInstrument.toUpperCase()} chords. Click "Publish to Church" in the banner above when ready to share with your team.`
+        : `Saved to your Personal ${rehearsalInstrument.toUpperCase()} Chords! Ready to submit to your Worship Leader for approval whenever you're done.`,
     });
   };
 
@@ -907,6 +915,25 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
         }
       );
       setLiveGroup(updatedGroup);
+
+      // Promote personal draft into the published Church Group arrangement so the draft prompt disappears cleanly
+      let nextPersonal = removePersonalInstrumentArrangement(
+        baseCatalogSong.id,
+        rehearsalInstrument
+      );
+      if (targetScope !== rehearsalInstrument) {
+        nextPersonal = removePersonalInstrumentArrangement(
+          baseCatalogSong.id,
+          targetScope
+        );
+      }
+      setPersonalArrangements(nextPersonal);
+      setProposalNoteInput('');
+      setIsQuickEditMode(false);
+      setActiveChordEditTarget(null);
+      setActiveLineEditTarget(null);
+      setIsArrangementBannerHidden(true);
+
       setFeedbackBanner({
         type: 'success',
         message:
@@ -921,6 +948,41 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           err instanceof Error
             ? err.message
             : 'Could not publish arrangement to church group.',
+      });
+    } finally {
+      setIsSubmittingProposal(false);
+    }
+  };
+
+  const handleResetChurchArrangement = async () => {
+    if (!effectiveGroup?.id || !baseCatalogSong || !layeredRehearsalResult) return;
+    const targetScope: InstrumentViewMode =
+      layeredRehearsalResult.activeLayer === 'group-band'
+        ? 'general'
+        : rehearsalInstrument;
+    setIsSubmittingProposal(true);
+    try {
+      const { group: updatedGroup } = await removeTeamSongArrangementDirect(
+        effectiveGroup.id,
+        {
+          songId: baseCatalogSong.id,
+          instrument: targetScope,
+        }
+      );
+      setLiveGroup(updatedGroup);
+      setFeedbackBanner({
+        type: 'success',
+        message: `Reset ${effectiveGroup.name}'s ${
+          targetScope === 'general' ? 'Entire Team' : targetScope.toUpperCase()
+        } arrangement back to the original catalog chart.`,
+      });
+    } catch (err) {
+      setFeedbackBanner({
+        type: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Could not reset church arrangement.',
       });
     } finally {
       setIsSubmittingProposal(false);
@@ -1767,7 +1829,8 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
 
       {/* Active Rehearsal / Church Instrument Arrangement Banner + Submit for Leader Approval */}
       {layeredRehearsalResult &&
-        layeredRehearsalResult.activeLayer !== 'catalog' && (
+        layeredRehearsalResult.activeLayer !== 'catalog' &&
+        !isArrangementBannerHidden && (
           <div
             data-testid="rehearsal-arrangement-banner"
             className="rounded-2xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] p-4 space-y-3 text-xs"
@@ -1778,7 +1841,11 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   <Sparkles className="w-4 h-4" />
                   <span>
                     {layeredRehearsalResult.activeLayer === 'personal-instrument'
-                      ? `My Rehearsal ${rehearsalInstrument.toUpperCase()} Chords & Lyrics Active (Auto-carries over into Live Sync!)`
+                      ? isGroupLeader
+                        ? `Unpublished ${rehearsalInstrument.toUpperCase()} Draft Active`
+                        : `My Rehearsal ${rehearsalInstrument.toUpperCase()} Chords & Lyrics Active (Auto-carries over into Live Sync!)`
+                      : layeredRehearsalResult.activeLayer === 'group-band'
+                      ? `Church Group Full Band Arrangement Active (Church Only)`
                       : `Church Group ${rehearsalInstrument.toUpperCase()} Arrangement Active (Church Only)`}
                   </span>
                 </span>
@@ -1787,7 +1854,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                     “{layeredRehearsalResult.activeOverride.arrangementNote}”
                   </span>
                 )}
-                {myLatestProposalForInstrument && (
+                {!isGroupLeader && myLatestProposalForInstrument && (
                   <span className="inline-flex items-center gap-1.5">
                     <span
                       data-testid="song-member-proposal-status-badge"
@@ -1852,7 +1919,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-semibold cursor-pointer"
                 >
                   {preferredLayer === 'catalog'
-                    ? `View My ${rehearsalInstrument.toUpperCase()} Chords`
+                    ? `View ${rehearsalInstrument.toUpperCase()} Chords`
                     : 'Compare with Original Chart'}
                 </button>
                 <button
@@ -1881,31 +1948,114 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                         setPersonalArrangements(next);
                         setFeedbackBanner({
                           type: 'success',
-                          message: `Reset your personal ${rehearsalInstrument.toUpperCase()} chords back to the original chart.`,
+                          message: `Reset your ${rehearsalInstrument.toUpperCase()} draft back to the active chart.`,
                         });
                       }}
                       className="px-2.5 py-1 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 font-semibold cursor-pointer"
                     >
-                      Reset My Chords
+                      {isGroupLeader ? 'Discard Draft' : 'Reset My Chords'}
                     </button>
                   )}
+                {isGroupLeader &&
+                  layeredRehearsalResult.activeLayer !==
+                    'personal-instrument' && (
+                    <button
+                      type="button"
+                      data-testid="song-leader-reset-church-chart-btn"
+                      disabled={isSubmittingProposal}
+                      onClick={handleResetChurchArrangement}
+                      className="px-2.5 py-1 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 font-semibold cursor-pointer disabled:opacity-50"
+                      title="Revert Church Group arrangement back to the original catalog chart"
+                    >
+                      Reset Church Chart
+                    </button>
+                  )}
+                <button
+                  type="button"
+                  data-testid="close-rehearsal-arrangement-banner-btn"
+                  onClick={() => setIsArrangementBannerHidden(true)}
+                  title="Close arrangement options banner"
+                  className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-semibold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Close</span>
+                </button>
               </div>
             </div>
 
-            {/* Submit Changes for Worship Leader Approval (or Direct Church Group Publish if Leader) */}
+            {/* Worship Leader Direct Church Group Publish Row (when Leader has an unpublished draft) */}
             {effectiveGroup?.id &&
+              isGroupLeader &&
               layeredRehearsalResult.activeLayer === 'personal-instrument' &&
               layeredRehearsalResult.activeOverride && (
-                <div className="pt-2.5 border-t border-[var(--border-subtle)]/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                <div className="pt-2.5 border-t border-[var(--border-subtle)]/70 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
+                  <input
+                    type="text"
+                    aria-label="Arrangement note for your church team"
+                    value={proposalNoteInput}
+                    onChange={(e) => setProposalNoteInput(e.target.value)}
+                    placeholder={`Optional arrangement note for ${effectiveGroup.name} (e.g. Acoustic intro, build on Bridge)...`}
+                    className="w-full lg:flex-1 min-w-[240px] h-9 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs text-[var(--text-primary)]"
+                  />
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {rehearsalInstrument !== 'general' && (
+                      <button
+                        type="button"
+                        data-testid="song-leader-publish-instrument-btn"
+                        disabled={isSubmittingProposal}
+                        onClick={() =>
+                          handlePublishDirectToChurch(rehearsalInstrument)
+                        }
+                        className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
+                      >
+                        {isSubmittingProposal
+                          ? 'Publishing...'
+                          : `Publish to Church ${rehearsalInstrument.toUpperCase()} (Church Only)`}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      data-testid="song-leader-publish-general-btn"
+                      disabled={isSubmittingProposal}
+                      onClick={() => handlePublishDirectToChurch('general')}
+                      className="px-3.5 py-2 rounded-xl bg-[var(--brand-accent)] hover:opacity-95 text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
+                    >
+                      {isSubmittingProposal
+                        ? 'Publishing...'
+                        : 'Publish to Entire Church Team (Church Only)'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsArrangementBannerHidden(true)}
+                      className="px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-semibold inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Close</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            {/* Band Member Submit for Worship Leader Approval Row */}
+            {effectiveGroup?.id &&
+              !isGroupLeader &&
+              layeredRehearsalResult.activeLayer === 'personal-instrument' &&
+              layeredRehearsalResult.activeOverride &&
+              !(
+                myLatestProposalForInstrument?.status === 'pending' &&
+                myLatestProposalForInstrument.chordPro ===
+                  layeredRehearsalResult.activeOverride.chordPro
+              ) && (
+                <div className="pt-2.5 border-t border-[var(--border-subtle)]/70 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
                   <input
                     type="text"
                     aria-label="Note for Worship Leader about your chord or lyric changes"
                     value={proposalNoteInput}
                     onChange={(e) => setProposalNoteInput(e.target.value)}
                     placeholder={`Optional note for ${effectiveGroup.name} Leader (e.g. Added passing chords in Verse 2)...`}
-                    className="flex-1 h-9 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs text-[var(--text-primary)]"
+                    className="w-full lg:flex-1 min-w-[240px] h-9 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs text-[var(--text-primary)]"
                   />
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
                     <button
                       type="button"
                       data-testid="song-submit-for-leader-approval-btn"
@@ -1922,37 +2072,20 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                           : 'Submit to Worship Leader for Approval'}
                       </span>
                     </button>
-                    {isGroupLeader && (
-                      <>
-                        <button
-                          type="button"
-                          data-testid="song-leader-publish-instrument-btn"
-                          disabled={isSubmittingProposal}
-                          onClick={() =>
-                            handlePublishDirectToChurch(rehearsalInstrument)
-                          }
-                          className="px-3 py-2 rounded-xl bg-emerald-500 text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          Publish to Church {rehearsalInstrument.toUpperCase()}{' '}
-                          (Church Only)
-                        </button>
-                        <button
-                          type="button"
-                          data-testid="song-leader-publish-general-btn"
-                          disabled={isSubmittingProposal}
-                          onClick={() => handlePublishDirectToChurch('general')}
-                          className="px-3 py-2 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
-                        >
-                          Publish to Entire Church Team (Church Only)
-                        </button>
-                      </>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsArrangementBannerHidden(true)}
+                      className="px-3 py-2 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-semibold inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Close</span>
+                    </button>
                   </div>
                 </div>
               )}
 
             {/* Declined Proposal Notice with Close Button inside Rehearsal Banner */}
-            {myLatestProposalForInstrument?.status === 'declined' && (
+            {!isGroupLeader && myLatestProposalForInstrument?.status === 'declined' && (
               <div
                 data-testid="song-declined-proposal-notice"
                 className="p-3 rounded-xl border border-rose-500/40 bg-rose-500/10 flex flex-wrap items-center justify-between gap-3"
@@ -2256,6 +2389,19 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 <Sparkles className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
                 <span>Full Studio</span>
               </button>
+              {isArrangementBannerHidden &&
+                layeredRehearsalResult &&
+                layeredRehearsalResult.activeLayer !== 'catalog' && (
+                  <button
+                    type="button"
+                    data-testid="song-reopen-arrangement-banner-btn"
+                    onClick={() => setIsArrangementBannerHidden(false)}
+                    className="px-2.5 py-1.5 rounded-lg border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Show active arrangement options"
+                  >
+                    <span>Arrangement Options</span>
+                  </button>
+                )}
             </div>
 
             {/* Save / Remove Offline Copy */}
@@ -3382,10 +3528,42 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
             layeredRehearsalResult?.activeOverride?.arrangementNote
           }
           hasActiveOverride={Boolean(
-            layeredRehearsalResult?.hasPersonalInstrumentOverride
+            layeredRehearsalResult &&
+              layeredRehearsalResult.activeLayer !== 'catalog'
           )}
-          primaryActionLabel={`Save to My ${rehearsalInstrument.toUpperCase()} Chords`}
-          onBroadcastOverride={({ chordPro, arrangementNote }) => {
+          primaryActionLabel={
+            isGroupLeader && effectiveGroup?.id
+              ? 'Publish to Entire Church Team (Church Only)'
+              : `Save to My ${rehearsalInstrument.toUpperCase()} Chords`
+          }
+          onBroadcastOverride={async ({ chordPro, arrangementNote }) => {
+            if (isGroupLeader && effectiveGroup?.id) {
+              const { group: updatedGroup } = await saveTeamSongArrangementDirect(
+                effectiveGroup.id,
+                {
+                  songId: baseCatalogSong.id,
+                  songTitle: baseCatalogSong.title,
+                  instrument: 'general',
+                  chordPro,
+                  arrangementNote:
+                    arrangementNote || 'Leader church arrangement',
+                }
+              );
+              setLiveGroup(updatedGroup);
+              const nextPersonal = removePersonalInstrumentArrangement(
+                baseCatalogSong.id,
+                rehearsalInstrument
+              );
+              setPersonalArrangements(nextPersonal);
+              setPreferredLayer('auto');
+              setIsQuickEditMode(false);
+              setIsArrangementBannerHidden(true);
+              setFeedbackBanner({
+                type: 'success',
+                message: `Published arrangement directly to ${effectiveGroup.name} (Entire Church Team)!`,
+              });
+              return;
+            }
             const next = savePersonalInstrumentArrangement({
               songId: baseCatalogSong.id,
               songTitle: baseCatalogSong.title,
@@ -3403,7 +3581,17 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               message: `Saved to your Personal ${rehearsalInstrument.toUpperCase()} Chords! These chords will automatically carry over when you join Live Sync.`,
             });
           }}
-          onRevertToOriginal={(targetSongId) => {
+          onRevertToOriginal={async (targetSongId) => {
+            if (
+              isGroupLeader &&
+              effectiveGroup?.id &&
+              layeredRehearsalResult &&
+              layeredRehearsalResult.activeLayer !== 'personal-instrument' &&
+              layeredRehearsalResult.activeLayer !== 'catalog'
+            ) {
+              await handleResetChurchArrangement();
+              return;
+            }
             const next = removePersonalInstrumentArrangement(
               targetSongId,
               rehearsalInstrument
@@ -3416,34 +3604,68 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           }}
           onProposeToLeader={
             effectiveGroup?.id
-              ? async ({ chordPro, arrangementNote }) => {
-                  const next = savePersonalInstrumentArrangement({
-                    songId: baseCatalogSong.id,
-                    songTitle: baseCatalogSong.title,
-                    instrument: rehearsalInstrument,
-                    chordPro,
-                    arrangementNote:
-                      arrangementNote ||
-                      `My ${rehearsalInstrument} rehearsal chords`,
-                    updatedBy: user?.id || 'local-user',
-                    updatedByName: user?.displayName || 'Musician',
-                  });
-                  setPersonalArrangements(next);
-                  await proposeTeamSongArrangement(effectiveGroup.id, {
-                    songId: baseCatalogSong.id,
-                    songTitle: baseCatalogSong.title,
-                    instrument: rehearsalInstrument,
-                    chordPro,
-                    arrangementNote,
-                  });
-                  setFeedbackBanner({
-                    type: 'success',
-                    message: `Saved & proposed your ${rehearsalInstrument.toUpperCase()} arrangement to your Worship Leader!`,
-                  });
-                }
+              ? isGroupLeader
+                ? rehearsalInstrument !== 'general'
+                  ? async ({ chordPro, arrangementNote }) => {
+                      const { group: updatedGroup } =
+                        await saveTeamSongArrangementDirect(effectiveGroup.id, {
+                          songId: baseCatalogSong.id,
+                          songTitle: baseCatalogSong.title,
+                          instrument: rehearsalInstrument,
+                          chordPro,
+                          arrangementNote:
+                            arrangementNote ||
+                            `Leader ${rehearsalInstrument} arrangement`,
+                        });
+                      setLiveGroup(updatedGroup);
+                      const nextPersonal = removePersonalInstrumentArrangement(
+                        baseCatalogSong.id,
+                        rehearsalInstrument
+                      );
+                      setPersonalArrangements(nextPersonal);
+                      setPreferredLayer('auto');
+                      setIsQuickEditMode(false);
+                      setIsArrangementBannerHidden(true);
+                      setFeedbackBanner({
+                        type: 'success',
+                        message: `Published arrangement directly to ${effectiveGroup.name} (${rehearsalInstrument.toUpperCase()} Chords)!`,
+                      });
+                    }
+                  : undefined
+                : async ({ chordPro, arrangementNote }) => {
+                    const next = savePersonalInstrumentArrangement({
+                      songId: baseCatalogSong.id,
+                      songTitle: baseCatalogSong.title,
+                      instrument: rehearsalInstrument,
+                      chordPro,
+                      arrangementNote:
+                        arrangementNote ||
+                        `My ${rehearsalInstrument} rehearsal chords`,
+                      updatedBy: user?.id || 'local-user',
+                      updatedByName: user?.displayName || 'Musician',
+                    });
+                    setPersonalArrangements(next);
+                    const { group: updatedGroup } =
+                      await proposeTeamSongArrangement(effectiveGroup.id, {
+                        songId: baseCatalogSong.id,
+                        songTitle: baseCatalogSong.title,
+                        instrument: rehearsalInstrument,
+                        chordPro,
+                        arrangementNote,
+                      });
+                    setLiveGroup(updatedGroup);
+                    setFeedbackBanner({
+                      type: 'success',
+                      message: `Saved & proposed your ${rehearsalInstrument.toUpperCase()} arrangement to your Worship Leader!`,
+                    });
+                  }
               : undefined
           }
-          proposeActionLabel={`Propose ${rehearsalInstrument.toUpperCase()} Chords to Leader`}
+          proposeActionLabel={
+            isGroupLeader
+              ? `Publish to Church ${rehearsalInstrument.toUpperCase()} (Church Only)`
+              : `Submit ${rehearsalInstrument.toUpperCase()} Chords to Leader`
+          }
           latestProposalStatus={myLatestProposalForInstrument?.status}
           latestProposalReviewNote={myLatestProposalForInstrument?.reviewNote}
           onDismissProposal={

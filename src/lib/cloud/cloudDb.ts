@@ -1983,6 +1983,7 @@ export function saveGroupSongArrangementDirect(
     instrument: ArrangementInstrumentScope;
     chordPro: string;
     arrangementNote?: string;
+    clientGroupFallback?: Partial<WorshipGroup>;
   }
 ): {
   ok: boolean;
@@ -1993,18 +1994,45 @@ export function saveGroupSongArrangementDirect(
   const store = ensureDataStore();
   if (!store.groups) store.groups = {};
 
-  const group = store.groups[groupId] || getWorshipGroup(groupId);
+  let group = store.groups[groupId] || getWorshipGroup(groupId);
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+
   if (!group) {
-    return { ok: false, error: 'Worship group not found.' };
+    const now = new Date().toISOString();
+    group = {
+      id: groupId,
+      name: input.clientGroupFallback?.name || user?.profile.groupName || 'Worship Team',
+      churchName:
+        input.clientGroupFallback?.churchName || user?.profile.churchName || 'Church',
+      ownerId: input.clientGroupFallback?.ownerId || userId,
+      inviteCode:
+        input.clientGroupFallback?.inviteCode ||
+        (groupId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'TEAM1234').toUpperCase(),
+      createdAt: now,
+      members: input.clientGroupFallback?.members || [
+        {
+          userId,
+          email: user?.profile.email || '',
+          displayName: user?.profile.displayName || 'Worship Leader',
+          role: 'leader',
+          joinedAt: now,
+        },
+      ],
+      songArrangements: input.clientGroupFallback?.songArrangements || {},
+      suggestedArrangements: input.clientGroupFallback?.suggestedArrangements || [],
+    };
+    store.groups[groupId] = group;
   }
 
-  const user = Object.values(store.users).find((u) => u.profile.id === userId);
   const memberRecord = group.members.find((m) => m.userId === userId);
+  const isExplicitMember =
+    user?.profile.groupRole === 'member' || memberRecord?.role === 'member';
   const isLeader =
-    group.ownerId === userId ||
-    user?.profile.role === 'admin' ||
-    user?.profile.groupRole === 'leader' ||
-    memberRecord?.role === 'leader';
+    !isExplicitMember &&
+    (group.ownerId === userId ||
+      user?.profile.role === 'admin' ||
+      user?.profile.groupRole === 'leader' ||
+      memberRecord?.role === 'leader');
 
   if (!isLeader) {
     return {
@@ -2035,6 +2063,72 @@ export function saveGroupSongArrangementDirect(
   saveStore(store);
 
   return { ok: true, group, arrangement };
+}
+
+export function removeGroupSongArrangement(
+  userId: string,
+  groupId: string,
+  input: {
+    songId: string;
+    instrument: ArrangementInstrumentScope;
+    clientGroupFallback?: Partial<WorshipGroup>;
+  }
+): {
+  ok: boolean;
+  group?: WorshipGroup;
+  error?: string;
+} {
+  const store = ensureDataStore();
+  if (!store.groups) store.groups = {};
+
+  let group = store.groups[groupId] || getWorshipGroup(groupId);
+  const user = Object.values(store.users).find((u) => u.profile.id === userId);
+
+  if (!group && input.clientGroupFallback) {
+    const now = new Date().toISOString();
+    group = {
+      id: groupId,
+      name: input.clientGroupFallback.name || 'Worship Team',
+      churchName: input.clientGroupFallback.churchName || 'Church',
+      ownerId: input.clientGroupFallback.ownerId || userId,
+      inviteCode: input.clientGroupFallback.inviteCode || 'TEAM12',
+      createdAt: now,
+      members: input.clientGroupFallback.members || [],
+      songArrangements: input.clientGroupFallback.songArrangements || {},
+      suggestedArrangements: input.clientGroupFallback.suggestedArrangements || [],
+    };
+    store.groups[groupId] = group;
+  }
+
+  if (!group) {
+    return { ok: false, error: 'Worship group not found.' };
+  }
+
+  const memberRecord = group.members.find((m) => m.userId === userId);
+  const isExplicitMember =
+    user?.profile.groupRole === 'member' || memberRecord?.role === 'member';
+  const isLeader =
+    !isExplicitMember &&
+    (group.ownerId === userId ||
+      user?.profile.role === 'admin' ||
+      user?.profile.groupRole === 'leader' ||
+      memberRecord?.role === 'leader');
+
+  if (!isLeader) {
+    return {
+      ok: false,
+      error: 'Only the worship team leader can reset church arrangements.',
+    };
+  }
+
+  if (group.songArrangements && typeof group.songArrangements === 'object') {
+    const compositeKey = `${input.songId}:${input.instrument}`;
+    delete group.songArrangements[compositeKey];
+  }
+  store.groups[groupId] = group;
+  saveStore(store);
+
+  return { ok: true, group };
 }
 
 export function findWorshipGroupByCode(code: string): WorshipGroup | null {

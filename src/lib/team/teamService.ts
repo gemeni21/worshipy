@@ -1541,10 +1541,7 @@ export function subscribeToTeam(
 
     const effectiveSongArrangements: Record<string, TeamSongArrangement> | undefined =
       fresh.songArrangements !== undefined
-        ? {
-            ...(currentCached?.id === fresh.id ? currentCached.songArrangements : {}),
-            ...fresh.songArrangements,
-          }
+        ? fresh.songArrangements
         : currentCached?.id === fresh.id
         ? currentCached.songArrangements
         : undefined;
@@ -2204,6 +2201,7 @@ export async function saveTeamSongArrangementDirect(
   arrangement: TeamSongArrangement;
 }> {
   const token = getSessionToken();
+  const cached = getCachedTeam();
   const db = getFirebaseFirestore();
 
   const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
@@ -2215,6 +2213,7 @@ export async function saveTeamSongArrangementDirect(
     body: JSON.stringify({
       action: 'save-group-arrangement',
       ...input,
+      clientGroupFallback: cached?.id === groupId ? cached : undefined,
     }),
   });
 
@@ -2241,5 +2240,59 @@ export async function saveTeamSongArrangementDirect(
   return {
     group: updatedGroup,
     arrangement: data.arrangement,
+  };
+}
+
+/**
+ * Resets / removes a Church Group song arrangement back to the original catalog chart.
+ */
+export async function removeTeamSongArrangementDirect(
+  groupId: string,
+  input: {
+    songId: string;
+    instrument: ArrangementInstrumentScope;
+  }
+): Promise<{
+  group: WorshipGroup;
+}> {
+  const token = getSessionToken();
+  const cached = getCachedTeam();
+  const db = getFirebaseFirestore();
+
+  const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      action: 'remove-group-arrangement',
+      ...input,
+      clientGroupFallback: cached?.id === groupId ? cached : undefined,
+    }),
+  });
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.group) {
+    throw new Error(data?.error || 'Failed to reset church song arrangement.');
+  }
+
+  const updatedGroup: WorshipGroup = data.group;
+  setCachedTeam(updatedGroup);
+  broadcastTeamSync(updatedGroup);
+
+  if (db && groupId) {
+    try {
+      const groupRef = doc(db, 'groups', groupId);
+      await updateDoc(groupRef, {
+        songArrangements: updatedGroup.songArrangements || {},
+      });
+    } catch {
+      // Ignore Firestore mirror error if offline
+    }
+  }
+
+  return {
+    group: updatedGroup,
   };
 }

@@ -35,6 +35,7 @@ import {
   Users,
   Wifi,
   WifiOff,
+  X,
   XCircle,
   Loader2,
   Edit3,
@@ -284,6 +285,8 @@ function LiveSyncWorkspace({
   const [arrangementFeedbackToast, setArrangementFeedbackToast] = useState<
     string | null
   >(null);
+  const [isLiveArrangementBannerHidden, setIsLiveArrangementBannerHidden] =
+    useState(false);
   const [isSubmittingToAdmin, setIsSubmittingToAdmin] = useState(false);
   const [activeChordEditTarget, setActiveChordEditTarget] = useState<{
     sectionId: string;
@@ -2037,6 +2040,7 @@ function LiveSyncWorkspace({
     arrangementNote?: string
   ) => {
     if (!canControlOfficialState || viewMode !== 'follow') return;
+    setIsLiveArrangementBannerHidden(false);
     if (isBroadcastingEdits) {
       await sendOfficialStateUpdate({
         songArrangementOverride: {
@@ -2047,6 +2051,12 @@ function LiveSyncWorkspace({
             arrangementNote ?? activeSongOverride?.arrangementNote,
         },
       });
+      // Clear any temporary personal draft for this song/instrument so the Church Group override takes effect immediately
+      const nextPersonal = removePersonalInstrumentArrangement(
+        rawSourceSong.id,
+        instrumentView
+      );
+      setPersonalArrangements(nextPersonal);
       showToast(
         targetBroadcastInstrument === 'general'
           ? 'Pushed live to Band & saved to your Church Group only (not Global).'
@@ -2725,7 +2735,8 @@ function LiveSyncWorkspace({
             )}
 
             {/* Active Arrangement Banner (Personal Instrument, Church Instrument, or Live Band Master) */}
-            {(activeSongOverride || layeredResult.hasPersonalInstrumentOverride) && (
+            {(activeSongOverride || layeredResult.hasPersonalInstrumentOverride) &&
+              !isLiveArrangementBannerHidden && (
               <div
                 data-testid="live-arrangement-active-banner"
                 className="rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
@@ -2824,6 +2835,16 @@ function LiveSyncWorkspace({
                         </span>
                       </button>
                     )}
+                  <button
+                    type="button"
+                    data-testid="close-live-arrangement-banner-btn"
+                    onClick={() => setIsLiveArrangementBannerHidden(true)}
+                    className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Close arrangement banner"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Close</span>
+                  </button>
                 </div>
               </div>
             )}

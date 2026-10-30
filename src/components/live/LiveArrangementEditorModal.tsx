@@ -864,9 +864,11 @@ export function LiveArrangementEditorModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs font-semibold cursor-pointer"
+              data-testid="close-arrangement-editor-footer-btn"
+              className="px-4 py-2.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--brand-accent)]/50 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
             >
-              Cancel
+              <X className="w-3.5 h-3.5" />
+              <span>Close</span>
             </button>
             {onProposeToLeader && (
               <button
