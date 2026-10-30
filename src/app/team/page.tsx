@@ -118,6 +118,8 @@ export default function TeamHubPage() {
   const [uploadInstrument, setUploadInstrument] = useState(user?.instrument || 'Band Take');
   const [isUploadingTake, setIsUploadingTake] = useState(false);
   const [takeUploadError, setTakeUploadError] = useState<string | null>(null);
+  const [expandedArrangementPreviewId, setExpandedArrangementPreviewId] =
+    useState<string | null>(null);
 
   // Church Branding State (Leader Customization)
   const [showBrandingModal, setShowBrandingModal] = useState(false);
@@ -1800,82 +1802,202 @@ export default function TeamHubPage() {
                 <div className="space-y-2.5">
                   {currentTeam.suggestedArrangements
                     .filter((a) => a.status === 'pending')
-                    .map((prop: TeamArrangementSuggestion) => (
-                      <div
-                        key={prop.id}
-                        className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 flex flex-wrap items-center justify-between gap-3 text-xs"
-                      >
-                        <div className="space-y-1">
-                          <div className="font-bold text-sm text-[var(--text-primary)]">
-                            {prop.suggestedByName} proposed a{' '}
-                            <span className="uppercase text-[var(--brand-accent)]">
-                              {prop.instrument}
-                            </span>{' '}
-                            arrangement for “{prop.songTitle}”
+                    .map((prop: TeamArrangementSuggestion) => {
+                      const matchedSong = getSongByIdOrSlug(prop.songId);
+                      const songSlug = matchedSong?.slug || prop.songId;
+                      const isPreviewExpanded =
+                        expandedArrangementPreviewId === prop.id;
+                      return (
+                        <div
+                          key={prop.id}
+                          className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4 space-y-3 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="font-bold text-sm text-[var(--text-primary)]">
+                                {prop.suggestedByName} proposed a{' '}
+                                <span className="uppercase text-[var(--brand-accent)]">
+                                  {prop.instrument}
+                                </span>{' '}
+                                arrangement for “{prop.songTitle}”
+                              </div>
+                              {prop.arrangementNote && (
+                                <div className="text-[var(--text-secondary)]">
+                                  Note: “{prop.arrangementNote}”
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedArrangementPreviewId((prev) =>
+                                    prev === prop.id ? null : prop.id
+                                  )
+                                }
+                                className="px-3 py-1.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-[var(--text-primary)] hover:border-[var(--brand-accent)] font-semibold cursor-pointer"
+                              >
+                                {isPreviewExpanded
+                                  ? 'Hide Preview'
+                                  : 'Preview Chords & Lyrics'}
+                              </button>
+                              <Link
+                                href={`/songs/${encodeURIComponent(songSlug)}`}
+                                className="px-3 py-1.5 rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold"
+                              >
+                                Open Song Chart
+                              </Link>
+                              {prop.instrument !== 'general' && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await reviewTeamSongArrangement(
+                                      currentTeam.id,
+                                      prop.id,
+                                      'approve',
+                                      {
+                                        targetScope: prop.instrument,
+                                        fallbackSuggestion: prop,
+                                      }
+                                    );
+                                    await refreshActiveGroup();
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer"
+                                >
+                                  Approve for {prop.instrument.toUpperCase()} Only
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await reviewTeamSongArrangement(
+                                    currentTeam.id,
+                                    prop.id,
+                                    'approve',
+                                    {
+                                      targetScope: 'general',
+                                      fallbackSuggestion: prop,
+                                    }
+                                  );
+                                  await refreshActiveGroup();
+                                }}
+                                className="px-3 py-1.5 rounded-xl border border-[var(--brand-accent)] bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold cursor-pointer transition-colors"
+                              >
+                                Approve for Entire Church Team
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await reviewTeamSongArrangement(
+                                    currentTeam.id,
+                                    prop.id,
+                                    'decline',
+                                    { fallbackSuggestion: prop }
+                                  );
+                                  await refreshActiveGroup();
+                                }}
+                                className="px-3 py-1.5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-400 font-semibold cursor-pointer"
+                              >
+                                Decline
+                              </button>
+                            </div>
                           </div>
-                          {prop.arrangementNote && (
-                            <div className="text-[var(--text-secondary)]">
-                              Note: “{prop.arrangementNote}”
+
+                          {isPreviewExpanded && (
+                            <div className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-3 font-mono text-[11px] whitespace-pre-wrap max-h-56 overflow-y-auto text-[var(--text-primary)]">
+                              {prop.chordPro}
                             </div>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {prop.instrument !== 'general' && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await reviewTeamSongArrangement(
-                                  currentTeam.id,
-                                  prop.id,
-                                  'approve',
-                                  {
-                                    targetScope: prop.instrument,
-                                    fallbackSuggestion: prop,
-                                  }
-                                );
-                                await refreshActiveGroup();
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer"
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+          {/* Section: Member's Own Submitted Arrangement Proposals Status */}
+          {!isLeader &&
+            Array.isArray(currentTeam.suggestedArrangements) &&
+            currentTeam.suggestedArrangements.some(
+              (a) =>
+                !user?.id ||
+                a.suggestedBy === user.id ||
+                a.suggestedBy === 'local-user'
+            ) && (
+              <div
+                data-testid="team-hub-member-arrangement-proposals"
+                className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 sm:p-6 space-y-3 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Music2 className="w-5 h-5 text-[var(--brand-accent)]" />
+                    <h3 className="font-bold text-sm sm:text-base text-[var(--text-primary)]">
+                      My Submitted Chords &amp; Lyrics Proposals
+                    </h3>
+                  </div>
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    Submitted to {currentTeam.name} Leader
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {currentTeam.suggestedArrangements
+                    .filter(
+                      (a) =>
+                        !user?.id ||
+                        a.suggestedBy === user.id ||
+                        a.suggestedBy === 'local-user'
+                    )
+                    .slice(0, 6)
+                    .map((prop) => {
+                      const matchedSong = getSongByIdOrSlug(prop.songId);
+                      const songSlug = matchedSong?.slug || prop.songId;
+                      return (
+                        <div
+                          key={prop.id}
+                          className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="font-bold text-[var(--text-primary)]">
+                              {prop.songTitle} ·{' '}
+                              <span className="uppercase text-[var(--brand-accent)]">
+                                {prop.instrument}
+                              </span>{' '}
+                              Chords
+                            </div>
+                            {prop.arrangementNote && (
+                              <div className="text-[var(--text-secondary)]">
+                                “{prop.arrangementNote}”
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-2.5 py-1 rounded-full font-bold ${
+                                prop.status === 'pending'
+                                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                                  : prop.status === 'approved'
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                              }`}
                             >
-                              Approve for {prop.instrument.toUpperCase()} Only
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await reviewTeamSongArrangement(
-                                currentTeam.id,
-                                prop.id,
-                                'approve',
-                                {
-                                  targetScope: 'general',
-                                  fallbackSuggestion: prop,
-                                }
-                              );
-                              await refreshActiveGroup();
-                            }}
-                            className="px-3 py-1.5 rounded-xl border border-[var(--brand-accent)] bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold cursor-pointer transition-colors"
-                          >
-                            Approve for Entire Church Team
-                          </button>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await reviewTeamSongArrangement(
-                                currentTeam.id,
-                                prop.id,
-                                'decline',
-                                { fallbackSuggestion: prop }
-                              );
-                              await refreshActiveGroup();
-                            }}
-                            className="px-3 py-1.5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-400 font-semibold cursor-pointer"
-                          >
-                            Decline
-                          </button>
+                              {prop.status === 'pending'
+                                ? 'Pending Leader Approval'
+                                : prop.status === 'approved'
+                                ? `Approved (${(
+                                    prop.approvedScope || prop.instrument
+                                  ).toUpperCase()})`
+                                : 'Declined'}
+                            </span>
+                            <Link
+                              href={`/songs/${encodeURIComponent(songSlug)}`}
+                              className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-semibold hover:border-[var(--brand-accent)]"
+                            >
+                              Open Song
+                            </Link>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                 </div>
               </div>
             )}

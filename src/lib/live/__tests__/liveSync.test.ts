@@ -29,6 +29,7 @@ import {
   replaceChordInSongSectionLine,
   resolveLayeredSongArrangement,
   resolveSongWithLiveOverride,
+  savePersonalInstrumentArrangement,
   splitSegmentTextIntoTappableWords,
   updateLineInSongSection,
 } from '../../chordpro/liveArrangement.ts';
@@ -1317,6 +1318,135 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     assert.equal(
       churchBLive.session.sharedState.songArrangementOverrides,
       undefined
+    );
+  });
+
+  it('26. Scenario: Quick-Tap Edit Chords & Lyrics outside of Live Sync + Submit to Worship Leader for Approval + Leader Approval', () => {
+    const baseSong = getSongById('song-01')!;
+    const churchId = `group_solo_rehearsal_${Date.now()}`;
+
+    // 1. Member opens `/songs/song-01` (not in Live Sync), transposes up +2 semitones (G -> A),
+    //    and enables Quick-Tap Edit Mode for 'guitar'
+    const transposedRes = transposeSong(baseSong, 2, 'auto');
+    let displayedSong = transposedRes.song;
+    assert.equal(transposedRes.displayedKey, 'A');
+
+    const verseSectionIndex = displayedSong.sections.findIndex((s) =>
+      s.lines.some(
+        (l) =>
+          !l.isInstrumental && l.segments.some((seg) => seg.text.trim().length > 3)
+      )
+    );
+    const verseSection = displayedSong.sections[verseSectionIndex];
+    const sectionId = verseSection.id;
+
+    // 2. Member taps a lyric word in Verse 1 to drop an F#m7 chord (in displayed key A)
+    const words = splitSegmentTextIntoTappableWords(
+      verseSection.lines[0].segments[0].text
+    );
+    const secondWord = words.filter((w) => w.word)[1];
+    assert.ok(secondWord);
+    displayedSong = insertChordAtLyricPositionInSong(
+      displayedSong,
+      sectionId,
+      0,
+      0,
+      secondWord.charOffset,
+      'F#m7'
+    );
+
+    // 3. Member also edits the lyrics & chords of line 1 via Quick-Tap Line Edit
+    displayedSong = updateLineInSongSection(
+      displayedSong,
+      sectionId,
+      0,
+      '[A]Morning [F#m7]sunlight [Dmaj7]shines on [E]us',
+      'Fingerpick softly'
+    );
+
+    // 4. Quick-Tap Edit converts the transposed chart back to canonical originalKey (G) and saves to Personal Guitar Chords
+    const canonicalChordPro = convertDisplayedSongToBaseChordPro(
+      displayedSong,
+      baseSong,
+      2
+    );
+    assert.ok(
+      canonicalChordPro.includes(
+        '[G]Morning [Em7]sunlight [Cmaj7]shines on [D]us'
+      ),
+      `Expected canonical G chords in saved ChordPro, got: ${canonicalChordPro}`
+    );
+
+    const personalMap = savePersonalInstrumentArrangement({
+      songId: baseSong.id,
+      songTitle: baseSong.title,
+      instrument: 'guitar',
+      chordPro: canonicalChordPro,
+      arrangementNote: 'Fingerpicked intro + Em7 passing chord',
+      updatedBy: 'member-dave',
+      updatedByName: 'Dave (Guitar)',
+    });
+
+    // 5. Member submits their customized chords & lyrics to the Worship Leader for approval right from the song page
+    const submitRes = proposeSongArrangementForGroup('member-dave', churchId, {
+      songId: baseSong.id,
+      songTitle: baseSong.title,
+      instrument: 'guitar',
+      chordPro: personalMap[`${baseSong.id}:guitar`].chordPro,
+      arrangementNote: personalMap[`${baseSong.id}:guitar`].arrangementNote,
+      clientGroupFallback: {
+        id: churchId,
+        name: 'New Life Worship',
+        churchName: 'New Life Church',
+        ownerId: 'leader-sarah',
+        inviteCode: 'NEWLIF',
+        members: [
+          {
+            userId: 'leader-sarah',
+            email: 'sarah@newlife.org',
+            displayName: 'Sarah (Leader)',
+            role: 'leader',
+            joinedAt: new Date().toISOString(),
+          },
+          {
+            userId: 'member-dave',
+            email: 'dave@newlife.org',
+            displayName: 'Dave (Guitar)',
+            role: 'member',
+            instrument: 'Acoustic Guitar',
+            joinedAt: new Date().toISOString(),
+          },
+        ],
+      },
+    });
+    assert.equal(submitRes.ok, true);
+    assert.equal(submitRes.suggestion?.status, 'pending');
+
+    // 6. Worship Leader opens the song page (or Team Hub), previews Dave's proposal, and approves it for Entire Church Team ('general')
+    const approveRes = reviewSongArrangementSuggestion(
+      'leader-sarah',
+      churchId,
+      submitRes.suggestion!.id,
+      'approve',
+      { targetScope: 'general' }
+    );
+    assert.equal(approveRes.ok, true);
+    assert.equal(approveRes.suggestion?.status, 'approved');
+    assert.ok(approveRes.group?.songArrangements?.[`${baseSong.id}:general`]);
+
+    // 7. Now any musician in New Life Church (e.g. Keyboardist or Bassist) opening `/songs/song-01` outside Live Sync
+    //    immediately sees the Leader-approved church arrangement!
+    const keyboardistSongPage = resolveLayeredSongArrangement({
+      baseSong,
+      instrument: 'keyboard',
+      groupArrangements: approveRes.group?.songArrangements,
+    });
+    assert.equal(keyboardistSongPage.activeLayer, 'group-band');
+    assert.equal(
+      formatSongLineForQuickEdit(
+        keyboardistSongPage.song.sections[verseSectionIndex].lines[0]
+      ),
+      '[G]Morning [Em7]sunlight [Cmaj7]shines on [D]us'
     );
   });
 });

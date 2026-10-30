@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import {
   ArrowLeft,
+  ArrowRight,
   Check,
   ChevronDown,
   ChevronUp,
@@ -35,21 +36,41 @@ import {
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { downloadSongAsChordPro } from '@/lib/chordpro/chordProDownload';
+import {
+  getSuggestedChordsForKey,
+  insertChordAtCursor,
+} from '@/lib/chordpro/chordPro';
 import { ChordInspectorModal } from '@/components/music/ChordInspectorModal';
 import { LiveArrangementEditorModal } from '@/components/live/LiveArrangementEditorModal';
 import { PracticeDock } from '@/components/practice/PracticeDock';
 import {
+  appendChordToSongSectionLine,
+  convertDisplayedSongToBaseChordPro,
+  formatSongLineForQuickEdit,
   getPersonalInstrumentArrangements,
+  insertChordAtLyricPositionInSong,
+  nudgeChordByWordInSongSectionLine,
   removePersonalInstrumentArrangement,
+  replaceChordInSongSectionLine,
   resolveLayeredSongArrangement,
+  resolveSongWithLiveOverride,
   savePersonalInstrumentArrangement,
+  splitSegmentTextIntoTappableWords,
+  updateLineInSongSection,
   type PreferredArrangementLayerMode,
 } from '@/lib/chordpro/liveArrangement';
 import {
   getCachedTeam,
   proposeTeamSongArrangement,
+  reviewTeamSongArrangement,
+  saveTeamSongArrangementDirect,
+  subscribeToTeam,
 } from '@/lib/team/teamService';
-import type { TeamSongArrangement } from '@/types/auth';
+import type {
+  TeamArrangementSuggestion,
+  TeamSongArrangement,
+  WorshipGroup,
+} from '@/types/auth';
 import type { InstrumentViewMode } from '@/types/live';
 import {
   getGuitarCapoSuggestions,
@@ -140,7 +161,60 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     useState<PreferredArrangementLayerMode>('auto');
   const [showInstrumentArrangeModal, setShowInstrumentArrangeModal] =
     useState(false);
-  const effectiveGroup = activeGroup || getCachedTeam();
+
+  // Quick-Tap Edit Chords & Lyrics outside of Live Sync
+  const [isQuickEditMode, setIsQuickEditMode] = useState(false);
+  const [activeChordEditTarget, setActiveChordEditTarget] = useState<{
+    sectionId: string;
+    lineIndex: number;
+    segmentIndex: number;
+    charOffset: number;
+    targetWord?: string;
+    currentChord: string;
+    isTrailing?: boolean;
+  } | null>(null);
+  const [customChordInput, setCustomChordInput] = useState('');
+  const [activeLineEditTarget, setActiveLineEditTarget] = useState<{
+    sectionId: string;
+    lineIndex: number;
+    bracketedText: string;
+    annotation: string;
+  } | null>(null);
+  const inlineLineInputRef = useRef<HTMLInputElement | null>(null);
+  const inlineLineCursorRef = useRef<number | null>(null);
+
+  // Member Submission & Leader Review state on the Song Page
+  const [liveGroup, setLiveGroup] = useState<WorshipGroup | null>(
+    () => activeGroup || getCachedTeam()
+  );
+  const [proposalNoteInput, setProposalNoteInput] = useState('');
+  const [isSubmittingProposal, setIsSubmittingProposal] = useState(false);
+  const [previewingProposalId, setPreviewingProposalId] = useState<
+    string | null
+  >(null);
+
+  const effectiveGroup = liveGroup || activeGroup || getCachedTeam();
+  const groupIdToSubscribe = activeGroup?.id || user?.groupId || liveGroup?.id;
+
+  useEffect(() => {
+    if (!groupIdToSubscribe) return;
+    const unsub = subscribeToTeam(groupIdToSubscribe, (updated) => {
+      if (updated) {
+        setLiveGroup(updated);
+      }
+    });
+    return () => unsub();
+  }, [groupIdToSubscribe]);
+
+  const isGroupLeader = Boolean(
+    isAdmin ||
+      user?.role === 'admin' ||
+      (user?.id && effectiveGroup?.ownerId === user.id) ||
+      (user?.id &&
+        effectiveGroup?.members?.some(
+          (m) => m.userId === user.id && m.role === 'leader'
+        ))
+  );
 
   // Resolve song from custom songs, built-in catalog, or offline IndexedDB
   const offlineCopy = getOfflineSongRecord(slug);
@@ -171,7 +245,51 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     preferredLayer,
   ]);
 
-  const activeSourceSong = layeredRehearsalResult?.song ?? baseCatalogSong;
+  const songSuggestions = useMemo(() => {
+    if (!baseCatalogSong || !effectiveGroup?.suggestedArrangements) return [];
+    return effectiveGroup.suggestedArrangements.filter(
+      (s) => s.songId === baseCatalogSong.id
+    );
+  }, [baseCatalogSong, effectiveGroup?.suggestedArrangements]);
+
+  const pendingSongProposals = useMemo(
+    () => songSuggestions.filter((s) => s.status === 'pending'),
+    [songSuggestions]
+  );
+
+  const myLatestProposalForInstrument = useMemo(() => {
+    if (!songSuggestions.length) return null;
+    const matching = songSuggestions.filter(
+      (s) =>
+        s.instrument === rehearsalInstrument &&
+        (!user?.id ||
+          s.suggestedBy === user.id ||
+          s.suggestedBy === 'local-user')
+    );
+    return matching.length > 0 ? matching[0] : null;
+  }, [songSuggestions, rehearsalInstrument, user?.id]);
+
+  const previewedProposal = useMemo(
+    () =>
+      previewingProposalId
+        ? songSuggestions.find((s) => s.id === previewingProposalId) ?? null
+        : null,
+    [previewingProposalId, songSuggestions]
+  );
+
+  const activeSourceSong = useMemo(() => {
+    if (previewedProposal && baseCatalogSong) {
+      return resolveSongWithLiveOverride(baseCatalogSong, {
+        songId: baseCatalogSong.id,
+        instrument: previewedProposal.instrument,
+        chordPro: previewedProposal.chordPro,
+        arrangementNote: previewedProposal.arrangementNote,
+        updatedAt: previewedProposal.suggestedAt,
+        updatedBy: previewedProposal.suggestedByName,
+      });
+    }
+    return layeredRehearsalResult?.song ?? baseCatalogSong;
+  }, [previewedProposal, baseCatalogSong, layeredRehearsalResult?.song]);
 
   const [semitones, setSemitones] = useState<number>(0);
   const [spellingOverride, setSpellingOverride] =
@@ -582,6 +700,271 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     const el = sectionRefs.current[index];
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const diatonicSuggestionsForDisplayedKey =
+    getSuggestedChordsForKey(displayedKey);
+
+  const applyRehearsalArrangementChange = (
+    baseChordPro: string,
+    arrangementNote?: string
+  ) => {
+    if (!baseCatalogSong) return;
+    setPreviewingProposalId(null);
+    const nextPersonal = savePersonalInstrumentArrangement({
+      songId: baseCatalogSong.id,
+      songTitle: baseCatalogSong.title,
+      instrument: rehearsalInstrument,
+      chordPro: baseChordPro,
+      arrangementNote:
+        arrangementNote ||
+        proposalNoteInput.trim() ||
+        layeredRehearsalResult?.activeOverride?.arrangementNote ||
+        `My ${rehearsalInstrument} rehearsal chords`,
+      updatedBy: user?.id || 'local-user',
+      updatedByName: user?.displayName || 'Musician',
+    });
+    setPersonalArrangements(nextPersonal);
+    setPreferredLayer('auto');
+    setFeedbackBanner({
+      type: 'success',
+      message: `Saved to your Personal ${rehearsalInstrument.toUpperCase()} Chords! Ready to submit to your Worship Leader for approval whenever you're done.`,
+    });
+  };
+
+  const handleInlineChordChange = (
+    sectionId: string,
+    lineIndex: number,
+    segmentIndex: number,
+    newConcertChord: string,
+    charOffset: number = 0,
+    isTrailing: boolean = false
+  ) => {
+    if (!baseCatalogSong || !displaySong) return;
+    let updatedDisplayedSong = displaySong;
+    if (isTrailing) {
+      updatedDisplayedSong = appendChordToSongSectionLine(
+        displaySong,
+        sectionId,
+        lineIndex,
+        newConcertChord
+      );
+    } else if (charOffset > 0) {
+      updatedDisplayedSong = insertChordAtLyricPositionInSong(
+        displaySong,
+        sectionId,
+        lineIndex,
+        segmentIndex,
+        charOffset,
+        newConcertChord
+      );
+    } else {
+      updatedDisplayedSong = replaceChordInSongSectionLine(
+        displaySong,
+        sectionId,
+        lineIndex,
+        segmentIndex,
+        newConcertChord
+      );
+    }
+    const baseChordPro = convertDisplayedSongToBaseChordPro(
+      updatedDisplayedSong,
+      baseCatalogSong,
+      normalizedSemitones
+    );
+    setActiveChordEditTarget(null);
+    setCustomChordInput('');
+    applyRehearsalArrangementChange(baseChordPro);
+  };
+
+  const handleNudgeChord = (
+    sectionId: string,
+    lineIndex: number,
+    segmentIndex: number,
+    direction: 'left' | 'right'
+  ) => {
+    if (!baseCatalogSong || !displaySong) return;
+    const { song: updatedDisplayedSong, newSegmentIndex } =
+      nudgeChordByWordInSongSectionLine(
+        displaySong,
+        sectionId,
+        lineIndex,
+        segmentIndex,
+        direction
+      );
+    const baseChordPro = convertDisplayedSongToBaseChordPro(
+      updatedDisplayedSong,
+      baseCatalogSong,
+      normalizedSemitones
+    );
+    setActiveChordEditTarget((prev) =>
+      prev
+        ? {
+            ...prev,
+            segmentIndex: newSegmentIndex,
+            charOffset: 0,
+            targetWord: undefined,
+          }
+        : null
+    );
+    applyRehearsalArrangementChange(baseChordPro);
+  };
+
+  const handleInlineLineSave = () => {
+    if (!activeLineEditTarget || !baseCatalogSong || !displaySong) return;
+    const updatedDisplayedSong = updateLineInSongSection(
+      displaySong,
+      activeLineEditTarget.sectionId,
+      activeLineEditTarget.lineIndex,
+      activeLineEditTarget.bracketedText,
+      activeLineEditTarget.annotation
+    );
+    const baseChordPro = convertDisplayedSongToBaseChordPro(
+      updatedDisplayedSong,
+      baseCatalogSong,
+      normalizedSemitones
+    );
+    setActiveLineEditTarget(null);
+    applyRehearsalArrangementChange(baseChordPro);
+  };
+
+  const handleProposeCurrentArrangementToLeader = async () => {
+    if (!effectiveGroup?.id || !baseCatalogSong || !displaySong) return;
+    setIsSubmittingProposal(true);
+    try {
+      const chordProToSend =
+        layeredRehearsalResult?.activeOverride?.chordPro ||
+        convertDisplayedSongToBaseChordPro(
+          displaySong,
+          baseCatalogSong,
+          normalizedSemitones
+        );
+      const noteToSend =
+        proposalNoteInput.trim() ||
+        layeredRehearsalResult?.activeOverride?.arrangementNote ||
+        `${user?.displayName || 'Musician'}'s ${rehearsalInstrument} arrangement`;
+
+      const { group: updatedGroup } = await proposeTeamSongArrangement(
+        effectiveGroup.id,
+        {
+          songId: baseCatalogSong.id,
+          songTitle: baseCatalogSong.title,
+          instrument: rehearsalInstrument,
+          chordPro: chordProToSend,
+          arrangementNote: noteToSend,
+        }
+      );
+      setLiveGroup(updatedGroup);
+      setProposalNoteInput('');
+      setFeedbackBanner({
+        type: 'success',
+        message: `Submitted your ${rehearsalInstrument.toUpperCase()} chords & lyrics to ${effectiveGroup.name} Leader for approval!`,
+      });
+    } catch (err) {
+      setFeedbackBanner({
+        type: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Could not submit arrangement proposal to Worship Leader.',
+      });
+    } finally {
+      setIsSubmittingProposal(false);
+    }
+  };
+
+  const handlePublishDirectToChurch = async (
+    targetScope: InstrumentViewMode
+  ) => {
+    if (!effectiveGroup?.id || !baseCatalogSong || !displaySong) return;
+    setIsSubmittingProposal(true);
+    try {
+      const chordProToSave =
+        layeredRehearsalResult?.activeOverride?.chordPro ||
+        convertDisplayedSongToBaseChordPro(
+          displaySong,
+          baseCatalogSong,
+          normalizedSemitones
+        );
+      const noteToSave =
+        proposalNoteInput.trim() ||
+        layeredRehearsalResult?.activeOverride?.arrangementNote ||
+        `Leader ${targetScope} arrangement`;
+
+      const { group: updatedGroup } = await saveTeamSongArrangementDirect(
+        effectiveGroup.id,
+        {
+          songId: baseCatalogSong.id,
+          songTitle: baseCatalogSong.title,
+          instrument: targetScope,
+          chordPro: chordProToSave,
+          arrangementNote: noteToSave,
+        }
+      );
+      setLiveGroup(updatedGroup);
+      setFeedbackBanner({
+        type: 'success',
+        message:
+          targetScope === 'general'
+            ? `Published arrangement directly to ${effectiveGroup.name} (Entire Church Team)!`
+            : `Published arrangement directly to ${effectiveGroup.name} (${targetScope.toUpperCase()} Chords)!`,
+      });
+    } catch (err) {
+      setFeedbackBanner({
+        type: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Could not publish arrangement to church group.',
+      });
+    } finally {
+      setIsSubmittingProposal(false);
+    }
+  };
+
+  const handleLeaderReviewProposalOnSongPage = async (
+    proposal: TeamArrangementSuggestion,
+    decision: 'approve' | 'decline',
+    approvedScope?: InstrumentViewMode
+  ) => {
+    if (!effectiveGroup?.id) return;
+    setIsSubmittingProposal(true);
+    try {
+      const { group: updatedGroup } = await reviewTeamSongArrangement(
+        effectiveGroup.id,
+        proposal.id,
+        decision,
+        {
+          targetScope: approvedScope ?? proposal.instrument,
+          fallbackSuggestion: proposal,
+        }
+      );
+      setLiveGroup(updatedGroup);
+      if (previewingProposalId === proposal.id) {
+        setPreviewingProposalId(null);
+      }
+      setFeedbackBanner({
+        type: 'success',
+        message:
+          decision === 'approve'
+            ? `Approved ${proposal.suggestedByName}'s arrangement for ${
+                (approvedScope ?? proposal.instrument) === 'general'
+                  ? 'Entire Church Team'
+                  : `${(approvedScope ?? proposal.instrument).toUpperCase()} Only`
+              }!`
+            : `Declined ${proposal.suggestedByName}'s arrangement proposal.`,
+      });
+    } catch (err) {
+      setFeedbackBanner({
+        type: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Could not review arrangement proposal.',
+      });
+    } finally {
+      setIsSubmittingProposal(false);
     }
   };
 
@@ -1055,85 +1438,382 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
         </div>
       )}
 
-      {/* Active Rehearsal / Church Instrument Arrangement Banner */}
+      {/* Quick-Tap Edit Mode Helper Bar on Regular Song Page */}
+      {isQuickEditMode && (
+        <div
+          data-testid="song-quick-edit-helper-banner"
+          className="rounded-2xl border-2 border-[var(--brand-accent)] bg-[var(--brand-surface)] p-4 space-y-2.5 text-xs"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 font-bold text-[var(--brand-accent)] text-sm">
+                <Sparkles className="w-4 h-4" />
+                <span>
+                  Quick-Tap Edit Mode Active · Editing Your{' '}
+                  {rehearsalInstrument === 'general'
+                    ? 'General Song Chart'
+                    : `${rehearsalInstrument.toUpperCase()} Chords`}
+                </span>
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] font-semibold">
+                Saves automatically to your device &amp; carries over to Live Sync
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowInstrumentArrangeModal(true)}
+                className="px-2.5 py-1 rounded-lg border border-[var(--brand-accent)]/40 bg-[var(--bg-surface)] text-[var(--brand-accent)] font-bold cursor-pointer"
+              >
+                Open Full ChordPro Studio
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsQuickEditMode(false);
+                  setActiveChordEditTarget(null);
+                  setActiveLineEditTarget(null);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer"
+              >
+                Done Quick-Editing
+              </button>
+            </div>
+          </div>
+          <p className="text-[var(--text-secondary)] leading-relaxed">
+            • <strong>Tap any word in the lyrics</strong> below to place a chord right above that word ·{' '}
+            <strong>Tap any existing chord</strong> to swap it, remove it, or slide it{' '}
+            <strong>← Word Left / Word Right →</strong> ·{' '}
+            <strong>Tap &ldquo;Edit Words &amp; Chords&rdquo;</strong> on any line to rewrite lyrics or insert{' '}
+            <code className="font-mono text-[var(--brand-accent)]">[Chord]</code> tokens freely.
+          </p>
+        </div>
+      )}
+
+      {/* Leader Previewing a Member Proposal Banner */}
+      {previewedProposal && (
+        <div
+          data-testid="song-leader-preview-proposal-banner"
+          className="rounded-2xl border-2 border-amber-500 bg-amber-500/10 p-4 flex flex-wrap items-center justify-between gap-3 text-xs"
+        >
+          <div className="space-y-1">
+            <div className="font-bold text-amber-400 text-sm flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4" />
+              <span>
+                Previewing {previewedProposal.suggestedByName}&apos;s Proposed{' '}
+                {previewedProposal.instrument.toUpperCase()} Arrangement
+              </span>
+            </div>
+            {previewedProposal.arrangementNote && (
+              <p className="text-[var(--text-secondary)]">
+                Member Note: &ldquo;{previewedProposal.arrangementNote}&rdquo;
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isSubmittingProposal}
+              onClick={() =>
+                handleLeaderReviewProposalOnSongPage(
+                  previewedProposal,
+                  'approve',
+                  previewedProposal.instrument
+                )
+              }
+              className="px-3 py-1.5 rounded-lg bg-emerald-500 text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
+            >
+              Approve for {previewedProposal.instrument.toUpperCase()} Only
+            </button>
+            <button
+              type="button"
+              disabled={isSubmittingProposal}
+              onClick={() =>
+                handleLeaderReviewProposalOnSongPage(
+                  previewedProposal,
+                  'approve',
+                  'general'
+                )
+              }
+              className="px-3 py-1.5 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
+            >
+              Approve for Entire Church Team
+            </button>
+            <button
+              type="button"
+              disabled={isSubmittingProposal}
+              onClick={() =>
+                handleLeaderReviewProposalOnSongPage(
+                  previewedProposal,
+                  'decline'
+                )
+              }
+              className="px-2.5 py-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 text-rose-400 font-semibold cursor-pointer disabled:opacity-50"
+            >
+              Decline
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewingProposalId(null)}
+              className="px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-semibold cursor-pointer"
+            >
+              Exit Preview
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Member Proposals for This Song (Visible to Worship Leader right on the Song Page) */}
+      {isGroupLeader && pendingSongProposals.length > 0 && !previewedProposal && (
+        <div
+          data-testid="song-leader-pending-proposals-card"
+          className="rounded-2xl border-2 border-amber-500/50 bg-amber-500/10 p-4 space-y-3 text-xs"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-bold text-amber-400 text-sm flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4" />
+              <span>
+                {pendingSongProposals.length} Member Arrangement Proposal
+                {pendingSongProposals.length === 1 ? '' : 's'} Waiting for Your
+                Approval
+              </span>
+            </span>
+            <Link
+              href="/team"
+              className="text-amber-400 underline font-semibold"
+            >
+              View All in Team Hub
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {pendingSongProposals.map((prop) => (
+              <div
+                key={prop.id}
+                className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 flex flex-wrap items-center justify-between gap-3"
+              >
+                <div className="space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-[var(--text-primary)]">
+                      {prop.suggestedByName}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-[var(--brand-surface)] text-[var(--brand-accent)]">
+                      {prop.instrument === 'general'
+                        ? 'Full Band Chart'
+                        : `${prop.instrument} Chords`}
+                    </span>
+                  </div>
+                  {prop.arrangementNote && (
+                    <p className="text-[var(--text-secondary)]">
+                      &ldquo;{prop.arrangementNote}&rdquo;
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    data-testid={`song-preview-proposal-${prop.id}`}
+                    onClick={() => setPreviewingProposalId(prop.id)}
+                    className="px-2.5 py-1.5 rounded-lg border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] font-bold cursor-pointer"
+                  >
+                    Preview on Chart
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`song-approve-proposal-instrument-${prop.id}`}
+                    disabled={isSubmittingProposal}
+                    onClick={() =>
+                      handleLeaderReviewProposalOnSongPage(
+                        prop,
+                        'approve',
+                        prop.instrument
+                      )
+                    }
+                    className="px-2.5 py-1.5 rounded-lg bg-emerald-500 text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    Approve for {prop.instrument.toUpperCase()} Only
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`song-approve-proposal-general-${prop.id}`}
+                    disabled={isSubmittingProposal}
+                    onClick={() =>
+                      handleLeaderReviewProposalOnSongPage(
+                        prop,
+                        'approve',
+                        'general'
+                      )
+                    }
+                    className="px-2.5 py-1.5 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    Approve for Entire Church Team
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`song-decline-proposal-${prop.id}`}
+                    disabled={isSubmittingProposal}
+                    onClick={() =>
+                      handleLeaderReviewProposalOnSongPage(prop, 'decline')
+                    }
+                    className="px-2.5 py-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 text-rose-400 font-semibold cursor-pointer disabled:opacity-50"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Active Rehearsal / Church Instrument Arrangement Banner + Submit for Leader Approval */}
       {layeredRehearsalResult &&
         layeredRehearsalResult.activeLayer !== 'catalog' && (
           <div
             data-testid="rehearsal-arrangement-banner"
-            className="rounded-2xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs"
+            className="rounded-2xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] p-4 space-y-3 text-xs"
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 font-bold text-[var(--brand-accent)]">
-                <Sparkles className="w-4 h-4" />
-                <span>
-                  {layeredRehearsalResult.activeLayer === 'personal-instrument'
-                    ? `My Rehearsal ${rehearsalInstrument.toUpperCase()} Chords Active (Will auto-carry over into Live Sync!)`
-                    : `Church ${rehearsalInstrument.toUpperCase()} Arrangement Active`}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 font-bold text-[var(--brand-accent)]">
+                  <Sparkles className="w-4 h-4" />
+                  <span>
+                    {layeredRehearsalResult.activeLayer === 'personal-instrument'
+                      ? `My Rehearsal ${rehearsalInstrument.toUpperCase()} Chords & Lyrics Active (Auto-carries over into Live Sync!)`
+                      : `Church ${rehearsalInstrument.toUpperCase()} Arrangement Active`}
+                  </span>
                 </span>
-              </span>
-              {layeredRehearsalResult.activeOverride?.arrangementNote && (
-                <span className="px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)] font-semibold">
-                  “{layeredRehearsalResult.activeOverride.arrangementNote}”
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setPreferredLayer((prev) =>
-                    prev === 'catalog' ? 'auto' : 'catalog'
-                  )
-                }
-                className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-semibold cursor-pointer"
-              >
-                {preferredLayer === 'catalog'
-                  ? `View My ${rehearsalInstrument.toUpperCase()} Chords`
-                  : 'Compare with Original Chart'}
-              </button>
-              {effectiveGroup?.id &&
-                layeredRehearsalResult.activeLayer === 'personal-instrument' &&
-                layeredRehearsalResult.activeOverride && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!baseCatalogSong || !layeredRehearsalResult.activeOverride) return;
-                      try {
-                        await proposeTeamSongArrangement(effectiveGroup.id, {
-                          songId: baseCatalogSong.id,
-                          songTitle: baseCatalogSong.title,
-                          instrument: rehearsalInstrument,
-                          chordPro: layeredRehearsalResult.activeOverride.chordPro,
-                          arrangementNote:
-                            layeredRehearsalResult.activeOverride.arrangementNote,
-                        });
+                {layeredRehearsalResult.activeOverride?.arrangementNote && (
+                  <span className="px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)] font-semibold">
+                    “{layeredRehearsalResult.activeOverride.arrangementNote}”
+                  </span>
+                )}
+                {myLatestProposalForInstrument && (
+                  <span
+                    data-testid="song-member-proposal-status-badge"
+                    className={`px-2.5 py-0.5 rounded-full font-bold ${
+                      myLatestProposalForInstrument.status === 'pending'
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                        : myLatestProposalForInstrument.status === 'approved'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                    }`}
+                  >
+                    {myLatestProposalForInstrument.status === 'pending'
+                      ? 'Pending Leader Approval'
+                      : myLatestProposalForInstrument.status === 'approved'
+                      ? 'Approved by Leader'
+                      : 'Declined by Leader'}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPreferredLayer((prev) =>
+                      prev === 'catalog' ? 'auto' : 'catalog'
+                    )
+                  }
+                  className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-semibold cursor-pointer"
+                >
+                  {preferredLayer === 'catalog'
+                    ? `View My ${rehearsalInstrument.toUpperCase()} Chords`
+                    : 'Compare with Original Chart'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickEditMode((prev) => !prev)}
+                  className="px-2.5 py-1 rounded-lg border border-[var(--brand-accent)]/40 bg-[var(--bg-surface)] text-[var(--brand-accent)] font-bold cursor-pointer"
+                >
+                  {isQuickEditMode ? 'Exit Quick-Tap Edit' : 'Quick-Tap Edit'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowInstrumentArrangeModal(true)}
+                  className="px-2.5 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-bold text-[var(--brand-accent)] cursor-pointer"
+                >
+                  Full Studio
+                </button>
+                {layeredRehearsalResult.activeLayer === 'personal-instrument' &&
+                  baseCatalogSong && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = removePersonalInstrumentArrangement(
+                          baseCatalogSong.id,
+                          rehearsalInstrument
+                        );
+                        setPersonalArrangements(next);
                         setFeedbackBanner({
                           type: 'success',
-                          message: `Proposed your ${rehearsalInstrument.toUpperCase()} arrangement to ${effectiveGroup.name} Leader for approval!`,
+                          message: `Reset your personal ${rehearsalInstrument.toUpperCase()} chords back to the original chart.`,
                         });
-                      } catch (err) {
-                        setFeedbackBanner({
-                          type: 'error',
-                          message:
-                            err instanceof Error
-                              ? err.message
-                              : 'Could not send proposal.',
-                        });
-                      }
-                    }}
-                    className="px-3 py-1 rounded-lg bg-amber-500 text-[#0c0c10] font-bold cursor-pointer"
-                  >
-                    Propose to Church Leader
-                  </button>
-                )}
-              <button
-                type="button"
-                onClick={() => setShowInstrumentArrangeModal(true)}
-                className="font-bold text-[var(--brand-accent)] hover:underline cursor-pointer"
-              >
-                Edit Chords
-              </button>
+                      }}
+                      className="px-2.5 py-1 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 font-semibold cursor-pointer"
+                    >
+                      Reset My Chords
+                    </button>
+                  )}
+              </div>
             </div>
+
+            {/* Submit Changes for Worship Leader Approval (or Direct Publish if Leader) */}
+            {effectiveGroup?.id &&
+              layeredRehearsalResult.activeLayer === 'personal-instrument' &&
+              layeredRehearsalResult.activeOverride && (
+                <div className="pt-2.5 border-t border-[var(--border-subtle)]/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                  <input
+                    type="text"
+                    aria-label="Note for Worship Leader about your chord or lyric changes"
+                    value={proposalNoteInput}
+                    onChange={(e) => setProposalNoteInput(e.target.value)}
+                    placeholder={`Optional note for ${effectiveGroup.name} Leader (e.g. Added passing chords in Verse 2)...`}
+                    className="flex-1 h-9 px-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs text-[var(--text-primary)]"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid="song-submit-for-leader-approval-btn"
+                      disabled={isSubmittingProposal}
+                      onClick={handleProposeCurrentArrangementToLeader}
+                      className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-[#0c0c10] font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>
+                        {isSubmittingProposal
+                          ? 'Submitting...'
+                          : myLatestProposalForInstrument?.status === 'pending'
+                          ? 'Update Proposal for Leader'
+                          : 'Submit to Worship Leader for Approval'}
+                      </span>
+                    </button>
+                    {isGroupLeader && (
+                      <>
+                        <button
+                          type="button"
+                          data-testid="song-leader-publish-instrument-btn"
+                          disabled={isSubmittingProposal}
+                          onClick={() =>
+                            handlePublishDirectToChurch(rehearsalInstrument)
+                          }
+                          className="px-3 py-2 rounded-xl bg-emerald-500 text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          Publish to Church {rehearsalInstrument.toUpperCase()}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="song-leader-publish-general-btn"
+                          disabled={isSubmittingProposal}
+                          onClick={() => handlePublishDirectToChurch('general')}
+                          className="px-3 py-2 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
+                        >
+                          Publish to Entire Church Team
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
           </div>
         )}
 
@@ -1299,14 +1979,16 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               <span>Start Live Sync</span>
             </Link>
 
-            {/* Rehearse Ahead of Time: Customize Instrument Chords (Carries Over to Live Sync!) */}
-            <div className="inline-flex items-center rounded-xl border border-[var(--brand-accent)]/35 bg-[var(--bg-subtle)] p-1 gap-1 min-h-[2.75rem]">
+            {/* Rehearse Ahead of Time: Quick-Tap Edit Chords & Lyrics + Customize Instrument Chords */}
+            <div className="inline-flex flex-wrap items-center rounded-xl border border-[var(--brand-accent)]/35 bg-[var(--bg-subtle)] p-1 gap-1 min-h-[2.75rem]">
               <select
                 aria-label="Rehearsal instrument arrangement target"
                 value={rehearsalInstrument}
-                onChange={(e) =>
-                  setRehearsalInstrument(e.target.value as InstrumentViewMode)
-                }
+                onChange={(e) => {
+                  setRehearsalInstrument(e.target.value as InstrumentViewMode);
+                  setActiveChordEditTarget(null);
+                  setActiveLineEditTarget(null);
+                }}
                 className="h-8 px-2 rounded-lg bg-[var(--bg-surface)] text-xs font-bold text-[var(--brand-accent)] cursor-pointer"
               >
                 <option value="guitar">Guitar Chords</option>
@@ -1316,13 +1998,35 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               </select>
               <button
                 type="button"
+                data-testid="song-quick-tap-edit-toggle"
+                onClick={() => {
+                  setIsQuickEditMode((prev) => !prev);
+                  setActiveChordEditTarget(null);
+                  setActiveLineEditTarget(null);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  isQuickEditMode
+                    ? 'bg-[var(--brand-accent)] text-[#0c0c10]'
+                    : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
+                }`}
+                title="Tap any word or chord directly on the chart to add, change, slide, or edit chords & lyrics!"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>
+                  {isQuickEditMode
+                    ? 'Quick-Tap Edit: ON'
+                    : 'Quick-Tap Edit Chords & Lyrics'}
+                </span>
+              </button>
+              <button
+                type="button"
                 data-testid="rehearsal-customize-instrument-chords-btn"
                 onClick={() => setShowInstrumentArrangeModal(true)}
-                className="px-3 py-1.5 rounded-lg bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
-                title="Customize chords or lyrics for your instrument ahead of time — automatically carries over into Live Sync!"
+                className="px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:border-[var(--brand-accent)] hover:text-[var(--brand-accent)] text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                title="Open full ChordPro Studio modal for your instrument"
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Customize {rehearsalInstrument.toUpperCase()} Chords</span>
+                <Sparkles className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
+                <span>Full Studio</span>
               </button>
             </div>
 
@@ -1783,14 +2487,362 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
             <div className="space-y-4">
               {section.lines.map((line, lineIndex) => {
                 const instrumental = isLineInstrumental(line);
+                const isEditingThisLine =
+                  isQuickEditMode &&
+                  activeLineEditTarget?.sectionId === section.id &&
+                  activeLineEditTarget?.lineIndex === lineIndex;
+
+                const renderChordPickerPopover = () => {
+                  const isTarget =
+                    isQuickEditMode &&
+                    activeChordEditTarget?.sectionId === section.id &&
+                    activeChordEditTarget?.lineIndex === lineIndex;
+
+                  if (!isTarget || !activeChordEditTarget) return null;
+
+                  const {
+                    segmentIndex: segIdx,
+                    charOffset,
+                    targetWord,
+                    currentChord,
+                    isTrailing,
+                  } = activeChordEditTarget;
+
+                  const headerLabel = isTrailing
+                    ? `Add Chord at End of Line (Key of ${displayedKey})`
+                    : charOffset > 0 && targetWord
+                    ? `Add Chord Above "${targetWord}" (Key of ${displayedKey})`
+                    : currentChord
+                    ? `Chord "${currentChord}"${
+                        targetWord ? ` on "${targetWord}"` : ''
+                      } (Key of ${displayedKey})`
+                    : `Add Chord${
+                        targetWord ? ` Above "${targetWord}"` : ''
+                      } (Key of ${displayedKey})`;
+
+                  return (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid="song-inline-chord-picker-popover"
+                      className="mt-1.5 mb-2 p-3.5 rounded-xl border-2 border-[var(--brand-accent)] bg-[var(--bg-surface)] shadow-xl space-y-2.5 z-30 max-w-lg"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-[var(--brand-accent)]">
+                          {headerLabel}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveChordEditTarget(null)}
+                          className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                        >
+                          Close
+                        </button>
+                      </div>
+
+                      {/* 1-Tap Diatonic Chord Buttons */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {diatonicSuggestionsForDisplayedKey.map((sug) => (
+                          <button
+                            key={sug}
+                            type="button"
+                            onClick={() =>
+                              handleInlineChordChange(
+                                section.id,
+                                lineIndex,
+                                segIdx,
+                                sug,
+                                charOffset,
+                                Boolean(isTrailing)
+                              )
+                            }
+                            className={`px-2.5 py-1 rounded-lg font-mono font-bold text-xs border cursor-pointer transition-colors ${
+                              sug === currentChord &&
+                              charOffset === 0 &&
+                              !isTrailing
+                                ? 'bg-[var(--brand-accent)] text-[#0c0c10] border-[var(--brand-accent)]'
+                                : 'bg-[var(--brand-surface)] text-[var(--brand-accent)] border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10]'
+                            }`}
+                          >
+                            {sug}
+                          </button>
+                        ))}
+                        {currentChord && charOffset === 0 && !isTrailing && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleInlineChordChange(
+                                section.id,
+                                lineIndex,
+                                segIdx,
+                                '',
+                                0,
+                                false
+                              )
+                            }
+                            className="px-2.5 py-1 rounded-lg font-sans font-semibold text-xs border border-rose-500/40 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 cursor-pointer"
+                          >
+                            Remove Chord
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Word Nudge Controls (Move Chord Left / Right Across Lyrics) + Edit Words Shortcut */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-subtle)]">
+                        {currentChord &&
+                        charOffset === 0 &&
+                        !isTrailing &&
+                        !instrumental ? (
+                          <div className="inline-flex items-center gap-1.5">
+                            <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                              Position:
+                            </span>
+                            <button
+                              type="button"
+                              data-testid="song-nudge-chord-left-btn"
+                              onClick={() =>
+                                handleNudgeChord(
+                                  section.id,
+                                  lineIndex,
+                                  segIdx,
+                                  'left'
+                                )
+                              }
+                              className="px-2 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--brand-accent)] text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                              title="Slide this chord one word to the left"
+                            >
+                              <ArrowLeft className="w-3 h-3" />
+                              <span>Word Left</span>
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="song-nudge-chord-right-btn"
+                              onClick={() =>
+                                handleNudgeChord(
+                                  section.id,
+                                  lineIndex,
+                                  segIdx,
+                                  'right'
+                                )
+                              }
+                              className="px-2 py-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] hover:border-[var(--brand-accent)] text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                              title="Slide this chord one word to the right"
+                            >
+                              <span>Word Right</span>
+                              <ArrowRight className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-[var(--text-secondary)]">
+                            Tap any chord above to place it right here
+                          </span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const bracketed = formatSongLineForQuickEdit(line);
+                            setActiveChordEditTarget(null);
+                            inlineLineCursorRef.current = bracketed.length;
+                            setActiveLineEditTarget({
+                              sectionId: section.id,
+                              lineIndex,
+                              bracketedText: bracketed,
+                              annotation: line.annotation || '',
+                            });
+                          }}
+                          className="px-2.5 py-1 rounded-lg border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Edit Lyrics &amp; Chords Text</span>
+                        </button>
+                      </div>
+
+                      {/* Custom Chord Symbol Input */}
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <input
+                          type="text"
+                          aria-label="Custom chord symbol"
+                          value={customChordInput}
+                          onChange={(e) => setCustomChordInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key === 'Enter' &&
+                              customChordInput.trim()
+                            ) {
+                              e.preventDefault();
+                              handleInlineChordChange(
+                                section.id,
+                                lineIndex,
+                                segIdx,
+                                customChordInput.trim(),
+                                charOffset,
+                                Boolean(isTrailing)
+                              );
+                            }
+                          }}
+                          placeholder="Custom chord (e.g. D/F#, Asus4, Bm7)"
+                          className="flex-1 h-8 px-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-subtle)] font-mono text-xs"
+                        />
+                        <button
+                          type="button"
+                          disabled={!customChordInput.trim()}
+                          onClick={() =>
+                            handleInlineChordChange(
+                              section.id,
+                              lineIndex,
+                              segIdx,
+                              customChordInput.trim(),
+                              charOffset,
+                              Boolean(isTrailing)
+                            )
+                          }
+                          className="px-3 h-8 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] font-bold text-xs cursor-pointer disabled:opacity-40"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  );
+                };
+
+                if (isEditingThisLine && activeLineEditTarget) {
+                  return (
+                    <div
+                      key={lineIndex}
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-3.5 rounded-xl border-2 border-[var(--brand-accent)] bg-[var(--bg-subtle)] space-y-2.5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-[var(--brand-accent)]">
+                          Edit Line #{lineIndex + 1} — Click anywhere in the
+                          lyrics below &amp; tap a +{displayedKey} chord to
+                          insert at your cursor:
+                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {diatonicSuggestionsForDisplayedKey.map((chord) => (
+                            <button
+                              key={chord}
+                              type="button"
+                              onClick={() => {
+                                const inputEl = inlineLineInputRef.current;
+                                const curPos =
+                                  inputEl?.selectionStart ??
+                                  inlineLineCursorRef.current ??
+                                  activeLineEditTarget.bracketedText.length;
+                                const { nextText, nextCursor } =
+                                  insertChordAtCursor(
+                                    activeLineEditTarget.bracketedText,
+                                    curPos,
+                                    chord
+                                  );
+                                inlineLineCursorRef.current = nextCursor;
+                                setActiveLineEditTarget((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        bracketedText: nextText,
+                                      }
+                                    : null
+                                );
+                                window.requestAnimationFrame(() => {
+                                  if (inlineLineInputRef.current) {
+                                    inlineLineInputRef.current.focus();
+                                    inlineLineInputRef.current.setSelectionRange(
+                                      nextCursor,
+                                      nextCursor
+                                    );
+                                  }
+                                });
+                              }}
+                              className="px-2 py-0.5 rounded bg-[var(--brand-surface)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/30 hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-mono font-bold text-[11px] cursor-pointer transition-colors"
+                              title={`Insert [${chord}] at cursor position`}
+                            >
+                              +{chord}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <input
+                        ref={inlineLineInputRef}
+                        type="text"
+                        aria-label="Edit line chords and lyrics"
+                        value={activeLineEditTarget.bracketedText}
+                        onClick={(e) => {
+                          inlineLineCursorRef.current =
+                            e.currentTarget.selectionStart;
+                        }}
+                        onKeyUp={(e) => {
+                          inlineLineCursorRef.current =
+                            e.currentTarget.selectionStart;
+                        }}
+                        onChange={(e) => {
+                          inlineLineCursorRef.current =
+                            e.target.selectionStart;
+                          setActiveLineEditTarget((prev) =>
+                            prev
+                              ? { ...prev, bracketedText: e.target.value }
+                              : null
+                          );
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleInlineLineSave();
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setActiveLineEditTarget(null);
+                          }
+                        }}
+                        placeholder="Type lyrics and place chords in brackets like [G]Amazing [D/F#]grace"
+                        className="w-full h-10 px-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] font-mono text-xs sm:text-sm"
+                      />
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <input
+                          type="text"
+                          aria-label="Optional line performance cue"
+                          value={activeLineEditTarget.annotation}
+                          onChange={(e) =>
+                            setActiveLineEditTarget((prev) =>
+                              prev
+                                ? { ...prev, annotation: e.target.value }
+                                : null
+                            )
+                          }
+                          placeholder="Optional cue above line (e.g. Build on drums, A cappella)"
+                          className="flex-1 min-w-[180px] h-8 px-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setActiveLineEditTarget(null)}
+                            className="px-3 py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs font-semibold cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleInlineLineSave}
+                            className="px-3.5 py-1.5 rounded-lg bg-[var(--brand-accent)] text-[#0c0c10] text-xs font-bold cursor-pointer"
+                          >
+                            Save Line Update
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
 
                 if (instrumental) {
+                  const isPopoverOnThisLine =
+                    isQuickEditMode &&
+                    activeChordEditTarget?.sectionId === section.id &&
+                    activeChordEditTarget?.lineIndex === lineIndex;
                   return (
                     <div
                       key={lineIndex}
                       className="chart-line-scroll py-1"
                     >
-                      <div className="inline-flex items-center gap-2.5 font-mono font-bold">
+                      <div className="inline-flex flex-wrap items-center gap-2.5 font-mono font-bold">
                         <span className="text-xs font-sans font-medium uppercase tracking-wider text-[var(--text-secondary)] mr-1">
                           Chords:
                         </span>
@@ -1798,12 +2850,30 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                           <button
                             key={segIdx}
                             type="button"
-                            onClick={() =>
-                              seg.chord && setInspectedChord(seg.chord)
-                            }
-                            className="px-3 py-1 rounded-lg bg-[var(--chord-bg)] text-[var(--chord-color)] border border-[var(--border-subtle)] hover:border-[var(--brand-accent)] transition-colors cursor-pointer"
+                            onClick={(e) => {
+                              if (isQuickEditMode) {
+                                e.stopPropagation();
+                                setCustomChordInput(seg.chord || '');
+                                setActiveChordEditTarget({
+                                  sectionId: section.id,
+                                  lineIndex,
+                                  segmentIndex: segIdx,
+                                  charOffset: 0,
+                                  currentChord: seg.chord || '',
+                                });
+                              } else if (seg.chord) {
+                                setInspectedChord(seg.chord);
+                              }
+                            }}
+                            className={`px-3 py-1 rounded-lg bg-[var(--chord-bg)] text-[var(--chord-color)] border transition-colors cursor-pointer ${
+                              isQuickEditMode
+                                ? 'border-[var(--brand-accent)] hover:bg-[var(--brand-surface)]'
+                                : 'border-[var(--border-subtle)] hover:border-[var(--brand-accent)]'
+                            }`}
                             title={
-                              seg.chord
+                              isQuickEditMode
+                                ? 'Tap to change or remove chord'
+                                : seg.chord
                                 ? `Inspect ${seg.chord} chord diagram & fingering`
                                 : undefined
                             }
@@ -1812,10 +2882,56 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                           </button>
                         ))}
                         <span className="text-[var(--text-secondary)]">|</span>
+                        {isQuickEditMode && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCustomChordInput('');
+                                setActiveChordEditTarget({
+                                  sectionId: section.id,
+                                  lineIndex,
+                                  segmentIndex: line.segments.length,
+                                  charOffset: 0,
+                                  currentChord: '',
+                                  isTrailing: true,
+                                });
+                              }}
+                              className="px-2 py-0.5 rounded-md border border-dashed border-[var(--brand-accent)]/60 bg-[var(--brand-surface)] text-[var(--brand-accent)] font-mono text-[11px] font-bold cursor-pointer"
+                              title="Add another chord to this progression"
+                            >
+                              + Add Chord
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveChordEditTarget(null);
+                                setActiveLineEditTarget({
+                                  sectionId: section.id,
+                                  lineIndex,
+                                  bracketedText:
+                                    formatSongLineForQuickEdit(line),
+                                  annotation: line.annotation || '',
+                                });
+                              }}
+                              className="px-2 py-0.5 rounded-md border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] font-sans text-[11px] font-semibold cursor-pointer"
+                            >
+                              Edit Chords &amp; Lyrics
+                            </button>
+                          </>
+                        )}
                       </div>
+                      {isPopoverOnThisLine && renderChordPickerPopover()}
                     </div>
                   );
                 }
+
+                const isPopoverOnThisLine =
+                  isQuickEditMode &&
+                  activeChordEditTarget?.sectionId === section.id &&
+                  activeChordEditTarget?.lineIndex === lineIndex;
 
                 return (
                   <div key={lineIndex} className="chart-line-scroll">
@@ -1824,32 +2940,161 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                         ({line.annotation})
                       </div>
                     )}
-                    <div className="chart-line-segments">
-                      {line.segments.map((seg, segIdx) => {
-                        const displayChord = formatChordDisplay(seg.chord);
-                        return (
-                          <span key={segIdx} className="chart-segment">
-                            {seg.chord ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setInspectedChord(seg.chord!)
-                                }
-                                className="chart-chord-row chart-chord-btn text-left"
-                                title={`Inspect ${seg.chord} chord diagram & fingering`}
-                              >
-                                {displayChord}
-                              </button>
-                            ) : (
-                              <span className="chart-chord-row">{'\u00A0'}</span>
-                            )}
-                            <span className="chart-lyric-row">
-                              {seg.text || '\u00A0'}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="chart-line-segments items-end">
+                        {line.segments.map((seg, segIdx) => {
+                          const displayChord = formatChordDisplay(seg.chord);
+                          const wordTokens = isQuickEditMode
+                            ? splitSegmentTextIntoTappableWords(seg.text || '')
+                            : [];
+                          const firstWordText =
+                            wordTokens.find((w) => w.word)?.word ||
+                            seg.text?.trim().split(/\s+/)[0];
+
+                          return (
+                            <span key={segIdx} className="chart-segment">
+                              {isQuickEditMode ? (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCustomChordInput(seg.chord || '');
+                                    setActiveChordEditTarget({
+                                      sectionId: section.id,
+                                      lineIndex,
+                                      segmentIndex: segIdx,
+                                      charOffset: 0,
+                                      targetWord: firstWordText,
+                                      currentChord: seg.chord || '',
+                                    });
+                                  }}
+                                  className="chart-chord-row px-1 rounded border border-dashed border-[var(--brand-accent)]/50 hover:bg-[var(--brand-surface)] cursor-pointer"
+                                  title="Tap to change, move (←/→), or remove chord here"
+                                >
+                                  {seg.chord ? displayChord : '+chord'}
+                                </span>
+                              ) : seg.chord ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setInspectedChord(seg.chord!)}
+                                  className="chart-chord-row chart-chord-btn text-left"
+                                  title={`Inspect ${seg.chord} chord diagram & fingering`}
+                                >
+                                  {displayChord}
+                                </button>
+                              ) : (
+                                <span className="chart-chord-row">
+                                  {'\u00A0'}
+                                </span>
+                              )}
+                              <span className="chart-lyric-row">
+                                {isQuickEditMode && wordTokens.length > 0 ? (
+                                  wordTokens.map((tok, wIdx) => {
+                                    if (!tok.word) {
+                                      return (
+                                        <span key={wIdx}>
+                                          {tok.trailingSpace}
+                                        </span>
+                                      );
+                                    }
+                                    const isSelectedWord =
+                                      isPopoverOnThisLine &&
+                                      activeChordEditTarget?.segmentIndex ===
+                                        segIdx &&
+                                      activeChordEditTarget?.charOffset ===
+                                        tok.charOffset;
+                                    return (
+                                      <React.Fragment key={wIdx}>
+                                        <span
+                                          data-testid={`song-tappable-lyric-word-${section.id}-${lineIndex}-${segIdx}-${wIdx}`}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const existingChordHere =
+                                              tok.charOffset === 0
+                                                ? seg.chord || ''
+                                                : '';
+                                            setCustomChordInput(
+                                              existingChordHere
+                                            );
+                                            setActiveChordEditTarget({
+                                              sectionId: section.id,
+                                              lineIndex,
+                                              segmentIndex: segIdx,
+                                              charOffset: tok.charOffset,
+                                              targetWord: tok.word,
+                                              currentChord: existingChordHere,
+                                            });
+                                          }}
+                                          title={`Tap "${tok.word}" to place a chord right above this word or edit lyrics`}
+                                          className={`rounded px-0.5 -mx-0.5 transition-colors cursor-pointer ${
+                                            isSelectedWord
+                                              ? 'bg-[var(--brand-accent)] text-[#0c0c10] font-bold'
+                                              : 'hover:bg-[var(--brand-surface)] hover:text-[var(--brand-accent)] underline decoration-dotted decoration-[var(--brand-accent)]/45 underline-offset-4'
+                                          }`}
+                                        >
+                                          {tok.word}
+                                        </span>
+                                        {tok.trailingSpace}
+                                      </React.Fragment>
+                                    );
+                                  })
+                                ) : (
+                                  seg.text || '\u00A0'
+                                )}
+                              </span>
                             </span>
+                          );
+                        })}
+
+                        {/* Trailing +end chord button at the end of the lyric line */}
+                        {isQuickEditMode && (
+                          <span className="chart-segment ml-1.5">
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCustomChordInput('');
+                                setActiveChordEditTarget({
+                                  sectionId: section.id,
+                                  lineIndex,
+                                  segmentIndex: line.segments.length,
+                                  charOffset: 0,
+                                  currentChord: '',
+                                  isTrailing: true,
+                                });
+                              }}
+                              title="Add a chord at the end of this line"
+                              className="chart-chord-row px-1.5 rounded border border-dashed border-[var(--brand-accent)]/50 hover:bg-[var(--brand-surface)] text-[11px] cursor-pointer"
+                            >
+                              +end chord
+                            </span>
+                            <span className="chart-lyric-row">{'\u00A0'}</span>
                           </span>
-                        );
-                      })}
+                        )}
+                      </div>
+
+                      {isQuickEditMode && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveChordEditTarget(null);
+                            const bracketed = formatSongLineForQuickEdit(line);
+                            inlineLineCursorRef.current = bracketed.length;
+                            setActiveLineEditTarget({
+                              sectionId: section.id,
+                              lineIndex,
+                              bracketedText: bracketed,
+                              annotation: line.annotation || '',
+                            });
+                          }}
+                          className="shrink-0 mt-1 px-2 py-0.5 rounded-md border border-[var(--brand-accent)]/45 bg-[var(--brand-surface)] text-[var(--brand-accent)] text-[11px] font-semibold cursor-pointer inline-flex items-center gap-1"
+                          title="Rewrite lyrics or insert [Chord] tokens anywhere in this line"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Edit Words &amp; Chords</span>
+                        </button>
+                      )}
                     </div>
+                    {isPopoverOnThisLine && renderChordPickerPopover()}
                   </div>
                 );
               })}
