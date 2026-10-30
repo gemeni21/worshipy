@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
+import { apiUrl } from '@/lib/api/apiClient';
 import { downloadSongAsChordPro } from '@/lib/chordpro/chordProDownload';
 import {
   getSuggestedChordsForKey,
@@ -61,6 +62,7 @@ import {
 } from '@/lib/chordpro/liveArrangement';
 import {
   getCachedTeam,
+  getSessionToken,
   proposeTeamSongArrangement,
   reviewTeamSongArrangement,
   saveTeamSongArrangementDirect,
@@ -950,8 +952,8 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           decision === 'approve'
             ? `Approved ${proposal.suggestedByName}'s arrangement for ${
                 (approvedScope ?? proposal.instrument) === 'general'
-                  ? 'Entire Church Team'
-                  : `${(approvedScope ?? proposal.instrument).toUpperCase()} Only`
+                  ? 'Entire Church Team (Church Group Only)'
+                  : `${(approvedScope ?? proposal.instrument).toUpperCase()} Only (Church Group Only)`
               }!`
             : `Declined ${proposal.suggestedByName}'s arrangement proposal.`,
       });
@@ -962,6 +964,73 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           err instanceof Error
             ? err.message
             : 'Could not review arrangement proposal.',
+      });
+    } finally {
+      setIsSubmittingProposal(false);
+    }
+  };
+
+  const handleAskAdminToPublishGlobally = async () => {
+    if (!baseCatalogSong || !layeredRehearsalResult?.activeOverride) return;
+    const authToken = getSessionToken();
+    if (!authToken) {
+      setFeedbackBanner({
+        type: 'error',
+        message:
+          'Please sign in with your Worship Leader account to ask the Admin for permission to publish this Church Group arrangement globally.',
+      });
+      return;
+    }
+
+    setIsSubmittingProposal(true);
+    try {
+      const arrangedBaseSong = resolveSongWithLiveOverride(
+        baseCatalogSong,
+        layeredRehearsalResult.activeOverride
+      );
+      const churchLabel =
+        effectiveGroup?.churchName ||
+        effectiveGroup?.name ||
+        user?.churchName ||
+        'Church Team';
+      const submittedSong = {
+        ...arrangedBaseSong,
+        updatedAt: new Date().toISOString(),
+      };
+      const res = await fetch(apiUrl('/api/cloud/submissions'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          song: submittedSong,
+          submissionNotes: `Global Publish Permission Request from Leader (${churchLabel})${
+            layeredRehearsalResult.activeOverride.arrangementNote
+              ? ` — "${layeredRehearsalResult.activeOverride.arrangementNote}"`
+              : ''
+          }`,
+        }),
+      });
+      if (res.ok) {
+        setFeedbackBanner({
+          type: 'success',
+          message:
+            'Permission request sent to Admin! Your arrangement remains scoped to your Church Group until the Admin approves it for the Global Catalog.',
+        });
+      } else {
+        const errData = await res.json().catch(() => null);
+        setFeedbackBanner({
+          type: 'error',
+          message:
+            errData?.error ||
+            'Could not send global publishing permission request to Admin.',
+        });
+      }
+    } catch {
+      setFeedbackBanner({
+        type: 'error',
+        message: 'Could not send global publishing permission request to Admin.',
       });
     } finally {
       setIsSubmittingProposal(false);
@@ -1679,7 +1748,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                   <span>
                     {layeredRehearsalResult.activeLayer === 'personal-instrument'
                       ? `My Rehearsal ${rehearsalInstrument.toUpperCase()} Chords & Lyrics Active (Auto-carries over into Live Sync!)`
-                      : `Church ${rehearsalInstrument.toUpperCase()} Arrangement Active`}
+                      : `Church Group ${rehearsalInstrument.toUpperCase()} Arrangement Active (Church Only)`}
                   </span>
                 </span>
                 {layeredRehearsalResult.activeOverride?.arrangementNote && (
@@ -1701,12 +1770,31 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                     {myLatestProposalForInstrument.status === 'pending'
                       ? 'Pending Leader Approval'
                       : myLatestProposalForInstrument.status === 'approved'
-                      ? 'Approved by Leader'
+                      ? 'Approved by Leader (Church Group)'
                       : 'Declined by Leader'}
                   </span>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {isGroupLeader &&
+                  layeredRehearsalResult.activeLayer !==
+                    'personal-instrument' && (
+                    <button
+                      type="button"
+                      data-testid="song-leader-ask-admin-global-btn"
+                      disabled={isSubmittingProposal}
+                      onClick={handleAskAdminToPublishGlobally}
+                      className="px-2.5 py-1 rounded-lg border border-[var(--brand-accent)]/40 bg-[var(--bg-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                      title="Ask Admin for permission to publish this Church Group arrangement globally"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>
+                        {isSubmittingProposal
+                          ? 'Requesting Admin Approval...'
+                          : 'Ask Admin to Publish Globally'}
+                      </span>
+                    </button>
+                  )}
                 <button
                   type="button"
                   onClick={() =>
@@ -1757,7 +1845,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               </div>
             </div>
 
-            {/* Submit Changes for Worship Leader Approval (or Direct Publish if Leader) */}
+            {/* Submit Changes for Worship Leader Approval (or Direct Church Group Publish if Leader) */}
             {effectiveGroup?.id &&
               layeredRehearsalResult.activeLayer === 'personal-instrument' &&
               layeredRehearsalResult.activeOverride && (
@@ -1798,7 +1886,8 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                           }
                           className="px-3 py-2 rounded-xl bg-emerald-500 text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
                         >
-                          Publish to Church {rehearsalInstrument.toUpperCase()}
+                          Publish to Church {rehearsalInstrument.toUpperCase()}{' '}
+                          (Church Only)
                         </button>
                         <button
                           type="button"
@@ -1807,7 +1896,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                           onClick={() => handlePublishDirectToChurch('general')}
                           className="px-3 py-2 rounded-xl bg-[var(--brand-accent)] text-[#0c0c10] font-bold cursor-pointer disabled:opacity-50"
                         >
-                          Publish to Entire Church Team
+                          Publish to Entire Church Team (Church Only)
                         </button>
                       </>
                     )}

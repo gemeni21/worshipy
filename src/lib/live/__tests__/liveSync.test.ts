@@ -34,8 +34,15 @@ import {
   updateLineInSongSection,
 } from '../../chordpro/liveArrangement.ts';
 import {
+  createWorshipGroup,
+  getApprovedGlobalSongs,
+  getWorshipGroup,
   proposeSongArrangementForGroup,
+  registerUser,
   reviewSongArrangementSuggestion,
+  reviewSongSubmission,
+  saveGroupSongArrangementDirect,
+  submitSongForGlobalPublishing,
 } from '../../cloud/cloudDb.ts';
 import { transposeSong } from '../../music/transposition.ts';
 import {
@@ -1447,6 +1454,148 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
         keyboardistSongPage.song.sections[verseSectionIndex].lines[0]
       ),
       '[G]Morning [Em7]sunlight [Cmaj7]shines on [D]us'
+    );
+  });
+
+  it('27. Scenario: In Live Sync only Leader can push changes (scoped strictly to Church Group), and Global publishing requires Admin approval', () => {
+    const baseSong = getSongById('song-01')!;
+    const suffix = Date.now();
+
+    // Register Admin and Worship Leader
+    const adminReg = registerUser({
+      email: 'gray2187@gmail.com',
+      password: 'adminPassword123',
+      displayName: 'Global Admin',
+    });
+    const adminUser = adminReg.profile;
+    assert.equal(adminUser.role, 'admin');
+
+    const leaderReg = registerUser({
+      email: `leader.live.${suffix}@church.org`,
+      password: 'leaderPassword123',
+      displayName: 'Pastor Mark (Leader)',
+      churchName: 'Cornerstone Fellowship',
+    });
+    const leaderUser = leaderReg.profile;
+
+    const groupRes = createWorshipGroup(
+      leaderUser.id,
+      'Cornerstone Worship Team',
+      'Cornerstone Fellowship'
+    );
+    assert.equal(groupRes.ok, true);
+    const churchGroup = groupRes.group!;
+
+    // 1. Leader starts Live Sync session for Cornerstone Worship Team
+    const created = createLiveSession({
+      title: 'Cornerstone Live Service',
+      leaderName: leaderUser.displayName,
+      initialSongId: 'song-01',
+      groupId: churchGroup.id,
+    });
+
+    // Member joins Live Sync
+    const memberJoined = joinLiveSession({
+      sessionId: created.session.sessionId,
+      joinCode: created.session.joinCode,
+      participantName: 'Alex (Guitar)',
+      instrument: 'guitar',
+    });
+
+    // 2. Member attempts to push a chord/lyric arrangement change in Live Sync -> strictly forbidden!
+    assert.throws(
+      () => {
+        updateLiveSessionState(
+          created.session.sessionId,
+          memberJoined.participantToken,
+          {
+            songArrangementOverride: {
+              songId: 'song-01',
+              instrument: 'general',
+              chordPro: [
+                '{title: Song 1}',
+                '{key: G}',
+                '',
+                'Verse 1:',
+                '[G]Unauthorized [C]member [D]push',
+              ].join('\n'),
+            },
+          }
+        );
+      },
+      (err: unknown) => err instanceof LiveSyncError && err.statusCode === 403
+    );
+
+    // 3. Leader pushes a chord/lyric arrangement change in Live Sync -> saves to Live Session & Church Group ONLY (NOT Global)
+    const churchChordPro = [
+      '{title: Song 1}',
+      '{key: G}',
+      '',
+      'Verse 1:',
+      '[G]Cornerstone [D/F#]church [Em7]only [Cadd9]arrangement',
+    ].join('\n');
+
+    const afterLeaderPush = updateLiveSessionState(
+      created.session.sessionId,
+      created.participantToken,
+      {
+        songArrangementOverride: {
+          songId: 'song-01',
+          instrument: 'general',
+          chordPro: churchChordPro,
+          arrangementNote: 'Cornerstone Sunday Live Arrangement',
+        },
+      }
+    );
+
+    // Saved to Live Session and Church Group
+    assert.ok(
+      afterLeaderPush.sharedState.songArrangementOverrides?.['song-01']
+    );
+    const updatedChurchGroup = getWorshipGroup(churchGroup.id);
+    assert.ok(updatedChurchGroup?.songArrangements?.['song-01:general']);
+    assert.equal(
+      updatedChurchGroup?.songArrangements?.['song-01:general'].chordPro,
+      churchChordPro
+    );
+
+    // Verified NOT in Global Approved Catalog yet
+    const globalBeforeAdmin = getApprovedGlobalSongs();
+    assert.equal(
+      globalBeforeAdmin.some((s) => s.id === `global_${baseSong.id}`),
+      false
+    );
+
+    // 4. Leader wants to push the Church Group arrangement to Global -> asks Admin for permission
+    const arrangedSongForGlobal = resolveSongWithLiveOverride(
+      baseSong,
+      afterLeaderPush.sharedState.songArrangementOverrides?.['song-01']
+    );
+    const submission = submitSongForGlobalPublishing({
+      userId: leaderUser.id,
+      song: arrangedSongForGlobal,
+      submissionNotes:
+        'Global Publish Permission Request from Leader (Cornerstone Fellowship)',
+    });
+    assert.equal(submission.status, 'pending');
+
+    // Still NOT in Global Catalog while pending Admin approval
+    assert.equal(
+      getApprovedGlobalSongs().some((s) => s.id === `global_${baseSong.id}`),
+      false
+    );
+
+    // 5. Admin approves the Leader's permission request -> now published to the Global Catalog!
+    const reviewed = reviewSongSubmission({
+      submissionId: submission.id,
+      adminUserId: adminUser.id,
+      status: 'approved',
+      adminNotes: 'Approved for Global Catalog!',
+    });
+    assert.equal(reviewed.status, 'approved');
+    assert.equal(
+      getApprovedGlobalSongs().some((s) => s.id === `global_${baseSong.id}`),
+      true
     );
   });
 });
