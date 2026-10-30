@@ -72,6 +72,93 @@ export function setCachedTeam(group: WorshipGroup | null): void {
   } catch {}
 }
 
+// ============================================================================
+// TEAM HUB ANTI-FLICKER RECONCILIATION
+// ============================================================================
+
+/**
+ * Deterministic, key-order-independent serialization (drops `undefined` values and internal
+ * transport/Firestore-mirror metadata) so two payloads with identical UI content always
+ * compare equal regardless of which source (server API, Firestore snapshot, cache) produced them.
+ */
+const IGNORED_TEAM_SERIALIZE_KEYS = new Set([
+  'serverRevision',
+  'memberIds',
+  'memberUids',
+  'updatedAt',
+]);
+
+export function stableSerializeTeam(value: unknown): string {
+  const seen = new WeakSet<object>();
+  const normalize = (v: unknown): unknown => {
+    if (v === null || typeof v !== 'object') return v;
+    if (seen.has(v as object)) return null;
+    seen.add(v as object);
+    if (Array.isArray(v)) return v.map((item) => (item === undefined ? null : normalize(item)));
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(v as Record<string, unknown>).sort()) {
+      if (IGNORED_TEAM_SERIALIZE_KEYS.has(key)) continue;
+      let child = (v as Record<string, unknown>)[key];
+      if (child === undefined || child === null) continue;
+      if (key === 'practiceTakes' && Array.isArray(child)) {
+        const userTakes = child.filter(
+          (t: any) =>
+            t &&
+            typeof t.id === 'string' &&
+            !t.id.startsWith('__wmc_') &&
+            t.songId !== '__system_meta__'
+        );
+        if (userTakes.length === 0) continue;
+        child = userTakes;
+      }
+      out[key] = normalize(child);
+    }
+    return out;
+  };
+  return JSON.stringify(normalize(value));
+}
+
+/** True when two team payloads carry identical content (ignores key order / undefined). */
+export function areTeamGroupsEquivalent(
+  a: WorshipGroup | null | undefined,
+  b: WorshipGroup | null | undefined
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return stableSerializeTeam(a) === stableSerializeTeam(b);
+}
+
+const highestServerRevisionByGroup = new Map<string, number>();
+
+/**
+ * Returns true when a server-API payload is OLDER than a revision we have already applied.
+ * On hosted (serverless) Cloud Hubs, consecutive polls can land on different instances that
+ * hold different copies of the group; without this guard the Team Hub flip-flops between
+ * versions every poll. Payloads without a revision (legacy servers) are never stale.
+ */
+export function isStaleServerGroupPayload(group: WorshipGroup | null | undefined): boolean {
+  if (!group?.id || typeof group.serverRevision !== 'number') return false;
+  let highest = highestServerRevisionByGroup.get(group.id);
+  if (highest === undefined) {
+    const cached = getCachedTeam();
+    highest =
+      cached?.id === group.id && typeof cached.serverRevision === 'number'
+        ? cached.serverRevision
+        : 0;
+    highestServerRevisionByGroup.set(group.id, highest);
+  }
+  if (group.serverRevision < highest) return true;
+  if (group.serverRevision > highest) {
+    highestServerRevisionByGroup.set(group.id, group.serverRevision);
+  }
+  return false;
+}
+
+/** Test-only helper to reset revision tracking between scenarios. */
+export function resetServerRevisionTrackingForTest(): void {
+  highestServerRevisionByGroup.clear();
+}
+
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -611,6 +698,213 @@ export function mergeSuggestedSetlists(
   return Array.from(map.values()).sort(
     (a, b) => new Date(b.suggestedAt || 0).getTime() - new Date(a.suggestedAt || 0).getTime()
   );
+}
+
+/**
+ * Merges incoming and current song arrangement suggestions with terminal state invariance
+ * and tombstone (`getDismissedSuggestionIds()`) protection.
+ */
+export function mergeSuggestedArrangements(
+  incoming?: TeamArrangementSuggestion[],
+  current?: TeamArrangementSuggestion[],
+  explicitDismissedIds?: string[] | Set<string>
+): TeamArrangementSuggestion[] {
+  const dismissedIds = getDismissedSuggestionIds();
+  if (explicitDismissedIds) {
+    for (const id of explicitDismissedIds) dismissedIds.add(id);
+  }
+
+  const isDismissed = (item?: TeamArrangementSuggestion) =>
+    !item || !item.id || dismissedIds.has(item.id);
+
+  const cleanIncoming = (incoming || []).filter((item) => !isDismissed(item));
+  const cleanCurrent = (current || []).filter((item) => !isDismissed(item));
+
+  if (cleanIncoming.length === 0 && cleanCurrent.length === 0) return [];
+  if (cleanIncoming.length === 0 && !incoming) return cleanCurrent;
+  if (cleanCurrent.length === 0 && !current) return cleanIncoming;
+
+  const map = new Map<string, TeamArrangementSuggestion>();
+  const getPriority = (status?: string) =>
+    status === 'approved' || status === 'declined' ? 2 : 1;
+
+  for (const item of cleanIncoming) {
+    if (item && item.id) {
+      map.set(item.id, item);
+    }
+  }
+
+  for (const item of cleanCurrent) {
+    if (!item || !item.id) continue;
+    const existing = map.get(item.id);
+    if (!existing) {
+      const isFreshOptimistic =
+        item.status === 'pending' &&
+        item.suggestedAt &&
+        Date.now() - new Date(item.suggestedAt).getTime() < 30000;
+      if (!incoming || isFreshOptimistic) {
+        map.set(item.id, item);
+      }
+    } else {
+      const existingPri = getPriority(existing.status);
+      const itemPri = getPriority(item.status);
+      if (itemPri > existingPri) {
+        map.set(item.id, { ...existing, ...item });
+      } else if (existingPri > itemPri) {
+        map.set(item.id, { ...item, ...existing });
+      } else {
+        const itemTime = item.reviewedAt || item.suggestedAt || '';
+        const existTime = existing.reviewedAt || existing.suggestedAt || '';
+        map.set(
+          item.id,
+          itemTime >= existTime ? { ...existing, ...item } : { ...item, ...existing }
+        );
+      }
+    }
+  }
+
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.suggestedAt || 0).getTime() - new Date(a.suggestedAt || 0).getTime()
+  );
+}
+
+/**
+ * Canonical reconciliation of an incoming `WorshipGroup` (from server API, Firestore snapshot,
+ * BroadcastChannel, or cache) with the existing cached/active group. Strips Firestore-internal
+ * fields (`memberIds`, `memberUids`, `updatedAt`, system meta-takes) so all sources converge on
+ * a single identical representation without triggering re-render ping-pong.
+ */
+export function reconcileTeamGroup(
+  fresh: WorshipGroup,
+  currentCached?: WorshipGroup | null
+): WorshipGroup {
+  const sameGroup = Boolean(currentCached && currentCached.id === fresh.id);
+
+  // 1. Union-merge roster members by userId so polling or partial snapshots never drop musicians
+  const memberMap = new Map<string, GroupMember>();
+  if (sameGroup && Array.isArray(currentCached?.members)) {
+    for (const m of currentCached.members) {
+      if (m && m.userId) memberMap.set(m.userId, m);
+    }
+  }
+  if (Array.isArray(fresh.members)) {
+    for (const m of fresh.members) {
+      if (!m || !m.userId) continue;
+      const prev = memberMap.get(m.userId);
+      memberMap.set(m.userId, prev ? { ...prev, ...m } : m);
+    }
+  }
+  const mergedMembers = Array.from(memberMap.values());
+
+  // 2. Preserve activeSetlist when omitted (`undefined`), honor explicit clear (`null`)
+  let effectiveSetlist: TeamActiveSetlist | undefined = fresh.activeSetlist ?? undefined;
+  if (fresh.activeSetlist === null) {
+    effectiveSetlist = undefined;
+  } else if (fresh.activeSetlist === undefined && sameGroup) {
+    effectiveSetlist = currentCached?.activeSetlist ?? undefined;
+  }
+
+  // 3. Reconcile suggestedSetlists with terminal state invariance & tombstone protection
+  const effectiveSuggestions = mergeSuggestedSetlists(
+    fresh.suggestedSetlists,
+    sameGroup ? currentCached?.suggestedSetlists : undefined,
+    effectiveSetlist ?? null
+  );
+
+  // 4. Reconcile songArrangements & suggestedArrangements
+  const effectiveSongArrangements: Record<string, TeamSongArrangement> | undefined =
+    fresh.songArrangements !== undefined
+      ? fresh.songArrangements
+      : sameGroup
+      ? currentCached?.songArrangements
+      : undefined;
+
+  const effectiveSuggestedArrangements = mergeSuggestedArrangements(
+    fresh.suggestedArrangements,
+    sameGroup ? currentCached?.suggestedArrangements : undefined
+  );
+
+  // 5. Filter out system `__wmc_*` meta-takes from practiceTakes
+  const rawTakes =
+    fresh.practiceTakes !== undefined
+      ? fresh.practiceTakes
+      : sameGroup
+      ? currentCached?.practiceTakes
+      : undefined;
+  const cleanPracticeTakes = Array.isArray(rawTakes)
+    ? rawTakes.filter(
+        (t) =>
+          t &&
+          typeof t.id === 'string' &&
+          !t.id.startsWith('__wmc_') &&
+          t.songId !== '__system_meta__'
+      )
+    : undefined;
+
+  // 6. Normalize optional strings (`null` or `""` -> `undefined`)
+  const churchName =
+    fresh.churchName !== undefined
+      ? fresh.churchName || undefined
+      : sameGroup
+      ? currentCached?.churchName || undefined
+      : undefined;
+  const customAppTitle =
+    fresh.customAppTitle !== undefined
+      ? fresh.customAppTitle || undefined
+      : sameGroup
+      ? currentCached?.customAppTitle || undefined
+      : undefined;
+  const customAppLogoUrl =
+    fresh.customAppLogoUrl !== undefined
+      ? fresh.customAppLogoUrl || undefined
+      : sameGroup
+      ? currentCached?.customAppLogoUrl || undefined
+      : undefined;
+
+  // 7. Carry monotonic serverRevision forward
+  const freshRev = typeof fresh.serverRevision === 'number' ? fresh.serverRevision : undefined;
+  const cachedRev =
+    sameGroup && typeof currentCached?.serverRevision === 'number'
+      ? currentCached.serverRevision
+      : undefined;
+  const effectiveRevision =
+    freshRev !== undefined && cachedRev !== undefined
+      ? Math.max(freshRev, cachedRev)
+      : freshRev ?? cachedRev;
+
+  const canonical: WorshipGroup = {
+    id: fresh.id,
+    name: fresh.name || (sameGroup ? currentCached?.name : '') || 'Worship Team',
+    ...(churchName ? { churchName } : {}),
+    ...(customAppTitle ? { customAppTitle } : {}),
+    ...(customAppLogoUrl ? { customAppLogoUrl } : {}),
+    inviteCode: fresh.inviteCode || (sameGroup ? currentCached?.inviteCode : '') || '',
+    ownerId: fresh.ownerId || (sameGroup ? currentCached?.ownerId : '') || '',
+    createdAt: fresh.createdAt || (sameGroup ? currentCached?.createdAt : '') || '',
+    members: mergedMembers,
+    ...(cleanPracticeTakes && cleanPracticeTakes.length > 0
+      ? { practiceTakes: cleanPracticeTakes }
+      : {}),
+    ...(effectiveSetlist ? { activeSetlist: effectiveSetlist } : {}),
+    suggestedSetlists: effectiveSuggestions,
+    ...(effectiveSongArrangements ? { songArrangements: effectiveSongArrangements } : {}),
+    ...(effectiveSuggestedArrangements.length > 0 || fresh.suggestedArrangements !== undefined
+      ? { suggestedArrangements: effectiveSuggestedArrangements }
+      : {}),
+    ...(fresh.activeLiveSessionId ? { activeLiveSessionId: fresh.activeLiveSessionId } : {}),
+    ...(fresh.activeLiveSessionJoinCode
+      ? { activeLiveSessionJoinCode: fresh.activeLiveSessionJoinCode }
+      : {}),
+    ...(fresh.activeLiveSessionExpiresAt
+      ? { activeLiveSessionExpiresAt: fresh.activeLiveSessionExpiresAt }
+      : {}),
+    ...(fresh.activeLiveSessionLeaderName
+      ? { activeLiveSessionLeaderName: fresh.activeLiveSessionLeaderName }
+      : {}),
+    ...(effectiveRevision !== undefined ? { serverRevision: effectiveRevision } : {}),
+  };
+
+  return canonical;
 }
 
 export function sanitizeActiveSetlistForFirestore(setlist: any): TeamActiveSetlist | null {
@@ -1497,81 +1791,26 @@ export function subscribeToTeam(
   let isDisposed = false;
   let lastKnownSerialized = '';
 
-  const applyUpdate = (fresh: WorshipGroup | null) => {
+  const applyUpdate = (
+    fresh: WorshipGroup | null,
+    source: 'cache' | 'server' | 'firestore' | 'broadcast' = 'broadcast'
+  ) => {
     if (isDisposed) return;
     if (!fresh) {
       onUpdate(null);
       return;
     }
 
+    // ANTI-FLICKER: Ignore stale copies served by a different (older) server instance
+    if (source === 'server' && isStaleServerGroupPayload(fresh)) {
+      return;
+    }
+
     const currentCached = getCachedTeam();
-    // CRITICAL ROSTER PRESERVATION: Never allow an ephemeral or single-leader server response
-    // to wipe out the full band roster. Merge known members so no one is dropped.
-    let mergedMembers = fresh.members || [];
-    if (currentCached && currentCached.id === fresh.id && Array.isArray(currentCached.members)) {
-      if (currentCached.members.length > mergedMembers.length) {
-        const memberMap = new Map<string, GroupMember>();
-        for (const m of currentCached.members) {
-          memberMap.set(m.userId, m);
-        }
-        for (const m of mergedMembers) {
-          memberMap.set(m.userId, m);
-        }
-        mergedMembers = Array.from(memberMap.values());
-      }
-    }
+    const mergedGroup = reconcileTeamGroup(fresh, currentCached);
 
-    // CRITICAL SETLIST PRESERVATION:
-    // If incoming update omitted activeSetlist (e.g. from an endpoint or Firestore event that only touched live sessions or presence),
-    // NEVER drop the active setlist! Only clear it if fresh.activeSetlist is explicitly null.
-    let effectiveSetlist = fresh.activeSetlist;
-    if (effectiveSetlist === undefined && currentCached?.id === fresh.id) {
-      if (currentCached.activeSetlist === null) {
-        effectiveSetlist = null as any;
-      } else if (currentCached.activeSetlist) {
-        effectiveSetlist = currentCached.activeSetlist;
-      }
-    }
-
-    let effectiveSuggestions = mergeSuggestedSetlists(
-      fresh.suggestedSetlists,
-      currentCached?.id === fresh.id ? currentCached.suggestedSetlists : undefined,
-      effectiveSetlist
-    );
-
-    const effectiveSongArrangements: Record<string, TeamSongArrangement> | undefined =
-      fresh.songArrangements !== undefined
-        ? fresh.songArrangements
-        : currentCached?.id === fresh.id
-        ? currentCached.songArrangements
-        : undefined;
-
-    const dismissedArrangementIds = getDismissedSuggestionIds();
-    const rawSuggestedArrangements: TeamArrangementSuggestion[] | undefined =
-      fresh.suggestedArrangements !== undefined
-        ? fresh.suggestedArrangements
-        : currentCached?.id === fresh.id
-        ? currentCached.suggestedArrangements
-        : undefined;
-    const effectiveSuggestedArrangements: TeamArrangementSuggestion[] | undefined =
-      rawSuggestedArrangements !== undefined
-        ? rawSuggestedArrangements.filter(
-            (a) => a && a.id && !dismissedArrangementIds.has(a.id)
-          )
-        : undefined;
-
-    const mergedGroup: WorshipGroup = {
-      ...fresh,
-      members: mergedMembers,
-      activeSetlist: effectiveSetlist,
-      suggestedSetlists: effectiveSuggestions,
-      ...(effectiveSongArrangements ? { songArrangements: effectiveSongArrangements } : {}),
-      ...(effectiveSuggestedArrangements
-        ? { suggestedArrangements: effectiveSuggestedArrangements }
-        : {}),
-    };
-
-    const serialized = JSON.stringify(mergedGroup);
+    // Key-order-independent comparison: only re-render when content truly changed
+    const serialized = stableSerializeTeam(mergedGroup);
     if (serialized !== lastKnownSerialized) {
       lastKnownSerialized = serialized;
       setCachedTeam(mergedGroup);
@@ -1582,12 +1821,14 @@ export function subscribeToTeam(
   // 1. Initial cached value
   const initialCached = getCachedTeam();
   if (initialCached && initialCached.id === groupId) {
-    applyUpdate(initialCached);
+    applyUpdate(initialCached, 'cache');
   }
 
   // 2. Fetch fresh state from authoritative server API immediately
+  let isFetchInFlight = false;
   const fetchServerGroup = async () => {
-    if (isDisposed || !groupId) return;
+    if (isDisposed || !groupId || isFetchInFlight) return;
+    isFetchInFlight = true;
     try {
       const res = await fetch(apiUrl(`/api/groups/${groupId}`), {
         cache: 'no-store',
@@ -1595,10 +1836,13 @@ export function subscribeToTeam(
       if (res.ok) {
         const data = await res.json();
         if (data.group) {
-          applyUpdate(data.group);
+          applyUpdate(data.group, 'server');
         }
       }
-    } catch {}
+    } catch {
+    } finally {
+      isFetchInFlight = false;
+    }
   };
   fetchServerGroup();
 
@@ -1723,7 +1967,10 @@ export function subscribeToTeam(
           const group: WorshipGroup = {
             id: snap.id,
             ...firestoreData,
-            activeSetlist: activeSetlist !== undefined ? activeSetlist : null,
+            // Keep `undefined` when the Firestore doc simply lacks the field (e.g. a mirror write was
+            // rejected) so we never treat "missing" as an explicit clear. An explicit clear is
+            // written as `null` and is still honored.
+            activeSetlist: activeSetlist !== undefined ? activeSetlist : undefined,
             suggestedSetlists: suggestedSetlists || undefined,
             activeLiveSessionId: activeLiveSessionId || undefined,
             activeLiveSessionJoinCode: activeLiveSessionJoinCode || undefined,
@@ -1743,7 +1990,7 @@ export function subscribeToTeam(
                 : cached?.churchName,
           } as WorshipGroup;
 
-          applyUpdate(group);
+          applyUpdate(group, 'firestore');
         },
         (err) => {
           console.warn('Team snapshot listener note:', err);
@@ -1782,11 +2029,13 @@ export function subscribeToTeamPresence(
     return () => {};
   }
 
+  let lastPresenceSignature = '';
   const presenceCol = collection(db, 'groups', groupId, 'presence');
   return onSnapshot(
     presenceCol,
     (snapshot) => {
       const result: Record<string, TeamPresenceRecord> = {};
+      const signatureMap: Record<string, unknown> = {};
       const now = Date.now();
 
       snapshot.docs.forEach((d) => {
@@ -1798,9 +2047,22 @@ export function subscribeToTeamPresence(
           ...data,
           online: isActuallyOnline,
         };
+        // Ignore `lastSeen` timestamp jitter in signature so 20s heartbeats don't cause re-renders
+        signatureMap[d.id] = {
+          userId: data.userId || d.id,
+          displayName: data.displayName || '',
+          instrument: data.instrument || '',
+          photoURL: data.photoURL || '',
+          online: isActuallyOnline,
+          currentSong: data.currentSong || '',
+        };
       });
 
-      onUpdate(result);
+      const nextSignature = stableSerializeTeam(signatureMap);
+      if (nextSignature !== lastPresenceSignature) {
+        lastPresenceSignature = nextSignature;
+        onUpdate(result);
+      }
     },
     (err) => {
       console.warn('Presence listener note:', err);
@@ -1851,6 +2113,7 @@ export function subscribeToSharedPracticeTakes(
     return () => {};
   }
 
+  let lastTakesSerialized = '';
   const takesCol = collection(db, 'groups', groupId, 'practiceTakes');
   const q = query(takesCol, orderBy('createdAt', 'desc'), limit(50));
 
@@ -1859,9 +2122,17 @@ export function subscribeToSharedPracticeTakes(
     (snapshot) => {
       const takes: TeamPracticeTake[] = [];
       snapshot.docs.forEach((d) => {
-        takes.push({ id: d.id, ...d.data() } as TeamPracticeTake);
+        const data = d.data();
+        if (d.id.startsWith('__wmc_') || data?.songId === '__system_meta__') {
+          return;
+        }
+        takes.push({ id: d.id, ...data } as TeamPracticeTake);
       });
-      onUpdate(takes);
+      const nextSerialized = stableSerializeTeam(takes);
+      if (nextSerialized !== lastTakesSerialized) {
+        lastTakesSerialized = nextSerialized;
+        onUpdate(takes);
+      }
     },
     (err) => {
       console.warn('Practice takes listener note:', err);

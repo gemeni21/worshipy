@@ -83,7 +83,8 @@ export default function TeamHubPage() {
     refreshActiveGroup,
   } = useAuth();
 
-  const [isCheckingTeam, setIsCheckingTeam] = useState(true);
+  const [isCheckingTeam, setIsCheckingTeam] = useState<boolean>(() => !getCachedTeam());
+  const checkedUserIdRef = useRef<string | null>(null);
 
   const { getSongByIdOrSlug } = useApp();
   const [activeRefAudio, setActiveRefAudio] = useState<{
@@ -190,15 +191,16 @@ export default function TeamHubPage() {
     return () => window.clearTimeout(timer);
   }, [suggestionFeedbackMsg]);
 
-  // Proactively check & resolve user's worship team across devices
+  // Proactively check & resolve user's worship team across devices (once per signed-in user so it never loops)
   useEffect(() => {
     let active = true;
-    if (user && !currentTeam) {
+    if (user?.id && !currentTeam && checkedUserIdRef.current !== user.id) {
+      checkedUserIdRef.current = user.id;
       setIsCheckingTeam(true);
       refreshActiveGroup().finally(() => {
         if (active) setIsCheckingTeam(false);
       });
-    } else {
+    } else if (currentTeam || !user) {
       setIsCheckingTeam(false);
     }
     return () => {
@@ -537,7 +539,7 @@ export default function TeamHubPage() {
       fileName: take.title,
       key: 'G',
       durationSeconds: take.durationSeconds || 180,
-      createdAt: new Date(take.createdAt).getTime() || Date.now(),
+      createdAt: new Date(take.createdAt).getTime() || 0,
       audioUrl: take.audioUrl,
       sourceType: 'link',
       mimeType: 'audio/mpeg',
@@ -694,7 +696,7 @@ export default function TeamHubPage() {
   }
 
   // If resolving user's team in background or checking authentication
-  if (isAuthLoading || ((user?.groupId || isResolvingTeam || isCheckingTeam) && !currentTeam)) {
+  if (isAuthLoading || ((isResolvingTeam || isCheckingTeam) && !currentTeam)) {
     return (
       <div className="max-w-4xl mx-auto p-12 text-center flex flex-col items-center justify-center min-h-[50vh] space-y-3">
         <Loader2 className="w-8 h-8 animate-spin text-[var(--brand-accent)]" />

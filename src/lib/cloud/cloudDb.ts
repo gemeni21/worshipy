@@ -61,6 +61,43 @@ const SESSION_SECRET = process.env.SESSION_SECRET || 'worshipy_auth_secret_key_2
 let inMemoryStoreCache: CloudStoreSchema | null = null;
 let lastStoreFileMtime = 0;
 
+/**
+ * Per-instance content hashes of every group we have loaded or saved. Used to stamp a
+ * monotonic `serverRevision` ONLY when a group's content actually changes, so clients can
+ * detect (and ignore) stale copies served by other serverless instances.
+ */
+const groupContentHashes = new Map<string, string>();
+
+function hashGroupContent(group: WorshipGroup): string {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { serverRevision: _ignored, ...rest } = group;
+  return crypto.createHash('sha1').update(JSON.stringify(rest)).digest('hex');
+}
+
+function recordGroupContentHashes(store: CloudStoreSchema): void {
+  for (const [id, group] of Object.entries(store.groups || {})) {
+    if (group) groupContentHashes.set(id, hashGroupContent(group));
+  }
+}
+
+function stampChangedGroupRevisions(store: CloudStoreSchema): void {
+  const now = Date.now();
+  for (const [id, group] of Object.entries(store.groups || {})) {
+    if (!group) continue;
+    const nextHash = hashGroupContent(group);
+    const prevHash = groupContentHashes.get(id);
+    if (prevHash === undefined) {
+      // First time this instance sees the group: only stamp brand-new/legacy groups
+      if (typeof group.serverRevision !== 'number') {
+        group.serverRevision = now;
+      }
+    } else if (prevHash !== nextHash) {
+      group.serverRevision = Math.max(now, (group.serverRevision ?? 0) + 1);
+    }
+    groupContentHashes.set(id, nextHash);
+  }
+}
+
 function hashPassword(password: string, salt: string): string {
   return crypto.scryptSync(password, salt, 64).toString('hex');
 }
@@ -110,6 +147,7 @@ function ensureDataStore(): CloudStoreSchema {
 
       lastStoreFileMtime = stat.mtimeMs;
       inMemoryStoreCache = parsed;
+      recordGroupContentHashes(parsed);
       return parsed;
     }
   } catch (err) {
@@ -197,6 +235,7 @@ function ensureDataStore(): CloudStoreSchema {
 }
 
 function saveStore(store: CloudStoreSchema): void {
+  stampChangedGroupRevisions(store);
   inMemoryStoreCache = store;
   try {
     if (!fs.existsSync(DATA_DIR)) {

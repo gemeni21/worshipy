@@ -129,6 +129,12 @@ export interface WorshipGroup {
   activeLiveSessionJoinCode?: string;
   activeLiveSessionExpiresAt?: string;
   activeLiveSessionLeaderName?: string;
+  /**
+   * Monotonic server-side revision (epoch ms) stamped by the Cloud Hub whenever this
+   * group's content changes. Clients use it to ignore stale copies served by other
+   * (serverless) instances so the Team Hub never flip-flops between versions.
+   */
+  serverRevision?: number;
 }
 
 export interface UserProfile {
