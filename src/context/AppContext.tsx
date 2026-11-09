@@ -30,6 +30,7 @@ import {
   isBuiltInCatalogSongId,
   mergeCatalogAndCustomSongs,
 } from '@/lib/catalog/songCatalog';
+import { subscribeToGlobalSongsFromSubmissions } from '@/lib/cloud/submissionsService';
 import type {
   AccentColor,
   OfflineSongEntry,
@@ -390,6 +391,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Real-time Firestore listener for global approved/removed songs
+  useEffect(() => {
+    const unsub = subscribeToGlobalSongsFromSubmissions(
+      ({ approvedSongs, removedSongIds }) => {
+        if (approvedSongs.length > 0) {
+          setGlobalApprovedSongs((prev) => {
+            const map = new Map<string, SongRecord>();
+            for (const s of prev) map.set(s.id, s);
+            for (const s of approvedSongs) map.set(s.id, s);
+            return Array.from(map.values());
+          });
+        }
+        if (removedSongIds.length > 0) {
+          setRemovedGlobalSongIds((prev) => {
+            const set = new Set([...prev, ...removedSongIds]);
+            return Array.from(set);
+          });
+        }
+      }
+    );
+    return () => unsub();
   }, []);
 
   // Listen for online/offline events, OS dark mode changes, & cross-tab storage synchronization

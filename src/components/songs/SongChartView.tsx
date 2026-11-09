@@ -227,6 +227,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
   const isGroupLeader = Boolean(
     isAdmin ||
       user?.role === 'admin' ||
+      user?.groupRole === 'leader' ||
       (user?.id && effectiveGroup?.ownerId === user.id) ||
       (user?.id &&
         effectiveGroup?.members?.some(
@@ -2046,6 +2047,37 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                         ? 'Publishing...'
                         : 'Publish to Entire Church Team (Church Only)'}
                     </button>
+                    {existingGlobalSubmission?.status === 'pending' ? (
+                      <button
+                        type="button"
+                        data-testid="song-leader-pending-global-btn"
+                        onClick={() => setShowGlobalSubmitModal(true)}
+                        title="Your arrangement has been submitted for global publishing and is awaiting administrator review. Click to view or update."
+                        className="px-3.5 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500" />
+                        <span>Global Review Pending</span>
+                      </button>
+                    ) : existingGlobalSubmission?.status === 'approved' ? (
+                      <div
+                        title="This arrangement is approved and published in the global catalog"
+                        className="px-3.5 py-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-semibold inline-flex items-center gap-1.5"
+                      >
+                        <Globe className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>Published Global</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="song-leader-request-global-btn"
+                        onClick={() => setShowGlobalSubmitModal(true)}
+                        title="Ask platform administrator for permission to push this arrangement to the Global Public Catalog"
+                        className="px-3.5 py-2 rounded-xl border border-sky-500/40 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 transition-colors"
+                      >
+                        <Globe className="w-3.5 h-3.5" />
+                        <span>Request Admin to Push Globally</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setIsArrangementBannerHidden(true)}
@@ -2324,8 +2356,9 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
               </Link>
             )}
 
-            {/* Global Publishing for Custom Songs */}
-            {activeSourceSong.sourceType === 'custom' &&
+            {/* Global Publishing for Custom Songs or Leader Arrangements */}
+            {(activeSourceSong.sourceType === 'custom' ||
+              (isGroupLeader && layeredRehearsalResult?.activeOverride)) &&
               (existingGlobalSubmission?.status === 'approved' ? (
                 <div
                   title="This song is approved and published in the global catalog"

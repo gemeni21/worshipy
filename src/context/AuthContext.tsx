@@ -40,6 +40,12 @@ import {
   isStaleServerGroupPayload,
   reconcileTeamGroup,
 } from '@/lib/team/teamService';
+import {
+  saveSubmissionToFirestore,
+  fetchSubmissionsFromFirestore,
+  subscribeToSubmissions,
+  updateSubmissionInFirestore,
+} from '@/lib/cloud/submissionsService';
 
 interface AuthContextValue {
   user: UserProfile | null;
@@ -125,6 +131,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [submissions, setSubmissions] = useState<SongSubmission[]>([]);
+
+  const isAdmin = useMemo(() => {
+    return (
+      user?.role === 'admin' ||
+      Boolean(
+        user?.email &&
+          (user.email.toLowerCase() === 'gray2187@gmail.com' ||
+            user.email.toLowerCase() === 'gemeni21@gmail.com' ||
+            user.email.toLowerCase() === 'admin@worshipy.app' ||
+            user.email.toLowerCase().startsWith('admin@') ||
+            user.email.toLowerCase().endsWith('@admin.worshipy.app'))
+      )
+    );
+  }, [user]);
+
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
@@ -304,17 +325,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [authFetch, resolveUserTeam]);
 
   // Fetch submissions (user sees theirs, admin sees all)
-  const refreshSubmissions = useCallback(async () => {
+  const refreshSubmissions = useCallback(async (): Promise<void> => {
+    // 1. Fetch from Firestore (real-time cross-container synchronization on Vercel)
+    const firestoreSubs = await fetchSubmissionsFromFirestore({
+      isAdmin,
+      userId: user?.id,
+    });
+
+    // 2. Also query local API endpoint
+    let apiSubs: SongSubmission[] = [];
     try {
       const res = await authFetch('/api/cloud/submissions');
       if (res.ok) {
         const data = await res.json();
-        setSubmissions(data.submissions || []);
+        apiSubs = data.submissions || [];
       }
     } catch (err) {
-      console.warn('Could not refresh submissions:', err);
+      console.warn('Could not refresh submissions from API:', err);
     }
-  }, [authFetch]);
+
+    // Merge: Firestore submissions take priority, combined with API
+    const subMap = new Map<string, SongSubmission>();
+    for (const sub of apiSubs) {
+      if (sub?.id) subMap.set(sub.id, sub);
+    }
+    for (const sub of firestoreSubs) {
+      if (sub?.id) subMap.set(sub.id, sub);
+    }
+
+    const merged = Array.from(subMap.values()).sort(
+      (a, b) =>
+        new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+    );
+
+    setSubmissions(merged);
+  }, [authFetch, isAdmin, user?.id]);
+
+  // Real-time Firestore subscription for submissions
+  useEffect(() => {
+    if (!user) return;
+    const unsub = subscribeToSubmissions({
+      isAdmin,
+      userId: user.id,
+      onUpdate: (subs) => {
+        setSubmissions((prev) => {
+          const subMap = new Map<string, SongSubmission>();
+          for (const s of prev) {
+            if (s?.id) subMap.set(s.id, s);
+          }
+          for (const s of subs) {
+            if (s?.id) subMap.set(s.id, s);
+          }
+          return Array.from(subMap.values()).sort(
+            (a, b) =>
+              new Date(b.submittedAt).getTime() -
+              new Date(a.submittedAt).getTime()
+          );
+        });
+      },
+    });
+    return () => unsub();
+  }, [user, isAdmin]);
 
   // Initial load: verify cached session
   useEffect(() => {
@@ -830,21 +901,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Submit song for Global Publishing
   const submitSongForGlobal = useCallback(
     async (song: SongRecord, notes?: string): Promise<SongSubmission> => {
-      const res = await authFetch('/api/cloud/submissions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ song, submissionNotes: notes }),
-      });
+      if (!user) {
+        throw new Error('Please sign in to submit songs for global publishing.');
+      }
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to submit song for publishing.');
+      // Check existing submission for this song by this user
+      const existing = submissions.find(
+        (s) =>
+          (s.songId === song.id ||
+            s.song?.id === song.id ||
+            s.song?.slug === song.slug) &&
+          s.submittedBy?.userId === user.id
+      );
+
+      const submissionId =
+        existing?.id ||
+        `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      const submissionDoc: SongSubmission = {
+        id: submissionId,
+        songId: song.id,
+        song: {
+          ...song,
+        },
+        submittedBy: {
+          userId: user.id,
+          email: user.email,
+          displayName: user.displayName || user.email.split('@')[0],
+          ...(user.churchName ? { churchName: user.churchName } : {}),
+        },
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+        ...(notes ? { submissionNotes: notes } : {}),
+      };
+
+      // 1. Write directly to Firestore for instant multi-device visibility
+      await saveSubmissionToFirestore(submissionDoc);
+
+      // 2. Also POST to API route for local persistence
+      let apiSubmission = submissionDoc;
+      try {
+        const res = await authFetch('/api/cloud/submissions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ song, submissionNotes: notes }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.submission) {
+            apiSubmission = data.submission;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('API submission failed, relied on Firestore:', apiErr);
       }
 
       await refreshSubmissions();
-      return data.submission;
+      return apiSubmission;
     },
-    [authFetch, refreshSubmissions]
+    [authFetch, refreshSubmissions, submissions, user]
   );
 
   // Admin: Review submission (approve / reject / remove)
@@ -854,26 +970,97 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status: 'approved' | 'rejected' | 'removed',
       adminNotes?: string
     ): Promise<SongSubmission> => {
-      const res = await authFetch(`/api/cloud/submissions/${submissionId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status, adminNotes }),
+      // 1. Update directly in Firestore
+      await updateSubmissionInFirestore({
+        submissionId,
+        status,
+        adminNotes,
+        reviewedBy: user
+          ? {
+              userId: user.id,
+              email: user.email,
+              displayName: user.displayName || user.email.split('@')[0],
+            }
+          : undefined,
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Review submission failed.');
+      // 2. Also call API route
+      let returnedSub: SongSubmission | null = null;
+      try {
+        const res = await authFetch(`/api/cloud/submissions/${submissionId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status, adminNotes }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          returnedSub = data.submission;
+        }
+      } catch (apiErr) {
+        console.warn('API review failed, relied on Firestore:', apiErr);
       }
 
       await refreshSubmissions();
-      return data.submission;
+
+      if (!returnedSub) {
+        const found = submissions.find((s) => s.id === submissionId);
+        if (found) {
+          returnedSub = {
+            ...found,
+            status,
+            adminNotes,
+            reviewedAt: new Date().toISOString(),
+          };
+        } else {
+          returnedSub = {
+            id: submissionId,
+            songId: 'unknown',
+            song: {} as SongRecord,
+            submittedBy: {
+              userId: user?.id || 'admin',
+              email: user?.email || 'admin@worshipy.app',
+              displayName: user?.displayName || 'Admin',
+            },
+            status,
+            submittedAt: new Date().toISOString(),
+          };
+        }
+      }
+
+      return returnedSub;
     },
-    [authFetch, refreshSubmissions]
+    [authFetch, refreshSubmissions, submissions, user]
   );
 
   // Admin: Remove a song globally
   const removeSongGlobally = useCallback(
     async (songId: string, reason?: string) => {
+      // 1. Update in Firestore if submission exists
+      const cleanId = songId.replace(/^global_/, '');
+      const matched = submissions.find(
+        (s) =>
+          s.songId === songId ||
+          s.songId === cleanId ||
+          s.song?.id === songId ||
+          s.song?.id === cleanId
+      );
+      if (matched) {
+        await updateSubmissionInFirestore({
+          submissionId: matched.id,
+          status: 'removed',
+          adminNotes: reason,
+          reviewedBy: user
+            ? {
+                userId: user.id,
+                email: user.email,
+                displayName: user.displayName || user.email.split('@')[0],
+              }
+            : undefined,
+        });
+      }
+
+      // 2. Call API route
       const res = await authFetch('/api/cloud/global-songs', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -887,12 +1074,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       await refreshSubmissions();
     },
-    [authFetch, refreshSubmissions]
+    [authFetch, refreshSubmissions, submissions, user]
   );
 
   // Admin: Restore a song globally
   const restoreSongGlobally = useCallback(
     async (songId: string) => {
+      // 1. Update in Firestore if submission exists
+      const cleanId = songId.replace(/^global_/, '');
+      const matched = submissions.find(
+        (s) =>
+          s.songId === songId ||
+          s.songId === cleanId ||
+          s.song?.id === songId ||
+          s.song?.id === cleanId
+      );
+      if (matched) {
+        await updateSubmissionInFirestore({
+          submissionId: matched.id,
+          status: 'approved',
+          reviewedBy: user
+            ? {
+                userId: user.id,
+                email: user.email,
+                displayName: user.displayName || user.email.split('@')[0],
+              }
+            : undefined,
+        });
+      }
+
+      // 2. Call API route
       const res = await authFetch('/api/cloud/global-songs', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -906,7 +1117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       await refreshSubmissions();
     },
-    [authFetch, refreshSubmissions]
+    [authFetch, refreshSubmissions, submissions, user]
   );
 
   // Cross-device sync
@@ -955,16 +1166,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [user, authFetch]
   );
 
-  const isAdmin =
-    user?.role === 'admin' ||
-    Boolean(
-      user?.email &&
-        (user.email.toLowerCase() === 'gray2187@gmail.com' ||
-          user.email.toLowerCase() === 'gemeni21@gmail.com' ||
-          user.email.toLowerCase() === 'admin@worshipy.app' ||
-          user.email.toLowerCase().startsWith('admin@') ||
-          user.email.toLowerCase().endsWith('@admin.worshipy.app'))
-    );
   const pendingApprovalsCount = useMemo(() => {
     if (!isAdmin) return 0;
     return submissions.filter((s) => s.status === 'pending').length;
