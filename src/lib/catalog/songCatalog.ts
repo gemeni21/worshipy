@@ -60,7 +60,12 @@ export function mergeCatalogAndCustomSongs(
   }
 
   for (const custom of customSongs) {
-    if (!custom || !custom.id || seenIds.has(custom.id)) {
+    if (
+      !custom ||
+      !custom.id ||
+      seenIds.has(custom.id) ||
+      seenIds.has(`global_${custom.id}`)
+    ) {
       continue;
     }
     const safeSlug = seenSlugs.has(custom.slug)

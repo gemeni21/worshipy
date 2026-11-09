@@ -19,6 +19,7 @@ import {
   updateParticipantPresence,
 } from '../liveSessionServer.ts';
 import { getSongById } from '../../catalog/songCatalog.ts';
+import type { SongRecord } from '../../../types/song.ts';
 import {
   appendChordToSongSectionLine,
   convertDisplayedSongToBaseChordPro,
@@ -1461,7 +1462,6 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
   });
 
   it('27. Scenario: In Live Sync only Leader can push changes (scoped strictly to Church Group), and Global publishing requires Admin approval', () => {
-    const baseSong = getSongById('song-01')!;
     const suffix = Date.now();
 
     // Register Admin and Worship Leader
@@ -1489,11 +1489,35 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     assert.equal(groupRes.ok, true);
     const churchGroup = groupRes.group!;
 
+    const testSongId = `song-live-${suffix}`;
+    const baseSong: SongRecord = {
+      id: testSongId,
+      slug: testSongId,
+      title: 'Cornerstone Praise',
+      originalKey: 'G',
+      language: { code: 'en', label: 'English' },
+      category: { id: 'contemporary-worship', label: 'Contemporary Worship' },
+      contentStatus: 'original',
+      sections: [
+        {
+          id: 'v1',
+          type: 'verse' as const,
+          label: 'Verse 1',
+          lines: [
+            {
+              id: 'l1',
+              segments: [{ chord: 'G', text: 'Cornerstone Praise' }],
+            },
+          ],
+        },
+      ],
+    };
+
     // 1. Leader starts Live Sync session for Cornerstone Worship Team
     const created = createLiveSession({
       title: 'Cornerstone Live Service',
       leaderName: leaderUser.displayName,
-      initialSongId: 'song-01',
+      initialSongId: testSongId,
       groupId: churchGroup.id,
     });
 
@@ -1513,7 +1537,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
           memberJoined.participantToken,
           {
             songArrangementOverride: {
-              songId: 'song-01',
+              songId: testSongId,
               instrument: 'general',
               chordPro: [
                 '{title: Song 1}',
@@ -1543,7 +1567,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
       created.participantToken,
       {
         songArrangementOverride: {
-          songId: 'song-01',
+          songId: testSongId,
           instrument: 'general',
           chordPro: churchChordPro,
           arrangementNote: 'Cornerstone Sunday Live Arrangement',
@@ -1553,26 +1577,26 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
 
     // Saved to Live Session and Church Group
     assert.ok(
-      afterLeaderPush.sharedState.songArrangementOverrides?.['song-01']
+      afterLeaderPush.sharedState.songArrangementOverrides?.[testSongId]
     );
     const updatedChurchGroup = getWorshipGroup(churchGroup.id);
-    assert.ok(updatedChurchGroup?.songArrangements?.['song-01:general']);
+    assert.ok(updatedChurchGroup?.songArrangements?.[`${testSongId}:general`]);
     assert.equal(
-      updatedChurchGroup?.songArrangements?.['song-01:general'].chordPro,
+      updatedChurchGroup?.songArrangements?.[`${testSongId}:general`].chordPro,
       churchChordPro
     );
 
     // Verified NOT in Global Approved Catalog yet
     const globalBeforeAdmin = getApprovedGlobalSongs();
     assert.equal(
-      globalBeforeAdmin.some((s) => s.id === `global_${baseSong.id}`),
+      globalBeforeAdmin.some((s) => s.id === `global_${testSongId}`),
       false
     );
 
     // 4. Leader wants to push the Church Group arrangement to Global -> asks Admin for permission
     const arrangedSongForGlobal = resolveSongWithLiveOverride(
       baseSong,
-      afterLeaderPush.sharedState.songArrangementOverrides?.['song-01']
+      afterLeaderPush.sharedState.songArrangementOverrides?.[testSongId]
     );
     const submission = submitSongForGlobalPublishing({
       userId: leaderUser.id,
@@ -1584,7 +1608,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
 
     // Still NOT in Global Catalog while pending Admin approval
     assert.equal(
-      getApprovedGlobalSongs().some((s) => s.id === `global_${baseSong.id}`),
+      getApprovedGlobalSongs().some((s) => s.id === `global_${testSongId}`),
       false
     );
 
@@ -1597,7 +1621,7 @@ describe('Leader-Led Live Sync Server & Authoritative State Engine', () => {
     });
     assert.equal(reviewed.status, 'approved');
     assert.equal(
-      getApprovedGlobalSongs().some((s) => s.id === `global_${baseSong.id}`),
+      getApprovedGlobalSongs().some((s) => s.id === `global_${testSongId}`),
       true
     );
   });

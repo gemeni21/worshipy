@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listSubmissions, submitSongForGlobalPublishing, validateSessionToken } from '@/lib/cloud/cloudDb';
+import {
+  isDefaultAdminEmail,
+  listSubmissions,
+  submitSongForGlobalPublishing,
+  validateSessionToken,
+} from '@/lib/cloud/cloudDb';
 import type { SubmissionStatus } from '@/types/auth';
 
 export async function GET(req: NextRequest) {
@@ -20,7 +25,8 @@ export async function GET(req: NextRequest) {
   const status = (url.searchParams.get('status') as SubmissionStatus) || undefined;
 
   // Admins see all submissions; regular users only see their own
-  const filter = user.role === 'admin' ? { status } : { userId: user.id, status };
+  const isAdmin = user.role === 'admin' || isDefaultAdminEmail(user.email);
+  const filter = isAdmin ? { status } : { userId: user.id, status };
   const submissions = listSubmissions(filter);
 
   return NextResponse.json({ submissions });

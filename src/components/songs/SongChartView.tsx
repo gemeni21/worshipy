@@ -25,6 +25,7 @@ import {
   Printer,
   Radio,
   RotateCcw,
+  RefreshCw,
   Sparkles,
   Sun,
   Moon,
@@ -32,6 +33,7 @@ import {
   Type,
   WifiOff,
   ShieldCheck,
+  Globe,
   X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
@@ -44,6 +46,7 @@ import {
 } from '@/lib/chordpro/chordPro';
 import { ChordInspectorModal } from '@/components/music/ChordInspectorModal';
 import { LiveArrangementEditorModal } from '@/components/live/LiveArrangementEditorModal';
+import { SubmitGlobalSongModal } from './SubmitGlobalSongModal';
 import { PracticeDock } from '@/components/practice/PracticeDock';
 import {
   appendChordToSongSectionLine,
@@ -151,10 +154,18 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     saveCustomSong,
   } = useApp();
 
-  const { user, activeGroup, isAdmin, removeSongGlobally } = useAuth();
+  const {
+    user,
+    activeGroup,
+    isAdmin,
+    removeSongGlobally,
+    submissions,
+    refreshSubmissions,
+  } = useAuth();
   const [showAdminRemoveModal, setShowAdminRemoveModal] = useState(false);
   const [adminRemoveReason, setAdminRemoveReason] = useState('');
   const [isAdminRemoving, setIsAdminRemoving] = useState(false);
+  const [showGlobalSubmitModal, setShowGlobalSubmitModal] = useState(false);
 
   // Rehearse Ahead of Time: Personal Instrument & Church Arrangement state
   const [rehearsalInstrument, setRehearsalInstrument] =
@@ -297,6 +308,16 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
     }
     return layeredRehearsalResult?.song ?? baseCatalogSong;
   }, [previewedProposal, baseCatalogSong, layeredRehearsalResult?.song]);
+
+  const existingGlobalSubmission = useMemo(() => {
+    if (!activeSourceSong) return undefined;
+    return submissions.find(
+      (s) =>
+        s.songId === activeSourceSong.id ||
+        s.song?.id === activeSourceSong.id ||
+        s.song?.slug === activeSourceSong.slug
+    );
+  }, [activeSourceSong, submissions]);
 
   const [semitones, setSemitones] = useState<number>(0);
   const [spellingOverride, setSpellingOverride] =
@@ -1082,6 +1103,7 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
           message:
             'Permission request sent to Admin! Your arrangement remains scoped to your Church Group until the Admin approves it for the Global Catalog.',
         });
+        refreshSubmissions().catch(() => {});
       } else {
         const errData = await res.json().catch(() => null);
         setFeedbackBanner({
@@ -2301,6 +2323,51 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
                 <span>Edit Song</span>
               </Link>
             )}
+
+            {/* Global Publishing for Custom Songs */}
+            {activeSourceSong.sourceType === 'custom' &&
+              (existingGlobalSubmission?.status === 'approved' ? (
+                <div
+                  title="This song is approved and published in the global catalog"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-sm font-semibold min-h-[2.75rem]"
+                >
+                  <Globe className="w-4 h-4 text-emerald-500" aria-hidden="true" />
+                  <span>Published Global</span>
+                </div>
+              ) : existingGlobalSubmission?.status === 'pending' ? (
+                <button
+                  type="button"
+                  data-testid="song-chart-pending-global-btn"
+                  onClick={() => setShowGlobalSubmitModal(true)}
+                  title="Awaiting administrator review. Click to view or update your global submission."
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 text-sm font-semibold transition-colors cursor-pointer min-h-[2.75rem]"
+                >
+                  <RefreshCw className="w-4 h-4 animate-spin text-amber-500" aria-hidden="true" />
+                  <span>Review Pending</span>
+                </button>
+              ) : existingGlobalSubmission?.status === 'rejected' ? (
+                <button
+                  type="button"
+                  data-testid="song-chart-resubmit-global-btn"
+                  onClick={() => setShowGlobalSubmitModal(true)}
+                  title="Revision was requested by admin. Click to view feedback and resubmit."
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 text-sm font-semibold transition-colors cursor-pointer min-h-[2.75rem]"
+                >
+                  <Globe className="w-4 h-4 text-rose-400" aria-hidden="true" />
+                  <span>Resubmit Global</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  data-testid="song-chart-publish-global-btn"
+                  onClick={() => setShowGlobalSubmitModal(true)}
+                  title="Submit your custom song chart to the global public catalog for admin review"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[var(--brand-accent)]/40 bg-[var(--brand-surface)] text-[var(--brand-accent)] hover:bg-[var(--brand-accent)] hover:text-[#0c0c10] text-sm font-bold transition-all cursor-pointer min-h-[2.75rem]"
+                >
+                  <Globe className="w-4 h-4" aria-hidden="true" />
+                  <span>Publish to Global Catalog</span>
+                </button>
+              ))}
 
             {/* Print or Save as PDF */}
             <button
@@ -3741,6 +3808,22 @@ export function SongChartView({ initialSong, slug }: SongChartViewProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Global Song Submission Modal */}
+      {showGlobalSubmitModal && activeSourceSong && (
+        <SubmitGlobalSongModal
+          isOpen={showGlobalSubmitModal}
+          song={activeSourceSong}
+          onClose={() => setShowGlobalSubmitModal(false)}
+          onSubmitted={() => {
+            setFeedbackBanner({
+              type: 'success',
+              message: `"${activeSourceSong.title}" has been submitted for global publishing! An administrator will review its chord chart formatting and approve it.`,
+            });
+            refreshSubmissions().catch(() => {});
+          }}
+        />
       )}
     </div>
   );

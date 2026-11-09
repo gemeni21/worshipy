@@ -105,6 +105,7 @@ export default function MySongsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [songToSubmit, setSongToSubmit] = useState<SongRecord | null>(null);
+  const [pendingSongForGlobal, setPendingSongForGlobal] = useState<SongRecord | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Status banner
@@ -112,6 +113,14 @@ export default function MySongsPage() {
     type: 'success' | 'error';
     message: string;
   } | null>(null);
+
+  // If user signed in while attempting to submit a song globally, open the submission modal automatically
+  useEffect(() => {
+    if (user && pendingSongForGlobal) {
+      setSongToSubmit(pendingSongForGlobal);
+      setPendingSongForGlobal(null);
+    }
+  }, [user, pendingSongForGlobal]);
 
   // ChordPro Import Modal / Panel State
   const [chordProText, setChordProText] = useState('');
@@ -1158,18 +1167,32 @@ export default function MySongsPage() {
                       <span>Published Global</span>
                     </div>
                   ) : existingSubmission?.status === 'pending' ? (
-                    <div
-                      title="This song is awaiting administrator review"
-                      className="h-10 px-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-semibold inline-flex items-center gap-1.5"
+                    <button
+                      type="button"
+                      onClick={() => setSongToSubmit(song)}
+                      title="This song is awaiting administrator review. Click to view or update your submission."
+                      className="h-10 px-3 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
                     >
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
                       <span>Review Pending</span>
-                    </div>
+                    </button>
+                  ) : existingSubmission?.status === 'rejected' ? (
+                    <button
+                      type="button"
+                      onClick={() => setSongToSubmit(song)}
+                      title="Revision was requested by admin. Click to view feedback and resubmit your updated chart."
+                      className="h-10 px-3 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-400 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <Globe className="w-3.5 h-3.5 text-rose-400" aria-hidden="true" />
+                      <span>Resubmit Global</span>
+                    </button>
                   ) : (
                     <button
                       type="button"
+                      data-testid={`publish-global-btn-${song.id}`}
                       onClick={() => {
                         if (!user) {
+                          setPendingSongForGlobal(song);
                           setIsAuthModalOpen(true);
                           return;
                         }
@@ -1251,7 +1274,6 @@ export default function MySongsPage() {
           isOpen={Boolean(songToSubmit)}
           onClose={() => setSongToSubmit(null)}
           onSubmitted={() => {
-            setSongToSubmit(null);
             setBanner({
               type: 'success',
               message: `"${songToSubmit.title}" has been submitted for global publishing! An administrator will review its chord chart formatting and approve it.`,

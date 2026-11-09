@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSubmissionById, reviewSongSubmission, validateSessionToken } from '@/lib/cloud/cloudDb';
+import {
+  getSubmissionById,
+  isDefaultAdminEmail,
+  reviewSongSubmission,
+  validateSessionToken,
+} from '@/lib/cloud/cloudDb';
 
 export async function GET(
   req: NextRequest,
@@ -24,8 +29,10 @@ export async function GET(
     return NextResponse.json({ error: 'Submission not found' }, { status: 404 });
   }
 
+  const isAdmin = user.role === 'admin' || isDefaultAdminEmail(user.email);
+
   // Only admin or the author can view
-  if (user.role !== 'admin' && submission.submittedBy.userId !== user.id) {
+  if (!isAdmin && submission.submittedBy.userId !== user.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -46,7 +53,8 @@ export async function PATCH(
   }
 
   const user = validateSessionToken(token);
-  if (!user || user.role !== 'admin') {
+  const isAdmin = user ? user.role === 'admin' || isDefaultAdminEmail(user.email) : false;
+  if (!user || !isAdmin) {
     return NextResponse.json({ error: 'Admin privileges required' }, { status: 403 });
   }
 

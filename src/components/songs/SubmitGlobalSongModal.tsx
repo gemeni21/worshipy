@@ -47,12 +47,12 @@ export function SubmitGlobalSongModal({
     try {
       await submitSongForGlobal(song, submissionNotes);
       setIsSuccess(true);
-      if (onSubmitted) onSubmitted();
       setTimeout(() => {
         setIsSuccess(false);
         setSubmissionNotes('');
+        if (onSubmitted) onSubmitted();
         onClose();
-      }, 2000);
+      }, 1600);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Submission failed.');
     } finally {
@@ -61,7 +61,10 @@ export function SubmitGlobalSongModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      data-testid="submit-global-song-modal"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+    >
       <div className="relative w-full max-w-lg rounded-3xl border border-[var(--border-subtle)] bg-[#101014] p-6 sm:p-8 shadow-2xl shadow-black/90">
         {/* Close Button */}
         <button
@@ -167,6 +170,7 @@ export function SubmitGlobalSongModal({
                 </button>
                 <button
                   type="submit"
+                  data-testid="submit-global-song-submit-btn"
                   disabled={isSubmitting}
                   className="px-5 py-2.5 rounded-xl bg-[var(--brand-accent)] text-black text-xs font-bold hover:brightness-110 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >

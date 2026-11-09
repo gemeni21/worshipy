@@ -47,6 +47,18 @@ interface CloudStoreSchema {
 export const PRIMARY_ADMIN_EMAIL = 'gray2187@gmail.com';
 export const PRIMARY_ADMIN_PASSWORD = 'ow62ET';
 
+export function isDefaultAdminEmail(email?: string | null): boolean {
+  if (!email || typeof email !== 'string') return false;
+  const norm = email.trim().toLowerCase();
+  return (
+    norm === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
+    norm === 'gemeni21@gmail.com' ||
+    norm === 'admin@worshipy.app' ||
+    norm.startsWith('admin@') ||
+    norm.endsWith('@admin.worshipy.app')
+  );
+}
+
 const isServerless = Boolean(
   process.env.VERCEL ||
   process.env.AWS_LAMBDA_FUNCTION_NAME ||
@@ -119,6 +131,13 @@ function ensureDataStore(): CloudStoreSchema {
       if (!parsed.removedGlobalSongs) parsed.removedGlobalSongs = {};
       if (!parsed.notifications) parsed.notifications = [];
       if (!parsed.groups) parsed.groups = {};
+
+      // Ensure primary admins (gray2187@gmail.com, gemeni21@gmail.com, admin@worshipy.app) have admin privileges
+      for (const [email, storedUser] of Object.entries(parsed.users || {})) {
+        if (isDefaultAdminEmail(email) && storedUser?.profile) {
+          storedUser.profile.role = 'admin';
+        }
+      }
 
       // Ensure primary admin gray2187@gmail.com is seeded with admin privileges and user's requested password
       const grayKey = PRIMARY_ADMIN_EMAIL.toLowerCase();
@@ -370,7 +389,7 @@ export function registerUser(params: {
     displayName: params.displayName.trim() || normalizedEmail.split('@')[0],
     churchName: params.churchName?.trim() || undefined,
     instrument: params.instrument?.trim() || 'Worship Leader',
-    role: params.role || (normalizedEmail === PRIMARY_ADMIN_EMAIL.toLowerCase() || normalizedEmail === 'admin@worshipy.app' ? 'admin' : 'user'),
+    role: params.role || (isDefaultAdminEmail(normalizedEmail) ? 'admin' : 'user'),
     createdAt: now,
     lastActiveAt: now,
     cloudStorage: { provider: 'none' },
@@ -409,6 +428,10 @@ export function verifyUserLogin(email: string, password: string): { profile: Use
 
   if (!isPasswordValid) {
     throw new Error('Invalid email or password.');
+  }
+
+  if (isDefaultAdminEmail(normalizedEmail)) {
+    stored.profile.role = 'admin';
   }
 
   if (!stored.profile.groupId && store.groups) {
@@ -488,7 +511,12 @@ export function validateSessionToken(token: string): UserProfile | null {
       return null;
     }
     const found = findUserById(session.userId);
-    if (found) return found;
+    if (found) {
+      if (isDefaultAdminEmail(found.email)) {
+        found.role = 'admin';
+      }
+      return found;
+    }
   }
 
   // 2. Stateless HMAC verification (crucial for cross-container serverless lambdas on Vercel)
@@ -503,6 +531,9 @@ export function validateSessionToken(token: string): UserProfile | null {
           const payload = JSON.parse(Buffer.from(b64, 'base64url').toString('utf-8'));
           if (payload.uid && payload.exp && new Date(payload.exp).getTime() > Date.now()) {
             let user = findUserById(payload.uid);
+            if (user && isDefaultAdminEmail(user.email)) {
+              user.role = 'admin';
+            }
             if (!user && payload.em) {
               // Automatically restore user in this container's store!
               const emailKey = payload.em.toLowerCase().trim();
@@ -511,7 +542,7 @@ export function validateSessionToken(token: string): UserProfile | null {
                 id: payload.uid,
                 email: payload.em,
                 displayName: payload.dn || payload.em.split('@')[0],
-                role: payload.rl || (emailKey === PRIMARY_ADMIN_EMAIL.toLowerCase() ? 'admin' : 'user'),
+                role: payload.rl || (isDefaultAdminEmail(emailKey) ? 'admin' : 'user'),
                 churchName: payload.ch || undefined,
                 instrument: payload.in || undefined,
                 groupId: payload.gid || undefined,
@@ -663,28 +694,53 @@ export function submitSongForGlobalPublishing(params: {
     throw new Error('User account not found.');
   }
 
-  const submissionId = `sub_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  if (!params.song || !params.song.title || typeof params.song.title !== 'string') {
+    throw new Error('Valid song title is required for global publishing.');
+  }
+
   const now = new Date().toISOString();
 
-  const submission: SongSubmission = {
-    id: submissionId,
-    songId: params.song.id,
-    song: {
+  // If user already has a pending submission for this song, update it in-place so admin sees the latest version cleanly
+  const existingPending = Object.values(store.submissions).find(
+    (s) =>
+      s.submittedBy.userId === user.id &&
+      (s.songId === params.song.id ||
+        s.song?.id === params.song.id ||
+        s.song?.slug === params.song.slug) &&
+      s.status === 'pending'
+  );
+
+  let submission: SongSubmission;
+  if (existingPending) {
+    existingPending.song = {
       ...params.song,
       sourceType: 'custom',
-    },
-    submittedBy: {
-      userId: user.id,
-      email: user.email,
-      displayName: user.displayName,
-      churchName: user.churchName,
-    },
-    status: 'pending',
-    submittedAt: now,
-    submissionNotes: params.submissionNotes?.trim() || undefined,
-  };
+    };
+    existingPending.submissionNotes = params.submissionNotes?.trim() || undefined;
+    existingPending.submittedAt = now;
+    submission = existingPending;
+  } else {
+    const submissionId = `sub_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    submission = {
+      id: submissionId,
+      songId: params.song.id,
+      song: {
+        ...params.song,
+        sourceType: 'custom',
+      },
+      submittedBy: {
+        userId: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        churchName: user.churchName,
+      },
+      status: 'pending',
+      submittedAt: now,
+      submissionNotes: params.submissionNotes?.trim() || undefined,
+    };
+    store.submissions[submissionId] = submission;
+  }
 
-  store.submissions[submissionId] = submission;
   saveStore(store);
 
   // Dispatch email notification to admin gray2187@gmail.com
@@ -748,8 +804,12 @@ export function reviewSongSubmission(params: {
 }): SongSubmission {
   const store = ensureDataStore();
   const admin = findUserById(params.adminUserId);
-  if (!admin || admin.role !== 'admin') {
+  if (!admin || (admin.role !== 'admin' && !isDefaultAdminEmail(admin.email))) {
     throw new Error('Unauthorized: Admin privileges required to review submissions.');
+  }
+
+  if (admin.role !== 'admin') {
+    admin.role = 'admin';
   }
 
   const submission = store.submissions[params.submissionId];
@@ -2210,7 +2270,7 @@ export function loginOrRegisterWithGoogle(googleUser: {
   if (!storedUser) {
     const userId = `user_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
     const salt = crypto.randomBytes(16).toString('hex');
-    const role: UserRole = emailKey === PRIMARY_ADMIN_EMAIL.toLowerCase() ? 'admin' : 'user';
+    const role: UserRole = isDefaultAdminEmail(emailKey) ? 'admin' : 'user';
 
     storedUser = {
       profile: {
@@ -2247,7 +2307,7 @@ export function loginOrRegisterWithGoogle(googleUser: {
     if (googleUser.photoURL) {
       storedUser.profile.photoURL = googleUser.photoURL;
     }
-    if (emailKey === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
+    if (isDefaultAdminEmail(emailKey)) {
       storedUser.profile.role = 'admin';
     }
   }

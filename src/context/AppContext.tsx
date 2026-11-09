@@ -724,10 +724,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (
         !removedSet.has(gSong.id) &&
         !removedSet.has(gSong.slug) &&
-        !removedSet.has(gSong.id.replace(/^global_/, '')) &&
-        !combinedCatalog.some((c) => c.id === gSong.id || c.slug === gSong.slug)
+        !removedSet.has(gSong.id.replace(/^global_/, ''))
       ) {
-        combinedCatalog.push(gSong);
+        const existingIdx = combinedCatalog.findIndex(
+          (c) => c.id === gSong.id || c.slug === gSong.slug
+        );
+        if (existingIdx >= 0) {
+          // If approved global song matches an existing catalog song, replace it with the curated version
+          combinedCatalog[existingIdx] = gSong;
+        } else {
+          combinedCatalog.push(gSong);
+        }
       }
     }
     return mergeCatalogAndCustomSongs(customSongs, combinedCatalog);
