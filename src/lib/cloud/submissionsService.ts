@@ -197,6 +197,76 @@ export async function updateSubmissionInFirestore(params: {
 }
 
 /**
+ * Resolves the effective global songs catalog and removal set from submissions,
+ * ensuring that conflicting or duplicate submissions never cause an approved song to disappear.
+ */
+function processGlobalSubmissions(submissions: SongSubmission[]): {
+  approvedSongs: SongRecord[];
+  removedSongIds: string[];
+} {
+  const songSubMap = new Map<string, SongSubmission[]>();
+  for (const sub of submissions) {
+    if (!sub || !sub.song) continue;
+    const cleanId = (sub.songId || sub.song.id).replace(/^global_/, '');
+    const list = songSubMap.get(cleanId) || [];
+    list.push(sub);
+    songSubMap.set(cleanId, list);
+  }
+
+  const approvedSongsMap = new Map<string, SongRecord>();
+  const removedSongIds = new Set<string>();
+
+  for (const [cleanId, subs] of songSubMap.entries()) {
+    // Sort submissions by latest activity
+    subs.sort((a, b) => {
+      const timeA = new Date(a.reviewedAt || a.submittedAt).getTime();
+      const timeB = new Date(b.reviewedAt || b.submittedAt).getTime();
+      return timeB - timeA;
+    });
+
+    const approvedSub = subs.find((s) => s.status === 'approved');
+    const removedSub = subs.find((s) => s.status === 'removed');
+
+    if (approvedSub && !removedSub) {
+      const pubSong: SongRecord = {
+        ...approvedSub.song,
+        id: `global_${cleanId}`,
+        sourceType: 'catalog',
+        attribution:
+          approvedSub.song.attribution ||
+          `Contributed by ${approvedSub.submittedBy?.displayName || 'Community'}`,
+      };
+      approvedSongsMap.set(pubSong.id, pubSong);
+    } else if (approvedSub && removedSub) {
+      const approvedTime = new Date(approvedSub.reviewedAt || approvedSub.submittedAt).getTime();
+      const removedTime = new Date(removedSub.reviewedAt || removedSub.submittedAt).getTime();
+      if (approvedTime >= removedTime) {
+        const pubSong: SongRecord = {
+          ...approvedSub.song,
+          id: `global_${cleanId}`,
+          sourceType: 'catalog',
+          attribution:
+            approvedSub.song.attribution ||
+            `Contributed by ${approvedSub.submittedBy?.displayName || 'Community'}`,
+        };
+        approvedSongsMap.set(pubSong.id, pubSong);
+      } else {
+        removedSongIds.add(cleanId);
+        removedSongIds.add(`global_${cleanId}`);
+      }
+    } else if (removedSub) {
+      removedSongIds.add(cleanId);
+      removedSongIds.add(`global_${cleanId}`);
+    }
+  }
+
+  return {
+    approvedSongs: Array.from(approvedSongsMap.values()),
+    removedSongIds: Array.from(removedSongIds),
+  };
+}
+
+/**
  * Fetches all approved and removed global songs directly from Cloud Firestore submissions.
  */
 export async function fetchGlobalSongsFromFirestore(): Promise<{
@@ -211,38 +281,16 @@ export async function fetchGlobalSongsFromFirestore(): Promise<{
   try {
     const colRef = collection(db, 'submissions');
     const snapshot = await getDocs(colRef);
-    const approvedSongsMap = new Map<string, SongRecord>();
-    const removedSongIds = new Set<string>();
+    const rawSubs: SongSubmission[] = [];
 
     snapshot.forEach((d) => {
       const sub = d.data() as SongSubmission;
-      if (!sub || !sub.song) return;
-
-      if (sub.status === 'approved') {
-        const pubSong: SongRecord = {
-          ...sub.song,
-          id: sub.song.id.startsWith('global_')
-            ? sub.song.id
-            : `global_${sub.song.id}`,
-          sourceType: 'catalog',
-          attribution:
-            sub.song.attribution ||
-            `Contributed by ${sub.submittedBy?.displayName || 'Community'}`,
-        };
-        approvedSongsMap.set(pubSong.id, pubSong);
-      } else if (sub.status === 'removed') {
-        removedSongIds.add(sub.songId);
-        if (sub.song?.id) {
-          removedSongIds.add(sub.song.id);
-          removedSongIds.add(`global_${sub.song.id}`);
-        }
+      if (sub && sub.song) {
+        rawSubs.push(sub);
       }
     });
 
-    return {
-      approvedSongs: Array.from(approvedSongsMap.values()),
-      removedSongIds: Array.from(removedSongIds),
-    };
+    return processGlobalSubmissions(rawSubs);
   } catch (err) {
     console.warn('[Firestore] Failed to fetch global songs from submissions:', err);
     return { approvedSongs: [], removedSongIds: [] };
@@ -265,38 +313,15 @@ export function subscribeToGlobalSongsFromSubmissions(
     return onSnapshot(
       colRef,
       (snapshot) => {
-        const approvedSongsMap = new Map<string, SongRecord>();
-        const removedSongIds = new Set<string>();
-
+        const rawSubs: SongSubmission[] = [];
         snapshot.forEach((d) => {
           const sub = d.data() as SongSubmission;
-          if (!sub || !sub.song) return;
-
-          if (sub.status === 'approved') {
-            const pubSong: SongRecord = {
-              ...sub.song,
-              id: sub.song.id.startsWith('global_')
-                ? sub.song.id
-                : `global_${sub.song.id}`,
-              sourceType: 'catalog',
-              attribution:
-                sub.song.attribution ||
-                `Contributed by ${sub.submittedBy?.displayName || 'Community'}`,
-            };
-            approvedSongsMap.set(pubSong.id, pubSong);
-          } else if (sub.status === 'removed') {
-            removedSongIds.add(sub.songId);
-            if (sub.song?.id) {
-              removedSongIds.add(sub.song.id);
-              removedSongIds.add(`global_${sub.song.id}`);
-            }
+          if (sub && sub.song) {
+            rawSubs.push(sub);
           }
         });
 
-        onUpdate({
-          approvedSongs: Array.from(approvedSongsMap.values()),
-          removedSongIds: Array.from(removedSongIds),
-        });
+        onUpdate(processGlobalSubmissions(rawSubs));
       },
       (err) => {
         console.warn('[Firestore] Global songs subscription error:', err);

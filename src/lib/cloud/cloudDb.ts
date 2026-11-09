@@ -52,7 +52,6 @@ export function isDefaultAdminEmail(email?: string | null): boolean {
   const norm = email.trim().toLowerCase();
   return (
     norm === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
-    norm === 'gemeni21@gmail.com' ||
     norm === 'mark3d21@gmail.com' ||
     norm === 'admin@worshipy.app' ||
     norm.startsWith('admin@') ||
@@ -115,7 +114,7 @@ function hashPassword(password: string, salt: string): string {
   return crypto.scryptSync(password, salt, 64).toString('hex');
 }
 
-function ensureDataStore(): CloudStoreSchema {
+export function ensureDataStore(): CloudStoreSchema {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -133,10 +132,13 @@ function ensureDataStore(): CloudStoreSchema {
       if (!parsed.notifications) parsed.notifications = [];
       if (!parsed.groups) parsed.groups = {};
 
-      // Ensure primary admins (gray2187@gmail.com, gemeni21@gmail.com, admin@worshipy.app) have admin privileges
+      // Ensure primary admins (gray2187@gmail.com, mark3d21@gmail.com, admin@worshipy.app) have admin privileges
+      // and ensure non-admin accounts like gemeni21@gmail.com (which is strictly a worship leader) remain 'user'
       for (const [email, storedUser] of Object.entries(parsed.users || {})) {
         if (isDefaultAdminEmail(email) && storedUser?.profile) {
           storedUser.profile.role = 'admin';
+        } else if (email.toLowerCase() === 'gemeni21@gmail.com' && storedUser?.profile) {
+          storedUser.profile.role = 'user';
         }
       }
 
@@ -688,6 +690,7 @@ export function submitSongForGlobalPublishing(params: {
   userId: string;
   song: SongRecord;
   submissionNotes?: string;
+  submissionId?: string;
 }): SongSubmission {
   const store = ensureDataStore();
   const user = findUserById(params.userId);
@@ -700,31 +703,48 @@ export function submitSongForGlobalPublishing(params: {
   }
 
   const now = new Date().toISOString();
+  const cleanSongId = params.song.id.replace(/^global_/, '');
 
-  // If user already has a pending submission for this song, update it in-place so admin sees the latest version cleanly
-  const existingPending = Object.values(store.submissions).find(
+  // Look for any existing submission for this song by this user (regardless of previous status)
+  const existing = Object.values(store.submissions).find(
     (s) =>
       s.submittedBy.userId === user.id &&
       (s.songId === params.song.id ||
+        s.songId === cleanSongId ||
         s.song?.id === params.song.id ||
-        s.song?.slug === params.song.slug) &&
-      s.status === 'pending'
+        s.song?.id === cleanSongId ||
+        s.song?.slug === params.song.slug)
   );
 
+  const targetId =
+    params.submissionId ||
+    existing?.id ||
+    `sub_${user.id.replace(/[^a-zA-Z0-9_-]/g, '_')}_${cleanSongId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
   let submission: SongSubmission;
-  if (existingPending) {
-    existingPending.song = {
+  if (existing) {
+    const oldId = existing.id;
+    existing.id = targetId;
+    existing.song = {
       ...params.song,
       sourceType: 'custom',
     };
-    existingPending.submissionNotes = params.submissionNotes?.trim() || undefined;
-    existingPending.submittedAt = now;
-    submission = existingPending;
+    existing.submissionNotes = params.submissionNotes?.trim() || undefined;
+    existing.submittedAt = now;
+    existing.status = 'pending';
+    existing.reviewedAt = undefined;
+    existing.reviewedBy = undefined;
+    existing.adminNotes = undefined;
+    submission = existing;
+
+    store.submissions[targetId] = submission;
+    if (oldId && oldId !== targetId) {
+      delete store.submissions[oldId];
+    }
   } else {
-    const submissionId = `sub_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     submission = {
-      id: submissionId,
-      songId: params.song.id,
+      id: targetId,
+      songId: cleanSongId,
       song: {
         ...params.song,
         sourceType: 'custom',
@@ -739,7 +759,7 @@ export function submitSongForGlobalPublishing(params: {
       submittedAt: now,
       submissionNotes: params.submissionNotes?.trim() || undefined,
     };
-    store.submissions[submissionId] = submission;
+    store.submissions[targetId] = submission;
   }
 
   saveStore(store);
@@ -856,18 +876,31 @@ export function reviewSongSubmission(params: {
       }
     }
   } else if (params.status === 'rejected' || params.status === 'removed') {
-    // If rejected or removed, ensure it is removed from global if previously approved
-    const publishedId = `global_${submission.song.id}`;
-    for (const [key, val] of Object.entries(store.approvedGlobalSongs)) {
-      if (
-        key === publishedId ||
-        key === submission.song.id ||
-        key === submission.song.slug ||
-        val.id === publishedId ||
-        val.id === submission.song.id ||
-        val.slug === submission.song.slug
-      ) {
-        delete store.approvedGlobalSongs[key];
+    // Only remove from global catalog if there is no other approved submission for this song
+    const cleanId = (submission.songId || submission.song.id).replace(/^global_/, '');
+    const hasOtherApproved = Object.values(store.submissions).some(
+      (s) =>
+        s.id !== submission.id &&
+        ((s.songId && s.songId.replace(/^global_/, '') === cleanId) ||
+          (s.song?.id && s.song.id.replace(/^global_/, '') === cleanId) ||
+          s.song?.slug === submission.song.slug) &&
+        s.status === 'approved'
+    );
+    if (!hasOtherApproved) {
+      const publishedId = `global_${cleanId}`;
+      for (const [key, val] of Object.entries(store.approvedGlobalSongs)) {
+        if (
+          key === publishedId ||
+          key === submission.song.id ||
+          key === cleanId ||
+          key === submission.song.slug ||
+          val.id === publishedId ||
+          val.id === submission.song.id ||
+          val.id === cleanId ||
+          val.slug === submission.song.slug
+        ) {
+          delete store.approvedGlobalSongs[key];
+        }
       }
     }
   }

@@ -50,7 +50,24 @@ export async function GET(req: NextRequest) {
     if (s?.id) subMap.set(s.id, s);
   }
 
-  let submissions = Array.from(subMap.values());
+  // 4. Deduplicate so each user has at most ONE active submission per song
+  const allRaw = Array.from(subMap.values()).sort(
+    (a, b) =>
+      new Date(b.reviewedAt || b.submittedAt).getTime() -
+      new Date(a.reviewedAt || a.submittedAt).getTime()
+  );
+
+  const dedupeMap = new Map<string, SongSubmission>();
+  for (const s of allRaw) {
+    if (!s?.id || !s.song) continue;
+    const cleanId = (s.songId || s.song.id).replace(/^global_/, '');
+    const userSongKey = `${s.submittedBy?.userId || 'anon'}_${cleanId}`;
+    if (!dedupeMap.has(userSongKey)) {
+      dedupeMap.set(userSongKey, s);
+    }
+  }
+
+  let submissions = Array.from(dedupeMap.values());
   if (status) {
     submissions = submissions.filter((s) => s.status === status);
   }
@@ -77,16 +94,38 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { song, submissionNotes } = body;
+    const { song, submissionNotes, submissionId } = body;
 
     if (!song || !song.title) {
       return NextResponse.json({ error: 'Invalid song data.' }, { status: 400 });
     }
 
+    const cleanSongId = song.id.replace(/^global_/, '');
+
+    // Check if Firestore already has an existing submission for this user and song
+    const firestoreSubs = await fetchSubmissionsFromFirestore({
+      isAdmin: false,
+      userId: user.id,
+    });
+    const existingSub = firestoreSubs.find(
+      (s) =>
+        s.songId === song.id ||
+        s.songId === cleanSongId ||
+        s.song?.id === song.id ||
+        s.song?.id === cleanSongId ||
+        s.song?.slug === song.slug
+    );
+
+    const finalSubId =
+      submissionId ||
+      existingSub?.id ||
+      `sub_${user.id.replace(/[^a-zA-Z0-9_-]/g, '_')}_${cleanSongId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+
     const submission = submitSongForGlobalPublishing({
       userId: user.id,
       song,
       submissionNotes,
+      submissionId: finalSubId,
     });
 
     // Also persist to Cloud Firestore for cross-container availability on Vercel

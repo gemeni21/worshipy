@@ -21,6 +21,7 @@ import {
   validateSessionToken,
   PRIMARY_ADMIN_EMAIL,
   getAdminNotifications,
+  ensureDataStore,
 } from '../../cloud/cloudDb.ts';
 
 import {
@@ -473,7 +474,9 @@ describe('Creating song and requesting it to push globally', () => {
     const sub2 = submitSongForGlobalPublishing({ userId: leader.profile.id, song });
 
     const leaderSubmissions = listSubmissions({ userId: leader.profile.id });
-    assert.equal(leaderSubmissions.length, 2);
+    // In-place update prevents duplicate submissions for the same song
+    assert.equal(leaderSubmissions.length, 1);
+    assert.equal(sub2.id, sub1.id);
 
     // In my-songs/page.tsx:
     // const existingSubmission = submissions.find(
@@ -483,12 +486,9 @@ describe('Creating song and requesting it to push globally', () => {
       (sub) => sub.songId === song.id || sub.song?.id === song.id || sub.song?.slug === song.slug
     );
 
-    // Because listSubmissions sorts newest first, found is sub2 (pending)
     assert.equal(found?.id, sub2.id);
     assert.equal(found?.status, 'pending');
-
-    // BUT sub1 (rejected) is still orphaned in store.submissions forever
-    assert.equal(getSubmissionById(sub1.id)?.status, 'rejected');
+    assert.equal(getSubmissionById(sub1.id)?.status, 'pending');
   });
 
   it('10. tests submission with empty sections or invalid metadata', () => {
@@ -593,5 +593,113 @@ describe('Creating song and requesting it to push globally', () => {
         songIdOrSlug: 'some-song-id',
       });
     }, /Unauthorized: Admin privileges required/);
+  });
+
+  it('13. declining a duplicate submission does NOT remove the approved song from global catalog', () => {
+    let admin = findUserByEmail('admin@worshipy.app') || findUserByEmail(PRIMARY_ADMIN_EMAIL);
+    if (!admin) {
+      const reg = registerUser({
+        email: `admin_${Date.now()}@worshipy.app`,
+        password: 'AdminPassword123!',
+        displayName: 'Global Curator',
+      });
+      admin = findUserById(reg.profile.id);
+    }
+    assert.ok(admin);
+
+    const leader = registerUser({
+      email: `duplicate_tester_${Date.now()}@church.org`,
+      password: 'Password123!',
+      displayName: 'Duplicate Tester',
+    });
+
+    const song = buildCustomSongRecord({
+      title: 'Tanging Ikaw Lamang',
+      artist: 'Worship Team',
+      originalKey: 'G',
+      languageCode: 'fil',
+      categoryId: 'filipino-worship',
+      rightsAcknowledged: true,
+      sections: [{ id: 's1', type: 'verse', label: 'Verse', lines: [{ id: 'l1', segments: [{ chord: 'G', text: 'Tanging Ikaw' }] }] }],
+    });
+
+    // Simulate legacy duplicate submissions directly in store
+    const store = ensureDataStore();
+    store.submissions['sub_test_dup_1'] = {
+      id: 'sub_test_dup_1',
+      songId: song.id,
+      song,
+      submittedBy: { userId: leader.profile.id, email: leader.profile.email, displayName: leader.profile.displayName },
+      status: 'pending',
+      submittedAt: new Date().toISOString(),
+    };
+    store.submissions['sub_test_dup_2'] = {
+      id: 'sub_test_dup_2',
+      songId: song.id,
+      song,
+      submittedBy: { userId: leader.profile.id, email: leader.profile.email, displayName: leader.profile.displayName },
+      status: 'pending',
+      submittedAt: new Date().toISOString(),
+    };
+
+    // Admin approves sub1
+    reviewSongSubmission({
+      submissionId: 'sub_test_dup_1',
+      adminUserId: admin.id,
+      status: 'approved',
+    });
+
+    // Song is now approved globally
+    assert.ok(getApprovedGlobalSongs().some(s => s.title === 'Tanging Ikaw Lamang'));
+
+    // Admin declines sub2 (the duplicate request)
+    reviewSongSubmission({
+      submissionId: 'sub_test_dup_2',
+      adminUserId: admin.id,
+      status: 'rejected',
+      adminNotes: 'Duplicate submission declined',
+    });
+
+    // CRITICAL: The approved song MUST STILL be in global catalog because sub1 is approved!
+    assert.ok(
+      getApprovedGlobalSongs().some(s => s.title === 'Tanging Ikaw Lamang'),
+      'Approved song must not be removed when declining a duplicate submission'
+    );
+  });
+
+  it('14. verifies gemeni21@gmail.com is strictly a leader, never an admin, and cannot approve songs', () => {
+    let gemeni = findUserByEmail('gemeni21@gmail.com');
+    if (!gemeni) {
+      const reg = registerUser({
+        email: 'gemeni21@gmail.com',
+        password: 'Password123!',
+        displayName: 'Gemeni Leader',
+      });
+      gemeni = reg.profile;
+    }
+
+    assert.equal(gemeni.role, 'user');
+    assert.notEqual(gemeni.role, 'admin');
+
+    const song = buildCustomSongRecord({
+      title: 'Harap ng Trono Mo',
+      artist: 'Church',
+      originalKey: 'C',
+      languageCode: 'fil',
+      categoryId: 'filipino-worship',
+      rightsAcknowledged: true,
+      sections: [{ id: 's1', type: 'verse', label: 'Verse', lines: [{ id: 'l1', segments: [{ chord: 'C', text: 'Banal Ka' }] }] }],
+    });
+
+    const sub = submitSongForGlobalPublishing({ userId: gemeni.id, song });
+
+    // gemeni21 cannot approve song submissions
+    assert.throws(() => {
+      reviewSongSubmission({
+        submissionId: sub.id,
+        adminUserId: gemeni.id,
+        status: 'approved',
+      });
+    }, /Unauthorized: Admin privileges required to review submissions/);
   });
 });

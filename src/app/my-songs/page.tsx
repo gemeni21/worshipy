@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -16,6 +16,7 @@ import {
   Heart,
   Music,
   Plus,
+  RotateCcw,
   Search,
   Sparkles,
   Trash2,
@@ -141,6 +142,18 @@ export default function MySongsPage() {
     []
   );
 
+  const resetImportState = useCallback(() => {
+    setChordProText('');
+    setImportedFileName(undefined);
+    setFileReadError(null);
+    setImportRightsChecked(false);
+    setImportedDraftRecord(null);
+    setImportedDraftWarnings([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
+
   // Support ?edit=<songId> or ?action=create or ?action=import from URL on client mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -161,7 +174,10 @@ export default function MySongsPage() {
       } else if (actionParam === 'create') {
         queueMicrotask(() => setMode('create'));
       } else if (actionParam === 'import') {
-        queueMicrotask(() => setMode('import'));
+        queueMicrotask(() => {
+          resetImportState();
+          setMode('import');
+        });
       }
     } catch {
       // ignore
@@ -287,9 +303,7 @@ export default function MySongsPage() {
 
       const res = await saveCustomSong(finalRecord);
       if (res.ok && res.song) {
-        setChordProText('');
-        setImportedFileName(undefined);
-        setImportRightsChecked(false);
+        resetImportState();
         setMode('list');
         setBanner({
           type: 'success',
@@ -312,10 +326,9 @@ export default function MySongsPage() {
   ): Promise<{ ok: boolean; error?: string; song?: SongRecord }> => {
     const res = await saveCustomSong(song);
     if (res.ok && res.song) {
+      resetImportState();
       setMode('list');
       setEditingSongId(null);
-      setImportedDraftRecord(null);
-      setImportedDraftWarnings([]);
       setBanner({
         type: 'success',
         message: `Saved "${res.song.title}" to My Songs on this device.`,
@@ -438,8 +451,7 @@ export default function MySongsPage() {
           onCancel={() => {
             setMode('list');
             setEditingSongId(null);
-            setImportedDraftRecord(null);
-            setImportedDraftWarnings([]);
+            resetImportState();
           }}
         />
       </div>
@@ -471,8 +483,8 @@ export default function MySongsPage() {
           <button
             type="button"
             onClick={() => {
+              resetImportState();
               setMode('list');
-              setFileReadError(null);
             }}
             className="h-10 px-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-subtle)] text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
           >
@@ -498,18 +510,31 @@ export default function MySongsPage() {
               <h2 className="text-base font-bold">
                 1. Upload File or Paste ChordPro Text
               </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setFileReadError(null);
-                  setImportedFileName('sa-iyong-presensya-sample.cho');
-                  setChordProText(SAMPLE_CHORDPRO_TEXT);
-                }}
-                className="text-xs font-semibold text-[var(--brand-accent)] hover:underline inline-flex items-center gap-1 cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>Load Sample ChordPro</span>
-              </button>
+              <div className="flex items-center gap-3">
+                {chordProText && (
+                  <button
+                    type="button"
+                    onClick={resetImportState}
+                    className="text-xs font-semibold text-rose-400 hover:text-rose-300 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                    title="Clear current ChordPro text"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Clear / New Import</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFileReadError(null);
+                    setImportedFileName('sa-iyong-presensya-sample.cho');
+                    setChordProText(SAMPLE_CHORDPRO_TEXT);
+                  }}
+                  className="text-xs font-semibold text-[var(--brand-accent)] hover:underline inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>Load Sample ChordPro</span>
+                </button>
+              </div>
             </div>
 
             {/* File Picker */}
@@ -862,6 +887,7 @@ export default function MySongsPage() {
               type="button"
               onClick={() => {
                 setBanner(null);
+                resetImportState();
                 setMode('import');
               }}
               className="h-11 px-4 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-surface)] hover:border-[var(--brand-accent)] text-xs sm:text-sm font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
@@ -1015,7 +1041,10 @@ export default function MySongsPage() {
             </button>
             <button
               type="button"
-              onClick={() => setMode('import')}
+              onClick={() => {
+                resetImportState();
+                setMode('import');
+              }}
               className="h-11 px-5 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-subtle)] hover:border-[var(--brand-accent)] text-sm font-semibold inline-flex items-center gap-2 cursor-pointer"
             >
               <FileUp className="w-4 h-4" aria-hidden="true" />

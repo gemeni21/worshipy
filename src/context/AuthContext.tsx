@@ -138,7 +138,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       Boolean(
         user?.email &&
           (user.email.toLowerCase() === 'gray2187@gmail.com' ||
-            user.email.toLowerCase() === 'gemeni21@gmail.com' ||
             user.email.toLowerCase() === 'mark3d21@gmail.com' ||
             user.email.toLowerCase() === 'admin@worshipy.app' ||
             user.email.toLowerCase().startsWith('admin@') ||
@@ -354,12 +353,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (sub?.id) subMap.set(sub.id, sub);
     }
 
-    const merged = Array.from(subMap.values()).sort(
+    // Sort by newest activity (reviewedAt or submittedAt)
+    const allRaw = Array.from(subMap.values()).sort(
       (a, b) =>
-        new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+        new Date(b.reviewedAt || b.submittedAt).getTime() -
+        new Date(a.reviewedAt || a.submittedAt).getTime()
     );
 
-    setSubmissions(merged);
+    // Deduplicate by (userId, cleanSongId)
+    const dedupeMap = new Map<string, SongSubmission>();
+    for (const s of allRaw) {
+      if (!s?.id || !s.song) continue;
+      const cleanId = (s.songId || s.song.id).replace(/^global_/, '');
+      const userSongKey = `${s.submittedBy?.userId || 'anon'}_${cleanId}`;
+      if (!dedupeMap.has(userSongKey)) {
+        dedupeMap.set(userSongKey, s);
+      }
+    }
+
+    setSubmissions(Array.from(dedupeMap.values()));
   }, [authFetch, isAdmin, user?.id]);
 
   // Real-time Firestore subscription for submissions
@@ -377,11 +389,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           for (const s of subs) {
             if (s?.id) subMap.set(s.id, s);
           }
-          return Array.from(subMap.values()).sort(
+          const allRaw = Array.from(subMap.values()).sort(
             (a, b) =>
-              new Date(b.submittedAt).getTime() -
-              new Date(a.submittedAt).getTime()
+              new Date(b.reviewedAt || b.submittedAt).getTime() -
+              new Date(a.reviewedAt || a.submittedAt).getTime()
           );
+          const dedupeMap = new Map<string, SongSubmission>();
+          for (const s of allRaw) {
+            if (!s?.id || !s.song) continue;
+            const cleanId = (s.songId || s.song.id).replace(/^global_/, '');
+            const userSongKey = `${s.submittedBy?.userId || 'anon'}_${cleanId}`;
+            if (!dedupeMap.has(userSongKey)) {
+              dedupeMap.set(userSongKey, s);
+            }
+          }
+          return Array.from(dedupeMap.values());
         });
       },
     });
@@ -895,22 +917,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Please sign in to submit songs for global publishing.');
       }
 
+      const cleanSongId = song.id.replace(/^global_/, '');
       // Check existing submission for this song by this user
       const existing = submissions.find(
         (s) =>
           (s.songId === song.id ||
+            s.songId === cleanSongId ||
             s.song?.id === song.id ||
+            s.song?.id === cleanSongId ||
             s.song?.slug === song.slug) &&
           s.submittedBy?.userId === user.id
       );
 
-      const submissionId =
-        existing?.id ||
-        `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const cleanUserId = user.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const cleanId = cleanSongId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const submissionId = existing?.id || `sub_${cleanUserId}_${cleanId}`;
 
       const submissionDoc: SongSubmission = {
         id: submissionId,
-        songId: song.id,
+        songId: cleanSongId,
         song: {
           ...song,
         },
@@ -934,7 +959,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await authFetch('/api/cloud/submissions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ song, submissionNotes: notes }),
+          body: JSON.stringify({ song, submissionNotes: notes, submissionId }),
         });
 
         if (res.ok) {
