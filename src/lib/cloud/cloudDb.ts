@@ -53,6 +53,7 @@ export function isDefaultAdminEmail(email?: string | null): boolean {
   return (
     norm === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
     norm === 'gemeni21@gmail.com' ||
+    norm === 'mark3d21@gmail.com' ||
     norm === 'admin@worshipy.app' ||
     norm.startsWith('admin@') ||
     norm.endsWith('@admin.worshipy.app')

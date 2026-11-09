@@ -3,16 +3,38 @@ import {
   getApprovedGlobalSongs,
   getRemovedGlobalSongIds,
   getRemovedGlobalSongs,
+  isDefaultAdminEmail,
   removeSongGlobally,
   restoreSongGlobally,
   validateSessionToken,
 } from '@/lib/cloud/cloudDb';
+import { fetchGlobalSongsFromFirestore } from '@/lib/cloud/submissionsService';
+import type { SongRecord } from '@/types/song';
 
 export async function GET() {
-  const songs = getApprovedGlobalSongs();
-  const removedSongIds = getRemovedGlobalSongIds();
+  const localSongs = getApprovedGlobalSongs();
+  const localRemovedIds = getRemovedGlobalSongIds();
   const removedSongs = getRemovedGlobalSongs();
-  return NextResponse.json({ songs, removedSongIds, removedSongs });
+
+  // Fetch approved & removed global songs from Firestore (cross-container sync on Vercel)
+  const { approvedSongs: firestoreSongs, removedSongIds: firestoreRemovedIds } =
+    await fetchGlobalSongsFromFirestore();
+
+  const songMap = new Map<string, SongRecord>();
+  for (const s of localSongs) {
+    if (s?.id) songMap.set(s.id, s);
+  }
+  for (const s of firestoreSongs) {
+    if (s?.id) songMap.set(s.id, s);
+  }
+
+  const removedSet = new Set([...localRemovedIds, ...firestoreRemovedIds]);
+
+  return NextResponse.json({
+    songs: Array.from(songMap.values()),
+    removedSongIds: Array.from(removedSet),
+    removedSongs,
+  });
 }
 
 export async function DELETE(req: NextRequest) {
@@ -25,7 +47,8 @@ export async function DELETE(req: NextRequest) {
   }
 
   const user = validateSessionToken(token);
-  if (!user || user.role !== 'admin') {
+  const isAdmin = user ? user.role === 'admin' || isDefaultAdminEmail(user.email) : false;
+  if (!user || !isAdmin) {
     return NextResponse.json(
       { error: 'Forbidden: Admin privileges are strictly required to remove songs globally.' },
       { status: 403 }
@@ -75,7 +98,8 @@ export async function PATCH(req: NextRequest) {
   }
 
   const user = validateSessionToken(token);
-  if (!user || user.role !== 'admin') {
+  const isAdmin = user ? user.role === 'admin' || isDefaultAdminEmail(user.email) : false;
+  if (!user || !isAdmin) {
     return NextResponse.json(
       { error: 'Forbidden: Admin privileges are strictly required to manage global songs.' },
       { status: 403 }

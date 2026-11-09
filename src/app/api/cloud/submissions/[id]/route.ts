@@ -5,6 +5,7 @@ import {
   reviewSongSubmission,
   validateSessionToken,
 } from '@/lib/cloud/cloudDb';
+import { updateSubmissionInFirestore } from '@/lib/cloud/submissionsService';
 
 export async function GET(
   req: NextRequest,
@@ -71,6 +72,18 @@ export async function PATCH(
       adminUserId: user.id,
       status,
       adminNotes,
+    });
+
+    // Also persist review decision to Cloud Firestore for cross-container sync on Vercel
+    await updateSubmissionInFirestore({
+      submissionId: id,
+      status,
+      adminNotes,
+      reviewedBy: {
+        userId: user.id,
+        email: user.email,
+        displayName: user.displayName,
+      },
     });
 
     return NextResponse.json({ submission: updated });

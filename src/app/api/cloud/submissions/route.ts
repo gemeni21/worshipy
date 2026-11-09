@@ -5,7 +5,11 @@ import {
   submitSongForGlobalPublishing,
   validateSessionToken,
 } from '@/lib/cloud/cloudDb';
-import type { SubmissionStatus } from '@/types/auth';
+import {
+  fetchSubmissionsFromFirestore,
+  saveSubmissionToFirestore,
+} from '@/lib/cloud/submissionsService';
+import type { SongSubmission, SubmissionStatus } from '@/types/auth';
 
 export async function GET(req: NextRequest) {
   const token =
@@ -26,8 +30,33 @@ export async function GET(req: NextRequest) {
 
   // Admins see all submissions; regular users only see their own
   const isAdmin = user.role === 'admin' || isDefaultAdminEmail(user.email);
-  const filter = isAdmin ? { status } : { userId: user.id, status };
-  const submissions = listSubmissions(filter);
+
+  // 1. Fetch from Firestore (cross-container persistent storage on Vercel)
+  const firestoreSubs = await fetchSubmissionsFromFirestore({
+    isAdmin,
+    userId: user.id,
+  });
+
+  // 2. Fetch from local store
+  const localFilter = isAdmin ? { status } : { userId: user.id, status };
+  const localSubs = listSubmissions(localFilter);
+
+  // 3. Merge both sources
+  const subMap = new Map<string, SongSubmission>();
+  for (const s of localSubs) {
+    if (s?.id) subMap.set(s.id, s);
+  }
+  for (const s of firestoreSubs) {
+    if (s?.id) subMap.set(s.id, s);
+  }
+
+  let submissions = Array.from(subMap.values());
+  if (status) {
+    submissions = submissions.filter((s) => s.status === status);
+  }
+  submissions.sort(
+    (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+  );
 
   return NextResponse.json({ submissions });
 }
@@ -59,6 +88,9 @@ export async function POST(req: NextRequest) {
       song,
       submissionNotes,
     });
+
+    // Also persist to Cloud Firestore for cross-container availability on Vercel
+    await saveSubmissionToFirestore(submission);
 
     return NextResponse.json({ submission }, { status: 201 });
   } catch (err) {

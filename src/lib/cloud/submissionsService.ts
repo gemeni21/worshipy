@@ -197,6 +197,59 @@ export async function updateSubmissionInFirestore(params: {
 }
 
 /**
+ * Fetches all approved and removed global songs directly from Cloud Firestore submissions.
+ */
+export async function fetchGlobalSongsFromFirestore(): Promise<{
+  approvedSongs: SongRecord[];
+  removedSongIds: string[];
+}> {
+  const db = getFirebaseFirestore();
+  if (!db) {
+    return { approvedSongs: [], removedSongIds: [] };
+  }
+
+  try {
+    const colRef = collection(db, 'submissions');
+    const snapshot = await getDocs(colRef);
+    const approvedSongsMap = new Map<string, SongRecord>();
+    const removedSongIds = new Set<string>();
+
+    snapshot.forEach((d) => {
+      const sub = d.data() as SongSubmission;
+      if (!sub || !sub.song) return;
+
+      if (sub.status === 'approved') {
+        const pubSong: SongRecord = {
+          ...sub.song,
+          id: sub.song.id.startsWith('global_')
+            ? sub.song.id
+            : `global_${sub.song.id}`,
+          sourceType: 'catalog',
+          attribution:
+            sub.song.attribution ||
+            `Contributed by ${sub.submittedBy?.displayName || 'Community'}`,
+        };
+        approvedSongsMap.set(pubSong.id, pubSong);
+      } else if (sub.status === 'removed') {
+        removedSongIds.add(sub.songId);
+        if (sub.song?.id) {
+          removedSongIds.add(sub.song.id);
+          removedSongIds.add(`global_${sub.song.id}`);
+        }
+      }
+    });
+
+    return {
+      approvedSongs: Array.from(approvedSongsMap.values()),
+      removedSongIds: Array.from(removedSongIds),
+    };
+  } catch (err) {
+    console.warn('[Firestore] Failed to fetch global songs from submissions:', err);
+    return { approvedSongs: [], removedSongIds: [] };
+  }
+}
+
+/**
  * Listens to all approved and removed global songs derived from Firestore submissions in real-time.
  */
 export function subscribeToGlobalSongsFromSubmissions(

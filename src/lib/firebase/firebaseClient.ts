@@ -28,31 +28,54 @@ let appInstance: FirebaseApp | null = null;
 let authInstance: Auth | null = null;
 let firestoreInstance: Firestore | null = null;
 
-if (isFirebaseConfigured && typeof window !== 'undefined') {
-  try {
-    appInstance = getApps().length > 0 ? getApp() : initializeApp(DEFAULT_FIREBASE_CONFIG);
-    authInstance = getAuth(appInstance);
+function ensureFirebaseApp(): FirebaseApp | null {
+  if (!isFirebaseConfigured) return null;
+  if (!appInstance) {
     try {
-      firestoreInstance = initializeFirestore(appInstance, {
-        ignoreUndefinedProperties: true,
-      });
-    } catch {
-      firestoreInstance = getFirestore(appInstance);
+      appInstance =
+        getApps().length > 0 ? getApp() : initializeApp(DEFAULT_FIREBASE_CONFIG);
+    } catch (err) {
+      console.warn('Firebase app initialization note:', err);
     }
-  } catch (err) {
-    console.warn('Firebase initialization note:', err);
   }
-}
-
-export function getFirebaseApp(): FirebaseApp | null {
   return appInstance;
 }
 
+export function getFirebaseApp(): FirebaseApp | null {
+  return ensureFirebaseApp();
+}
+
 export function getFirebaseAuth(): Auth | null {
+  if (!authInstance && typeof window !== 'undefined') {
+    const app = ensureFirebaseApp();
+    if (app) {
+      try {
+        authInstance = getAuth(app);
+      } catch (err) {
+        console.warn('Firebase auth initialization note:', err);
+      }
+    }
+  }
   return authInstance;
 }
 
 export function getFirebaseFirestore(): Firestore | null {
+  if (!firestoreInstance) {
+    const app = ensureFirebaseApp();
+    if (app) {
+      try {
+        firestoreInstance = initializeFirestore(app, {
+          ignoreUndefinedProperties: true,
+        });
+      } catch {
+        try {
+          firestoreInstance = getFirestore(app);
+        } catch (err) {
+          console.warn('Firebase firestore initialization note:', err);
+        }
+      }
+    }
+  }
   return firestoreInstance;
 }
 

@@ -139,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user?.email &&
           (user.email.toLowerCase() === 'gray2187@gmail.com' ||
             user.email.toLowerCase() === 'gemeni21@gmail.com' ||
+            user.email.toLowerCase() === 'mark3d21@gmail.com' ||
             user.email.toLowerCase() === 'admin@worshipy.app' ||
             user.email.toLowerCase().startsWith('admin@') ||
             user.email.toLowerCase().endsWith('@admin.worshipy.app'))
@@ -467,21 +468,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Refresh submissions whenever user changes
   useEffect(() => {
-    let ignore = false;
     if (user) {
-      authFetch('/api/cloud/submissions')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (!ignore && data?.submissions) {
-            setSubmissions(data.submissions);
-          }
-        })
-        .catch(() => {});
+      refreshSubmissions().catch(() => {});
     }
-    return () => {
-      ignore = true;
-    };
-  }, [user, authFetch]);
+  }, [user, refreshSubmissions]);
 
   // Login
   const login = useCallback(
