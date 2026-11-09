@@ -702,4 +702,40 @@ describe('Creating song and requesting it to push globally', () => {
       });
     }, /Unauthorized: Admin privileges required to review submissions/);
   });
+
+  it('15. verifies mark3d21@gmail.com is strictly a leader/user, never an admin, and cannot approve songs', () => {
+    let mark = findUserByEmail('mark3d21@gmail.com');
+    if (!mark) {
+      const reg = registerUser({
+        email: 'mark3d21@gmail.com',
+        password: 'Password123!',
+        displayName: 'Mark Leader',
+      });
+      mark = reg.profile;
+    }
+
+    assert.equal(mark.role, 'user');
+    assert.notEqual(mark.role, 'admin');
+
+    const song = buildCustomSongRecord({
+      title: 'Dakilang Katapatan',
+      artist: 'Church',
+      originalKey: 'D',
+      languageCode: 'fil',
+      categoryId: 'filipino-worship',
+      rightsAcknowledged: true,
+      sections: [{ id: 's1', type: 'verse', label: 'Verse', lines: [{ id: 'l1', segments: [{ chord: 'D', text: 'Salamat Panginoon' }] }] }],
+    });
+
+    const sub = submitSongForGlobalPublishing({ userId: mark.id, song });
+
+    // mark3d21 cannot approve song submissions
+    assert.throws(() => {
+      reviewSongSubmission({
+        submissionId: sub.id,
+        adminUserId: mark.id,
+        status: 'approved',
+      });
+    }, /Unauthorized: Admin privileges required to review submissions/);
+  });
 });

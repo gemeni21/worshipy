@@ -124,7 +124,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') return null;
     try {
       const cached = localStorage.getItem(USER_CACHE_KEY);
-      return cached ? JSON.parse(cached) : null;
+      if (!cached) return null;
+      const parsed = JSON.parse(cached);
+      if (parsed?.email) {
+        const norm = parsed.email.toLowerCase().trim();
+        const isRealAdmin =
+          norm === 'gray2187@gmail.com' ||
+          norm === 'admin@worshipy.app' ||
+          norm.startsWith('admin@') ||
+          norm.endsWith('@admin.worshipy.app');
+        if (!isRealAdmin && parsed.role === 'admin') {
+          parsed.role = 'user';
+          try {
+            localStorage.setItem(USER_CACHE_KEY, JSON.stringify(parsed));
+          } catch {}
+        }
+      }
+      return parsed;
     } catch {
       return null;
     }
@@ -133,17 +149,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [submissions, setSubmissions] = useState<SongSubmission[]>([]);
 
   const isAdmin = useMemo(() => {
-    return (
-      user?.role === 'admin' ||
-      Boolean(
-        user?.email &&
-          (user.email.toLowerCase() === 'gray2187@gmail.com' ||
-            user.email.toLowerCase() === 'mark3d21@gmail.com' ||
-            user.email.toLowerCase() === 'admin@worshipy.app' ||
-            user.email.toLowerCase().startsWith('admin@') ||
-            user.email.toLowerCase().endsWith('@admin.worshipy.app'))
-      )
-    );
+    if (!user?.email) return false;
+    const email = user.email.toLowerCase().trim();
+    const isExplicitAdmin =
+      email === 'gray2187@gmail.com' ||
+      email === 'admin@worshipy.app' ||
+      email.startsWith('admin@') ||
+      email.endsWith('@admin.worshipy.app');
+
+    // Non-admin accounts (such as worship leaders and members) must NEVER have admin privileges
+    if (
+      email === 'gemeni21@gmail.com' ||
+      email === 'mark3d21@gmail.com' ||
+      user.groupRole === 'leader' ||
+      user.groupRole === 'member'
+    ) {
+      return isExplicitAdmin;
+    }
+
+    return isExplicitAdmin || user.role === 'admin';
   }, [user]);
 
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
@@ -438,8 +462,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               user?.groupRole ||
               (cachedGroup && cachedGroup.ownerId === data.user.id ? 'leader' : (cachedGroup ? 'member' : undefined));
 
+            const normEmail = (data.user.email || '').toLowerCase().trim();
+            const isRealAdmin =
+              normEmail === 'gray2187@gmail.com' ||
+              normEmail === 'admin@worshipy.app' ||
+              normEmail.startsWith('admin@') ||
+              normEmail.endsWith('@admin.worshipy.app');
+
             const fullUser: UserProfile = {
               ...data.user,
+              role: isRealAdmin ? 'admin' : 'user',
               groupId: existingGroupId,
               groupName: existingGroupName,
               groupRole: existingGroupRole,

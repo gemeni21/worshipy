@@ -52,7 +52,6 @@ export function isDefaultAdminEmail(email?: string | null): boolean {
   const norm = email.trim().toLowerCase();
   return (
     norm === PRIMARY_ADMIN_EMAIL.toLowerCase() ||
-    norm === 'mark3d21@gmail.com' ||
     norm === 'admin@worshipy.app' ||
     norm.startsWith('admin@') ||
     norm.endsWith('@admin.worshipy.app')
@@ -132,12 +131,17 @@ export function ensureDataStore(): CloudStoreSchema {
       if (!parsed.notifications) parsed.notifications = [];
       if (!parsed.groups) parsed.groups = {};
 
-      // Ensure primary admins (gray2187@gmail.com, mark3d21@gmail.com, admin@worshipy.app) have admin privileges
-      // and ensure non-admin accounts like gemeni21@gmail.com (which is strictly a worship leader) remain 'user'
+      // Ensure primary admins (gray2187@gmail.com, admin@worshipy.app) have admin privileges
+      // and ensure non-admin accounts like gemeni21@gmail.com and mark3d21@gmail.com (which are worship leaders) remain 'user'
       for (const [email, storedUser] of Object.entries(parsed.users || {})) {
         if (isDefaultAdminEmail(email) && storedUser?.profile) {
           storedUser.profile.role = 'admin';
-        } else if (email.toLowerCase() === 'gemeni21@gmail.com' && storedUser?.profile) {
+        } else if (
+          (email.toLowerCase() === 'gemeni21@gmail.com' ||
+            email.toLowerCase() === 'mark3d21@gmail.com' ||
+            storedUser?.profile?.groupRole === 'leader') &&
+          storedUser?.profile
+        ) {
           storedUser.profile.role = 'user';
         }
       }
@@ -515,9 +519,7 @@ export function validateSessionToken(token: string): UserProfile | null {
     }
     const found = findUserById(session.userId);
     if (found) {
-      if (isDefaultAdminEmail(found.email)) {
-        found.role = 'admin';
-      }
+      found.role = isDefaultAdminEmail(found.email) ? 'admin' : 'user';
       return found;
     }
   }
@@ -534,8 +536,8 @@ export function validateSessionToken(token: string): UserProfile | null {
           const payload = JSON.parse(Buffer.from(b64, 'base64url').toString('utf-8'));
           if (payload.uid && payload.exp && new Date(payload.exp).getTime() > Date.now()) {
             let user = findUserById(payload.uid);
-            if (user && isDefaultAdminEmail(user.email)) {
-              user.role = 'admin';
+            if (user) {
+              user.role = isDefaultAdminEmail(user.email) ? 'admin' : 'user';
             }
             if (!user && payload.em) {
               // Automatically restore user in this container's store!
@@ -545,7 +547,7 @@ export function validateSessionToken(token: string): UserProfile | null {
                 id: payload.uid,
                 email: payload.em,
                 displayName: payload.dn || payload.em.split('@')[0],
-                role: payload.rl || (isDefaultAdminEmail(emailKey) ? 'admin' : 'user'),
+                role: isDefaultAdminEmail(emailKey) ? 'admin' : 'user',
                 churchName: payload.ch || undefined,
                 instrument: payload.in || undefined,
                 groupId: payload.gid || undefined,
