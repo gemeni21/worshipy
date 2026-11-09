@@ -885,8 +885,11 @@ export function removeSongGlobally(params: {
   if (!store.removedGlobalSongs) store.removedGlobalSongs = {};
 
   const admin = findUserById(params.adminUserId);
-  if (!admin || admin.role !== 'admin') {
+  if (!admin || (admin.role !== 'admin' && !isDefaultAdminEmail(admin.email))) {
     throw new Error('Unauthorized: Admin privileges required to remove songs globally.');
+  }
+  if (admin.role !== 'admin') {
+    admin.role = 'admin';
   }
 
   const targetKey = params.songIdOrSlug.trim();
@@ -970,8 +973,11 @@ export function restoreSongGlobally(params: {
   if (!store.removedGlobalSongs) store.removedGlobalSongs = {};
 
   const admin = findUserById(params.adminUserId);
-  if (!admin || admin.role !== 'admin') {
+  if (!admin || (admin.role !== 'admin' && !isDefaultAdminEmail(admin.email))) {
     throw new Error('Unauthorized: Admin privileges required to restore songs globally.');
+  }
+  if (admin.role !== 'admin') {
+    admin.role = 'admin';
   }
 
   const targetKey = params.songIdOrSlug.trim();

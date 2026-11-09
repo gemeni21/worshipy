@@ -8,7 +8,13 @@ import {
   restoreSongGlobally,
   validateSessionToken,
 } from '@/lib/cloud/cloudDb';
-import { fetchGlobalSongsFromFirestore } from '@/lib/cloud/submissionsService';
+import {
+  fetchGlobalSongsFromFirestore,
+  fetchSubmissionsFromFirestore,
+  saveSubmissionToFirestore,
+  updateSubmissionInFirestore,
+} from '@/lib/cloud/submissionsService';
+import type { SongSubmission } from '@/types/auth';
 import type { SongRecord } from '@/types/song';
 
 export async function GET() {
@@ -81,6 +87,66 @@ export async function DELETE(req: NextRequest) {
       reason,
     });
 
+    // Also persist removal to Cloud Firestore so all Vercel instances and devices sync in real-time
+    try {
+      const cleanId = songId.replace(/^global_/, '');
+      const firestoreSubs = await fetchSubmissionsFromFirestore({ isAdmin: true });
+      const matched = firestoreSubs.find(
+        (s) =>
+          s.songId === songId ||
+          s.songId === cleanId ||
+          s.song?.id === songId ||
+          s.song?.id === cleanId
+      );
+      if (matched) {
+        await updateSubmissionInFirestore({
+          submissionId: matched.id,
+          status: 'removed',
+          adminNotes: reason,
+          reviewedBy: {
+            userId: user.id,
+            email: user.email,
+            displayName: user.displayName,
+          },
+        });
+      } else {
+        const removedDoc: SongSubmission = {
+          id: `sub_removed_${cleanId}`,
+          songId: cleanId,
+          song: {
+            id: cleanId,
+            title: result.removedRecord.title || cleanId,
+            slug: result.removedRecord.slug || cleanId,
+            sourceType: 'catalog',
+            originalKey: 'G',
+            sections: [],
+            language: { code: 'fil', label: 'Filipino / Tagalog' },
+            category: { id: 'contemporary-worship', label: 'Contemporary Worship' },
+            contentStatus: 'authorized',
+            attribution: 'Removed by Admin',
+            updatedAt: new Date().toISOString(),
+          },
+          submittedBy: {
+            userId: user.id,
+            email: user.email,
+            displayName: user.displayName,
+          },
+          status: 'removed',
+          submittedAt: new Date().toISOString(),
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: {
+            userId: user.id,
+            email: user.email,
+            displayName: user.displayName,
+          },
+          adminNotes: reason,
+        };
+        await saveSubmissionToFirestore(removedDoc);
+      }
+    } catch (fsErr) {
+      console.warn('Firestore removal sync note:', fsErr);
+    }
+
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to remove song globally.';
@@ -119,12 +185,40 @@ export async function PATCH(req: NextRequest) {
         adminUserId: user.id,
         songIdOrSlug: songId,
       });
+
+      // Also persist restore to Cloud Firestore
+      try {
+        const cleanId = songId.replace(/^global_/, '');
+        const firestoreSubs = await fetchSubmissionsFromFirestore({ isAdmin: true });
+        const matched = firestoreSubs.find(
+          (s) =>
+            s.songId === songId ||
+            s.songId === cleanId ||
+            s.song?.id === songId ||
+            s.song?.id === cleanId
+        );
+        if (matched) {
+          await updateSubmissionInFirestore({
+            submissionId: matched.id,
+            status: 'approved',
+            adminNotes: 'Restored to global catalog by administrator.',
+            reviewedBy: {
+              userId: user.id,
+              email: user.email,
+              displayName: user.displayName,
+            },
+          });
+        }
+      } catch (fsErr) {
+        console.warn('Firestore restore sync note:', fsErr);
+      }
+
       return NextResponse.json({ ok: true, ...result });
     }
 
-    return NextResponse.json({ error: 'Unsupported action.' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid action.' }, { status: 400 });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Failed to update song.';
+    const msg = err instanceof Error ? err.message : 'Failed to modify global song.';
     return NextResponse.json({ error: msg }, { status: 400 });
   }
 }

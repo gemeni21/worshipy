@@ -12,8 +12,11 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { resolveSongsByIds } from '@/lib/catalog/songCatalog';
 import { SongRowCard } from '@/components/songs/SongRowCard';
+import { AdminDeleteSongModal } from '@/components/songs/AdminDeleteSongModal';
+import type { SongRecord } from '@/types/song';
 
 export default function FavoritesPage() {
   const {
@@ -25,6 +28,15 @@ export default function FavoritesPage() {
     clearFavorites,
     clearRecentlyViewed,
   } = useApp();
+  const { isAdmin } = useAuth();
+
+  const [adminSongToDelete, setAdminSongToDelete] = useState<SongRecord | null>(null);
+  const [showAdminDeleteModal, setShowAdminDeleteModal] = useState(false);
+
+  const handleAdminDeleteSong = (song: SongRecord) => {
+    setAdminSongToDelete(song);
+    setShowAdminDeleteModal(true);
+  };
 
   const favoriteSongs = resolveSongsByIds(favorites, allAvailableSongs);
   const recentSongs = resolveSongsByIds(recentlyViewed, allAvailableSongs);
@@ -187,7 +199,11 @@ export default function FavoritesPage() {
         {favoriteSongs.length > 0 ? (
           <div className="space-y-2.5">
             {favoriteSongs.map((song) => (
-              <SongRowCard key={song.id} song={song} />
+              <SongRowCard
+                key={song.id}
+                song={song}
+                onAdminDelete={isAdmin ? handleAdminDeleteSong : undefined}
+              />
             ))}
           </div>
         ) : (
@@ -241,7 +257,11 @@ export default function FavoritesPage() {
         {recentSongs.length > 0 ? (
           <div className="space-y-2.5">
             {recentSongs.map((song) => (
-              <SongRowCard key={song.id} song={song} />
+              <SongRowCard
+                key={song.id}
+                song={song}
+                onAdminDelete={isAdmin ? handleAdminDeleteSong : undefined}
+              />
             ))}
           </div>
         ) : (
@@ -253,6 +273,19 @@ export default function FavoritesPage() {
           </div>
         )}
       </section>
+
+      {/* Admin Delete Confirmation Modal */}
+      <AdminDeleteSongModal
+        isOpen={showAdminDeleteModal}
+        onClose={() => {
+          setShowAdminDeleteModal(false);
+          setAdminSongToDelete(null);
+        }}
+        song={adminSongToDelete}
+        onDeleted={(deleted) => {
+          setStatusMessage(`"${deleted.title}" has been deleted from the catalog.`);
+        }}
+      />
     </div>
   );
 }

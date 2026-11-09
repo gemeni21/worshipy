@@ -21,12 +21,14 @@ import {
   Users,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { useIsMounted } from '@/hooks/useIsMounted';
 import {
   getCatalogFilterOptions,
   resolveSongsByIds,
 } from '@/lib/catalog/songCatalog';
 import { SongRowCard } from '@/components/songs/SongRowCard';
+import { AdminDeleteSongModal } from '@/components/songs/AdminDeleteSongModal';
 import type { SongRecord } from '@/types/song';
 
 function getDayPeriodGreeting(): string {
@@ -39,6 +41,14 @@ function getDayPeriodGreeting(): string {
 export default function HomePage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const { isAdmin } = useAuth();
+  const [adminSongToDelete, setAdminSongToDelete] = useState<SongRecord | null>(null);
+  const [showAdminDeleteModal, setShowAdminDeleteModal] = useState(false);
+
+  const handleAdminDeleteSong = (song: SongRecord) => {
+    setAdminSongToDelete(song);
+    setShowAdminDeleteModal(true);
+  };
 
   const {
     allAvailableSongs,
@@ -368,7 +378,11 @@ export default function HomePage() {
           </div>
           <div className="space-y-2.5">
             {recentSongs.map((song) => (
-              <SongRowCard key={song.id} song={song} />
+              <SongRowCard
+                key={song.id}
+                song={song}
+                onAdminDelete={isAdmin ? handleAdminDeleteSong : undefined}
+              />
             ))}
           </div>
         </section>
@@ -394,7 +408,11 @@ export default function HomePage() {
           </div>
           <div className="space-y-2.5">
             {favoriteSongs.map((song) => (
-              <SongRowCard key={song.id} song={song} />
+              <SongRowCard
+                key={song.id}
+                song={song}
+                onAdminDelete={isAdmin ? handleAdminDeleteSong : undefined}
+              />
             ))}
           </div>
         </section>
@@ -420,10 +438,24 @@ export default function HomePage() {
         </div>
         <div className="space-y-2.5">
           {featuredSongs.map((song) => (
-            <SongRowCard key={song.id} song={song} />
+            <SongRowCard
+              key={song.id}
+              song={song}
+              onAdminDelete={isAdmin ? handleAdminDeleteSong : undefined}
+            />
           ))}
         </div>
       </section>
+
+      {/* Admin Delete Confirmation Modal */}
+      <AdminDeleteSongModal
+        isOpen={showAdminDeleteModal}
+        onClose={() => {
+          setShowAdminDeleteModal(false);
+          setAdminSongToDelete(null);
+        }}
+        song={adminSongToDelete}
+      />
     </div>
   );
 }

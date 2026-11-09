@@ -2,22 +2,28 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { CheckCircle2, Heart, Music } from 'lucide-react';
+import { CheckCircle2, Heart, Music, Trash2 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import type { SongRecord } from '@/types/song';
 
 interface SongRowCardProps {
   song: SongRecord;
   compact?: boolean;
   rightSlot?: React.ReactNode;
+  onAdminDelete?: (song: SongRecord) => void;
+  showAdminDelete?: boolean;
 }
 
 export function SongRowCard({
   song,
   compact = false,
   rightSlot,
+  onAdminDelete,
+  showAdminDelete = true,
 }: SongRowCardProps) {
   const { isFavorite, toggleFavorite, isSongSavedOffline } = useApp();
+  const { isAdmin } = useAuth();
   const favored = isFavorite(song.id);
   const savedOffline = isSongSavedOffline(song.id);
 
@@ -98,6 +104,23 @@ export function SongRowCard({
         </div>
 
         {rightSlot}
+
+        {isAdmin && showAdminDelete && onAdminDelete && (
+          <button
+            type="button"
+            data-testid={`admin-delete-song-btn-${song.id}`}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onAdminDelete(song);
+            }}
+            title={`Admin: Delete "${song.title}" from catalog`}
+            aria-label={`Admin: Delete ${song.title}`}
+            className="inline-flex items-center justify-center w-11 h-11 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 hover:text-rose-400 transition-colors cursor-pointer"
+          >
+            <Trash2 className="w-4 h-4" aria-hidden="true" />
+          </button>
+        )}
 
         <button
           type="button"

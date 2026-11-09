@@ -4,15 +4,19 @@ import React, { Suspense, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
+  CheckCircle2,
   Download,
   Filter,
   FolderHeart,
   Mic,
   RotateCcw,
   Search,
+  ShieldAlert,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import {
   getAllSongs,
   getCatalogFilterOptions,
@@ -20,6 +24,8 @@ import {
 } from '@/lib/catalog/songCatalog';
 import { SongRowCard } from '@/components/songs/SongRowCard';
 import { VoiceSearchModal } from '@/components/search/VoiceSearchModal';
+import { AdminDeleteSongModal } from '@/components/songs/AdminDeleteSongModal';
+import type { SongRecord } from '@/types/song';
 
 function SongsCatalogInner({
   initialQuery,
@@ -37,6 +43,19 @@ function SongsCatalogInner({
   initialOfflineOnly: boolean;
 }) {
   const { allAvailableSongs, customSongs, offlineEntries } = useApp();
+  const { isAdmin } = useAuth();
+
+  const [adminSongToDelete, setAdminSongToDelete] = useState<SongRecord | null>(null);
+  const [showAdminDeleteModal, setShowAdminDeleteModal] = useState(false);
+  const [feedbackBanner, setFeedbackBanner] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
+  const handleAdminDeleteSong = (song: SongRecord) => {
+    setAdminSongToDelete(song);
+    setShowAdminDeleteModal(true);
+  };
 
   const builtInCount = getAllSongs().length;
   const allSongs = allAvailableSongs;
@@ -127,6 +146,17 @@ function SongsCatalogInner({
               <FolderHeart className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Manage My Songs ({customSongs.length})</span>
             </Link>
+
+            {isAdmin && (
+              <span
+                data-testid="admin-catalog-management-badge"
+                className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                title="Admin Privileges Active: You can delete songs from the catalog directly using the red trash button"
+              >
+                <ShieldAlert className="w-3.5 h-3.5" aria-hidden="true" />
+                <span>Admin Delete Active</span>
+              </span>
+            )}
           </div>
         </div>
         <p className="text-sm text-[var(--text-secondary)]">
@@ -134,6 +164,30 @@ function SongsCatalogInner({
           device-local songs by title, artist, language, category, or key.
         </p>
       </header>
+
+      {feedbackBanner && (
+        <div
+          role="alert"
+          className={`p-3.5 rounded-2xl border text-xs sm:text-sm font-semibold flex items-center justify-between gap-3 animate-in fade-in duration-200 ${
+            feedbackBanner.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{feedbackBanner.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFeedbackBanner(null)}
+            className="p-1 rounded-lg hover:bg-black/20 text-current cursor-pointer"
+            title="Dismiss message"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Search & Filters Panel */}
       <section
@@ -309,7 +363,11 @@ function SongsCatalogInner({
       {filteredSongs.length > 0 ? (
         <div className="space-y-2.5">
           {filteredSongs.map((song) => (
-            <SongRowCard key={song.id} song={song} />
+            <SongRowCard
+              key={song.id}
+              song={song}
+              onAdminDelete={isAdmin ? handleAdminDeleteSong : undefined}
+            />
           ))}
         </div>
       ) : (
@@ -332,6 +390,22 @@ function SongsCatalogInner({
           )}
         </div>
       )}
+
+      {/* Admin Delete Confirmation Modal */}
+      <AdminDeleteSongModal
+        isOpen={showAdminDeleteModal}
+        onClose={() => {
+          setShowAdminDeleteModal(false);
+          setAdminSongToDelete(null);
+        }}
+        song={adminSongToDelete}
+        onDeleted={(deleted) => {
+          setFeedbackBanner({
+            type: 'success',
+            message: `"${deleted.title}" has been deleted from the catalog.`,
+          });
+        }}
+      />
     </div>
   );
 }

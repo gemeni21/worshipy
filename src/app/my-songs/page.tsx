@@ -94,10 +94,12 @@ export default function MySongsPage() {
 
   const {
     user,
+    isAdmin,
     submissions,
     syncWithCloud,
     syncStatus,
     refreshSubmissions,
+    removeSongGlobally,
   } = useAuth();
 
   const [mode, setMode] = useState<WorkspaceMode>('list');
@@ -326,7 +328,9 @@ export default function MySongsPage() {
     if (
       typeof window !== 'undefined' &&
       !window.confirm(
-        `Delete personal song "${song.title}" from this device? This will also remove it from your local favorites, setlists, and offline cache. Built-in catalog songs are never affected.`
+        isAdmin
+          ? `Delete "${song.title}"? As an admin, this will delete the song from your personal collection and remove it globally if it was published.`
+          : `Delete personal song "${song.title}" from this device? This will also remove it from your local favorites, setlists, and offline cache. Built-in catalog songs are never affected.`
       )
     ) {
       return;
@@ -334,6 +338,11 @@ export default function MySongsPage() {
 
     const res = await deleteCustomSong(song.id);
     if (res.ok) {
+      if (isAdmin) {
+        try {
+          await removeSongGlobally(song.id);
+        } catch {}
+      }
       setBanner({
         type: 'success',
         message: `Deleted "${song.title}" from My Songs on this device.`,

@@ -523,4 +523,75 @@ describe('Creating song and requesting it to push globally', () => {
     assert.ok(validation.errors.some(e => e.includes('sections')));
   });
 
+  it('11. allows admin to delete a song globally from song lists and marks it as removed', () => {
+    const admin = registerUser({
+      email: `admin_delete_tester_${Date.now()}@worshipy.app`,
+      password: 'Password123!',
+      displayName: 'Admin Tester',
+      role: 'admin',
+    });
+
+    const user = registerUser({
+      email: `song_creator_${Date.now()}@church.org`,
+      password: 'Password123!',
+      displayName: 'Song Creator',
+    });
+
+    const song = buildCustomSongRecord({
+      title: 'Tanging Sandigan',
+      originalKey: 'G',
+      rightsAcknowledged: true,
+      sections: [
+        {
+          id: 'v1',
+          type: 'verse',
+          label: 'Verse',
+          lines: [{ id: 'l1', segments: [{ chord: 'G', text: 'Tanging Sandigan' }] }],
+        },
+      ],
+    });
+
+    // 1. User submits song and admin approves
+    const sub = submitSongForGlobalPublishing({ userId: user.profile.id, song });
+    reviewSongSubmission({
+      submissionId: sub.id,
+      adminUserId: admin.profile.id,
+      status: 'approved',
+    });
+
+    assert.ok(getApprovedGlobalSongs().some(s => s.title === 'Tanging Sandigan'));
+
+    // 2. Admin deletes song from song list
+    const removeRes = removeSongGlobally({
+      adminUserId: admin.profile.id,
+      songIdOrSlug: song.id,
+      reason: 'Copyright notice or duplicate entry',
+    });
+
+    assert.equal(removeRes.success, true);
+    assert.equal(removeRes.removedRecord.title, 'Tanging Sandigan');
+
+    // 3. Song is no longer in approved global catalog
+    assert.ok(!getApprovedGlobalSongs().some(s => s.id === song.id || s.title === 'Tanging Sandigan'));
+
+    // 4. Submission status is now 'removed'
+    const updatedSub = getSubmissionById(sub.id);
+    assert.equal(updatedSub?.status, 'removed');
+    assert.equal(updatedSub?.adminNotes, 'Copyright notice or duplicate entry');
+  });
+
+  it('12. prevents non-admin users from deleting a song globally', () => {
+    const regularUser = registerUser({
+      email: `regular_user_${Date.now()}@church.org`,
+      password: 'Password123!',
+      displayName: 'Regular User',
+    });
+
+    assert.throws(() => {
+      removeSongGlobally({
+        adminUserId: regularUser.profile.id,
+        songIdOrSlug: 'some-song-id',
+      });
+    }, /Unauthorized: Admin privileges required/);
+  });
 });
